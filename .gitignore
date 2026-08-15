@@ -1,0 +1,19 @@
+# Environment / secrets
+backend/.env
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Cached market data
+backend/data_cache/
+
+# Node
+node_modules/
+
+# Build output
+dist/
+build/

@@ -1,0 +1,24 @@
+{
+  "target_allocation": {},
+  "contributions": [
+    {
+      "date": "2026-08-04",
+      "ticker": "AAPL",
+      "amount": 101.0,
+      "shares": 0.32674093067463267,
+      "price": 309.1134,
+      "note": "Gonna increase",
+      "exit_condition": "blablabla"
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "AMZN",
+      "amount": 100.0,
+      "shares": 0.43217079389774843,
+      "price": 231.39,
+      "note": "Test",
+      "exit_condition": "TEST"
+    }
+  ],
+  "journal": []
+}
