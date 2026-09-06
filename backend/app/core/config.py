@@ -1,0 +1,75 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    app_name: str = "Ledger"
+    environment: str = Field(default="development", validation_alias="LEDGER_ENV")
+    api_prefix: str = Field(default="/api", validation_alias="LEDGER_API_PREFIX")
+    data_dir: Path = Field(default=Path("./data"), validation_alias="LEDGER_DATA_DIR")
+    http_timeout_seconds: float = Field(default=30.0, validation_alias="LEDGER_HTTP_TIMEOUT_SECONDS")
+
+    # Alpaca: security master + market data. Free Basic uses delayed SIP history and IEX live data.
+    alpaca_api_key: str | None = Field(default=None, validation_alias="ALPACA_API_KEY")
+    alpaca_api_secret: str | None = Field(default=None, validation_alias="ALPACA_API_SECRET")
+    alpaca_historical_feed: str = Field(default="sip", validation_alias="ALPACA_HISTORICAL_FEED")
+    alpaca_live_feed: str = Field(default="iex", validation_alias="ALPACA_LIVE_FEED")
+    alpaca_adjustment: str = Field(default="split", validation_alias="ALPACA_ADJUSTMENT")
+    alpaca_historical_delay_minutes: int = Field(default=15, validation_alias="ALPACA_HISTORICAL_DELAY_MINUTES")
+    alpaca_trading_base_url: str = Field(
+        default="https://paper-api.alpaca.markets",
+        validation_alias="ALPACA_TRADING_BASE_URL",
+    )
+    alpaca_data_base_url: str = Field(
+        default="https://data.alpaca.markets",
+        validation_alias="ALPACA_DATA_BASE_URL",
+    )
+
+    # SEC EDGAR APIs do not need a key, but the SEC requires a declared User-Agent.
+    sec_user_agent: str | None = Field(default=None, validation_alias="SEC_USER_AGENT")
+    sec_data_base_url: str = Field(default="https://data.sec.gov", validation_alias="SEC_DATA_BASE_URL")
+    sec_files_base_url: str = Field(default="https://www.sec.gov", validation_alias="SEC_FILES_BASE_URL")
+
+    # FRED macro data.
+    fred_api_key: str | None = Field(default=None, validation_alias="FRED_API_KEY")
+    fundamentals_cache_hours: int = Field(default=12, validation_alias="FUNDAMENTALS_CACHE_HOURS")
+    macro_cache_minutes: int = Field(default=15, validation_alias="MACRO_CACHE_MINUTES")
+
+    fred_base_url: str = Field(
+        default="https://api.stlouisfed.org",
+        validation_alias="FRED_BASE_URL",
+    )
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def database_path(self) -> Path:
+        return self.data_dir / "ledger.db"
+
+    @property
+    def market_data_dir(self) -> Path:
+        return self.data_dir / "market"
+
+    @property
+    def uploads_dir(self) -> Path:
+        return self.data_dir / "uploads"
+
+    @property
+    def alpaca_configured(self) -> bool:
+        return bool(self.alpaca_api_key and self.alpaca_api_secret)
+
+    @property
+    def sec_configured(self) -> bool:
+        return bool(self.sec_user_agent and "your-email@example.com" not in self.sec_user_agent)
+
+    @property
+    def fred_configured(self) -> bool:
+        return bool(self.fred_api_key)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

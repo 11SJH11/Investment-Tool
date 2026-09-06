@@ -1,19 +1,30 @@
-# Environment / secrets
-backend/.env
-.env
-.env.*
-
 # Python
 __pycache__/
-*.pyc
-*.pyo
-
-# Cached market data
-backend/data_cache/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
 
 # Node
 node_modules/
-
-# Build output
 dist/
-build/
+.vite/
+
+# Secrets
+.env
+backend/.env
+frontend/.env
+
+# Local Ledger data
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.coverage
+htmlcov/

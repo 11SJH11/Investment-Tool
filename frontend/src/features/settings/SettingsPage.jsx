@@ -1,0 +1,36 @@
+import { useEffect, useState } from "react";
+import { api } from "../../api/client";
+import { DEFAULT_NAV } from "../../app/preferences";
+import { TIMEZONE_OPTIONS } from "../../utils/timezones";
+
+const accents = [["stone","Stone"],["blue","Blue"],["emerald","Emerald"],["violet","Violet"],["rose","Rose"],["amber","Amber"]];
+export default function SettingsPage({ preferences, onChange }) {
+  const [status,setStatus]=useState(null); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [refreshing,setRefreshing]=useState(false);
+  useEffect(()=>{ api.dataStatus().then(setStatus).catch(e=>setError(e.message)); },[]);
+  const set=(patch)=>onChange({ ...preferences, ...patch });
+  const move=(index,delta)=>{ const list=[...(preferences.navOrder||DEFAULT_NAV)]; const j=index+delta; if(j<0||j>=list.length)return; [list[index],list[j]]=[list[j],list[index]]; set({navOrder:list}); };
+  const refresh=async()=>{ setRefreshing(true); setError(""); setMessage(""); try{ const r=await api.refreshSymbols(); setMessage(`Loaded ${Number(r.symbols||0).toLocaleString()} symbols from ${r.source}.`); setStatus(await api.dataStatus()); } catch(e){setError(e.message)} finally{setRefreshing(false)} };
+  return <div className="max-w-5xl">
+    <p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">Settings</h2><p className="mt-2 text-sm text-stone-600">Appearance, chart defaults, navigation and local data maintenance.</p>
+    {error&&<div className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{message&&<div className="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
+    <Section title="Appearance"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Field label="Theme"><select className="input" value={preferences.theme} onChange={e=>set({theme:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></Field>
+      <Field label="Accent"><select className="input" value={preferences.accent} onChange={e=>set({accent:e.target.value})}>{accents.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field>
+      <Field label="Density"><select className="input" value={preferences.density} onChange={e=>set({density:e.target.value})}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></Field>
+      <Field label="Sidebar width"><select className="input" value={preferences.sidebar} onChange={e=>set({sidebar:e.target.value})}><option value="normal">Normal</option><option value="compact">Compact</option></select></Field>
+    </div></Section>
+    <Section title="Chart defaults"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Field label="Default timezone"><select className="input" value={preferences.timeZone} onChange={e=>set({timeZone:e.target.value})}>{TIMEZONE_OPTIONS.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></Field>
+      <Field label="Default session"><select className="input" value={preferences.chartSession} onChange={e=>set({chartSession:e.target.value})}><option value="regular">Regular</option><option value="extended">Extended</option></select></Field>
+      <Field label="Default timeframe"><select className="input" value={preferences.chartTimeframe||"5m"} onChange={e=>set({chartTimeframe:e.target.value})}>{["1m","5m","15m","30m","1h","4h","1d"].map(x=><option key={x}>{x}</option>)}</select></Field>
+      <ColorField label="Up candle" value={preferences.chartUp} onChange={v=>set({chartUp:v})}/><ColorField label="Down candle" value={preferences.chartDown} onChange={v=>set({chartDown:v})}/><ColorField label="Chart background" value={preferences.chartBackground} onChange={v=>set({chartBackground:v})}/><ColorField label="Grid" value={preferences.chartGrid} onChange={v=>set({chartGrid:v})}/>
+    </div></Section>
+    <Section title="Drawing defaults"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><Field label="Magnet / snap"><select className="input" value={preferences.drawingMagnet||"weak"} onChange={e=>set({drawingMagnet:e.target.value})}><option value="off">Off</option><option value="weak">Weak</option><option value="strong">Strong</option></select></Field><ColorField label="Default drawing colour" value={preferences.drawingColor||"#60a5fa"} onChange={v=>set({drawingColor:v})}/></div><p className="mt-3 text-xs text-stone-500">Drawings are stored in timestamp/price coordinates so they remain attached to market structure as you zoom, resize or switch timeframe.</p></Section>
+    <Section title="Sidebar order"><p className="mb-3 text-xs text-stone-500">Reorder the main app areas without changing their underlying routes.</p><div className="space-y-2">{(preferences.navOrder||DEFAULT_NAV).map((item,i)=><div key={item} className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3"><span className="font-medium">{item}</span><div className="flex gap-2"><button className="mini-btn" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button className="mini-btn" disabled={i===(preferences.navOrder||DEFAULT_NAV).length-1} onClick={()=>move(i,1)}>↓</button></div></div>)}</div><button className="mt-3 mini-btn" onClick={()=>set({navOrder:DEFAULT_NAV})}>Reset order</button></Section>
+    <Section title="Data & providers"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Stat label="Symbols" value={status?.symbols_cached}/><Stat label="Fundamentals" value={status?.screener_coverage?.fundamentals}/><Stat label="Prices" value={status?.screener_coverage?.prices}/><Stat label="Providers" value={status?Object.values(status.providers||{}).filter(x=>x.configured).length:"—"}/></div><button className="mt-4 ledger-primary rounded-md px-4 py-2 text-sm text-white" onClick={refresh} disabled={refreshing}>{refreshing?"Refreshing…":"Refresh symbol universe"}</button><p className="mt-2 text-xs text-stone-500">This maintenance action used to live on Dashboard.</p></Section>
+  </div>;
+}
+function Section({title,children}){return <section className="mt-6 rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-semibold">{title}</h3><div className="mt-4">{children}</div></section>}
+function Field({label,children}){return <label className="block"><span className="mb-1 block text-xs font-medium text-stone-500">{label}</span>{children}</label>}
+function ColorField({label,value,onChange}){return <Field label={label}><div className="flex gap-2"><input type="color" value={value} onChange={e=>onChange(e.target.value)} className="h-10 w-14 rounded border border-stone-300 bg-white"/><input className="input" value={value} onChange={e=>onChange(e.target.value)}/></div></Field>}
+function Stat({label,value}){const shown=value==null||value==="—"?"—":Number.isFinite(Number(value))?Number(value).toLocaleString():String(value);return <div className="rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums">{shown}</p></div>}
