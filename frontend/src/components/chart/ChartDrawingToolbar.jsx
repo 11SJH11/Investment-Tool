@@ -1,7 +1,6 @@
 const groups = [
   [
-    ["cursor", "⌖", "Crosshair / chart navigation"],
-    ["select", "↖", "Select / move drawings"],
+    ["cursor", "⌖", "Crosshair / navigate / select drawings"],
   ],
   [
     ["trend", "╱", "Trend line"],
@@ -17,8 +16,8 @@ const groups = [
   ],
   [
     ["fib", "Fib", "Fibonacci retracement"],
-    ["long-position", "L", "Long position · drag entry to stop, then click target"],
-    ["short-position", "S", "Short position · drag entry to stop, then click target"],
+    ["long-position", "L", "Long position"],
+    ["short-position", "S", "Short position"],
   ],
 ];
 
@@ -29,9 +28,9 @@ export default function ChartDrawingToolbar({ tool, onToolChange, magnet = "weak
     </div>)}
     <div className="drawing-tool-group">
       <button type="button" className={`drawing-tool-btn ${magnet !== "off" ? "active-soft" : ""}`} title={`Magnet: ${magnet}`} onClick={() => onMagnetChange?.(magnet === "off" ? "weak" : magnet === "weak" ? "strong" : "off")}>🧲</button>
-      <button type="button" className="drawing-tool-btn" title="Undo" onClick={onUndo}>↶</button>
-      <button type="button" className="drawing-tool-btn" title="Redo" onClick={onRedo}>↷</button>
-      <button type="button" className="drawing-tool-btn danger" title="Delete selected drawing" disabled={!canDelete} onClick={onDelete}>⌫</button>
+      <button type="button" className="drawing-tool-btn" title="Undo (Ctrl/Cmd+Z)" onClick={onUndo}>↶</button>
+      <button type="button" className="drawing-tool-btn" title="Redo (Ctrl/Cmd+Y)" onClick={onRedo}>↷</button>
+      <button type="button" className="drawing-tool-btn danger" title="Delete selected drawing (Delete)" disabled={!canDelete} onClick={onDelete}>⌫</button>
     </div>
   </aside>;
 }

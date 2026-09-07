@@ -10,17 +10,40 @@ from app.backtesting.strategies import strategy_registry
 from app.indicators import indicator_registry
 from app.services.chart_data import prepare_chart_bars
 from app.services.market_data import MarketDataService
+from app.data.instruments import instrument_spec
 from app.storage.backtest_run_repository import BacktestRunRepository
 
 NY = ZoneInfo("America/New_York")
 SUPPORTED_TIMEFRAMES = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
-SESSION_ENDS = {"regular": "16:00", "extended": "20:00"}
+SESSION_ENDS = {"regular": "16:00", "extended": "20:00", "24h": "23:59"}
 
 
 class BacktestService:
     def __init__(self, market_data: MarketDataService | None, runs: BacktestRunRepository | None = None):
         self.market_data = market_data
         self.runs = runs
+
+    def _instrument(self, symbol: str):
+        if self.market_data is not None and hasattr(self.market_data, "instrument_info"):
+            return self.market_data.instrument_info(symbol)
+        return instrument_spec(symbol)
+
+    def _provider(self, symbol: str):
+        if self.market_data is None:
+            return None
+        if hasattr(self.market_data, "provider_for"):
+            return self.market_data.provider_for(symbol)
+        return getattr(self.market_data, "provider", None)
+
+    def _delay(self, symbol: str) -> int:
+        if self.market_data is not None and hasattr(self.market_data, "historical_delay_minutes"):
+            return max(0, int(self.market_data.historical_delay_minutes(symbol)))
+        return max(0, int(getattr(self._provider(symbol), "historical_delay_minutes", 0)))
+
+    def _latest_available_end(self, symbol: str, timeframe: str, reference: datetime) -> datetime:
+        if self.market_data is not None and hasattr(self.market_data, "latest_available_end"):
+            return self.market_data.latest_available_end(symbol, timeframe, reference)
+        return reference
 
     def strategies(self) -> list[dict]:
         result = []
@@ -36,7 +59,7 @@ class BacktestService:
 
     def run(self, payload: dict) -> dict:
         if self.market_data is None:
-            raise RuntimeError("Alpaca market data is not configured")
+            raise RuntimeError("No market data provider is configured")
         strategy_key = str(payload.get("strategy_key") or "").strip()
         if not strategy_key:
             raise ValueError("strategy_key is required")
@@ -54,9 +77,11 @@ class BacktestService:
         primary = str(payload.get("primary_timeframe") or strategy_spec.timeframes[0])
         if primary not in SUPPORTED_TIMEFRAMES:
             raise ValueError(f"Unsupported primary timeframe '{primary}'")
-        session = str(payload.get("session") or "regular")
-        if session not in {"regular", "extended"}:
-            raise ValueError("session must be regular or extended")
+        requested_session = str(payload.get("session") or "auto")
+        if requested_session not in {"auto", "regular", "extended", "24h"}:
+            raise ValueError("session must be auto, regular, extended or 24h")
+        profiles = {self._instrument(symbol).session_profile for symbol in symbols}
+        session = ("regular" if profiles == {"us_equity"} else "24h") if requested_session == "auto" else requested_session
 
         start_date = _as_date(payload.get("start_date"), "start_date")
         end_date = _as_date(payload.get("end_date"), "end_date")
@@ -64,8 +89,10 @@ class BacktestService:
             raise ValueError("start_date must be on or before end_date")
         start = datetime.combine(start_date, time.min, tzinfo=NY).astimezone(timezone.utc)
         end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=NY).astimezone(timezone.utc)
-        delay = max(0, int(getattr(self.market_data.provider, "historical_delay_minutes", 0)))
+        delay = max(self._delay(symbol) for symbol in symbols)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
+        provider_ends = [self._latest_available_end(symbol, primary, latest_allowed) for symbol in symbols]
+        latest_allowed = min([latest_allowed, *provider_ends])
         if end > latest_allowed:
             end = latest_allowed
         if start >= end:
@@ -117,12 +144,19 @@ class BacktestService:
             "primary_timeframe": primary,
             "additional_timeframes": additional,
             "session": session,
+            "requested_session": requested_session,
             "start": start.isoformat(),
             "end": end.isoformat(),
             "data": {
-                "feed": getattr(self.market_data.provider, "historical_feed", None),
-                "adjustment": getattr(self.market_data.provider, "adjustment", None),
                 "historical_delay_minutes": delay,
+                "providers": {
+                    symbol: {
+                        "provider": getattr(self._provider(symbol), "key", None),
+                        "feed": getattr(self._provider(symbol), "historical_feed", None),
+                        "adjustment": getattr(self._provider(symbol), "adjustment", None),
+                        "instrument": self._instrument(symbol).as_dict(),
+                    } for symbol in symbols
+                },
                 "bar_counts": {
                     symbol: {timeframe: len(frame) for timeframe, frame in frames.items()}
                     for symbol, frames in frames_by_symbol.items()
@@ -185,14 +219,14 @@ class BacktestService:
     ) -> dict:
         """Load a multi-session historical replay dataset with a strict reveal boundary."""
         if self.market_data is None:
-            raise RuntimeError("Alpaca market data is not configured")
+            raise RuntimeError("No market data provider is configured")
         symbol = str(symbol or "").strip().upper()
         if not symbol:
             raise ValueError("symbol is required")
         if timeframe not in SUPPORTED_TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe '{timeframe}'")
-        if session not in {"regular", "extended"}:
-            raise ValueError("session must be regular or extended")
+        if session not in {"regular", "extended", "24h"}:
+            raise ValueError("session must be regular, extended or 24h")
         clock = _required_clock(start_time)
         context_bars = max(0, min(50_000, int(context_bars or 0)))
         if context_days is not None:
@@ -205,11 +239,17 @@ class BacktestService:
 
         hour, minute = map(int, clock.split(":"))
         reveal_at = datetime.combine(replay_date, time(hour, minute), tzinfo=NY).astimezone(timezone.utc)
-        eh, em = map(int, SESSION_ENDS[session].split(":"))
-        requested_end = datetime.combine(replay_end_date, time(eh, em), tzinfo=NY).astimezone(timezone.utc)
+        if self._instrument(symbol).session_profile == "us_equity":
+            eh, em = map(int, SESSION_ENDS[session].split(":"))
+            requested_end = datetime.combine(replay_end_date, time(eh, em), tzinfo=NY).astimezone(timezone.utc)
+        else:
+            requested_end = datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=NY).astimezone(timezone.utc)
 
-        delay = max(0, int(getattr(self.market_data.provider, "historical_delay_minutes", 0)))
+        spec = self._instrument(symbol)
+        provider = self._provider(symbol)
+        delay = self._delay(symbol)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
+        latest_allowed = self._latest_available_end(symbol, timeframe, latest_allowed)
         if reveal_at > latest_allowed:
             raise ValueError("Replay start is too recent for the configured historical-data delay")
         replay_end = min(requested_end, latest_allowed)
@@ -234,26 +274,40 @@ class BacktestService:
         working = frame.copy().sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
         timestamps = pd.to_datetime(working["timestamp"], utc=True)
         local_dates = timestamps.dt.tz_convert(NY).dt.date
+        requested_replay_date = replay_date
+        effective_reveal_at = reveal_at
         if int((local_dates == replay_date).sum()) <= 0:
-            raise ValueError("No session bars exist for the selected replay date (weekend/holiday or unavailable data)")
+            # A weekend/holiday should not make Replay unusable. Move the reveal
+            # frontier to the first available displayed bar after the requested
+            # start, while preserving the originally requested date in metadata.
+            candidates = working.index[timestamps >= pd.Timestamp(reveal_at)].tolist()
+            if not candidates:
+                raise ValueError("No session bars exist on or after the selected replay date in the loaded range")
+            first_available_idx = candidates[0]
+            effective_reveal_at = timestamps.iloc[first_available_idx].to_pydatetime()
+            replay_date = local_dates.iloc[first_available_idx]
         if context_days is None:
-            before_idx = working.index[timestamps < pd.Timestamp(reveal_at)].tolist()
+            before_idx = working.index[timestamps < pd.Timestamp(effective_reveal_at)].tolist()
             first_index = max(0, (before_idx[-1] + 1 if before_idx else 0) - context_bars)
             working = working.iloc[first_index:].reset_index(drop=True)
             timestamps = pd.to_datetime(working["timestamp"], utc=True)
-        visible = max(1, int((timestamps <= pd.Timestamp(reveal_at)).sum()))
+        visible = max(1, int((timestamps <= pd.Timestamp(effective_reveal_at)).sum()))
         working["timestamp"] = working["timestamp"].astype(str)
         replay_dates = pd.to_datetime(working["timestamp"], utc=True).dt.tz_convert(NY).dt.date
         return {
             "symbol": symbol, "timeframe": timeframe, "session": session,
-            "replay_date": replay_date.isoformat(), "replay_end_date": replay_end_date.isoformat(),
+            "replay_date": replay_date.isoformat(), "requested_replay_date": requested_replay_date.isoformat(),
+            "replay_end_date": replay_end_date.isoformat(),
             "start_time": clock, "session_timezone": "America/New_York",
             "context_bars": context_bars if context_days is None else None, "context_days": context_days,
             "initial_visible_count": min(visible, len(working)), "count": len(working),
             "replay_session_dates": sorted({d.isoformat() for d in replay_dates if d >= replay_date}),
             "bars": working.to_dict(orient="records"),
-            "feed": getattr(self.market_data.provider, "historical_feed", None),
-            "adjustment": getattr(self.market_data.provider, "adjustment", None),
+            "provider": getattr(provider, "key", None),
+            "feed": getattr(provider, "historical_feed", None),
+            "adjustment": getattr(provider, "adjustment", None),
+            "instrument": spec.as_dict(),
+            "effective_session": session if spec.session_profile == "us_equity" else "24h",
             "source_timeframe": "1m" if timeframe not in {"1d", "1w"} else timeframe,
             "aggregation": aggregation,
         }
@@ -305,11 +359,11 @@ class BacktestService:
         after_bars: int = 20,
     ) -> dict:
         if self.market_data is None:
-            raise RuntimeError("Alpaca market data is not configured")
+            raise RuntimeError("No market data provider is configured")
         if timeframe not in SUPPORTED_TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe '{timeframe}'")
-        if session not in {"regular", "extended"}:
-            raise ValueError("session must be regular or extended")
+        if session not in {"regular", "extended", "24h"}:
+            raise ValueError("session must be regular, extended or 24h")
 
         use_context = entry is not None or exit is not None
         if use_context:
@@ -337,8 +391,9 @@ class BacktestService:
                 raise ValueError("Audit start must be before end")
             if end - start > timedelta(days=900):
                 raise ValueError("Trade audit window cannot exceed 900 days")
-            delay = max(0, int(getattr(self.market_data.provider, "historical_delay_minutes", 0)))
+            delay = self._delay(symbol)
             latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
+            latest_allowed = self._latest_available_end(symbol, timeframe, latest_allowed)
             end = min(end, latest_allowed)
             output = self._load_timeframe(symbol.upper(), timeframe, start, end, session)
 
@@ -358,8 +413,10 @@ class BacktestService:
             "requested_after_bars": after_bars if use_context else None,
             "actual_before_bars": actual_before,
             "actual_after_bars": actual_after,
-            "feed": getattr(self.market_data.provider, "historical_feed", None),
-            "adjustment": getattr(self.market_data.provider, "adjustment", None),
+            "provider": getattr(self._provider(symbol), "key", None),
+            "feed": getattr(self._provider(symbol), "historical_feed", None),
+            "adjustment": getattr(self._provider(symbol), "adjustment", None),
+            "instrument": self._instrument(symbol).as_dict(),
         }
 
     def _load_audit_context(
@@ -379,8 +436,9 @@ class BacktestService:
         satisfy the UI. We deliberately widen the calendar window until enough filtered
         bars exist, then slice the prepared series by bar count.
         """
-        delay = max(0, int(getattr(self.market_data.provider, "historical_delay_minutes", 0)))
+        delay = self._delay(symbol)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
+        latest_allowed = self._latest_available_end(symbol, timeframe, latest_allowed)
         exit_for_fetch = min(exit, latest_allowed)
         if entry > latest_allowed:
             raise ValueError("Trade is too recent for the configured historical-data delay")
@@ -406,19 +464,19 @@ class BacktestService:
     def _load_replay_timeframe(self, symbol: str, timeframe: str, start: datetime, end: datetime, session: str):
         """Replay uses one canonical 1-minute intraday source across timeframes.
 
-        Normal backtests retain their existing provider-native fetch policy so a
-        90-day 5m research run does not suddenly require downloading every 1m bar.
-        Replay prioritises cross-timeframe visual consistency and reuses the local
-        1m cache when switching between 1m/5m/15m/30m/1h/4h.
+        This keeps timeframe switches causally consistent. Phase 6.2.4 reduces the
+        default replay horizon/context instead of changing this invariant.
         """
+        spec = self._instrument(symbol)
         source_timeframe = timeframe if timeframe in {"1d", "1w"} else "1m"
         frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
-        return prepare_chart_bars(frame, timeframe, session)
+        return prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
 
     def _load_timeframe(self, symbol: str, timeframe: str, start: datetime, end: datetime, session: str):
-        source_timeframe = "30m" if timeframe in {"1h", "4h"} else timeframe
+        spec = self._instrument(symbol)
+        source_timeframe = "30m" if spec.session_profile == "us_equity" and timeframe in {"1h", "4h"} else timeframe
         frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
-        prepared, _ = prepare_chart_bars(frame, timeframe, session)
+        prepared, _ = prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
         return prepared
 
 
@@ -429,7 +487,7 @@ def _audit_calendar_days(timeframe: str, session: str, bars: int) -> int:
         sessions = bars
     else:
         minutes = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240}.get(timeframe, 5)
-        session_minutes = 390 if session == "regular" else 960
+        session_minutes = 390 if session == "regular" else (960 if session == "extended" else 1440)
         bars_per_session = max(1, (session_minutes + minutes - 1) // minutes)
         sessions = (bars + bars_per_session - 1) // bars_per_session
     # Convert trading sessions to calendar days and leave room for weekends/holidays.

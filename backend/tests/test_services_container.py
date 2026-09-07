@@ -9,6 +9,8 @@ def test_services_boot_without_external_provider_keys(tmp_path):
         ALPACA_API_KEY=None,
         ALPACA_API_SECRET=None,
         FRED_API_KEY=None,
+        MASSIVE_API_KEY=None,
+        OANDA_ACCESS_TOKEN=None,
     )
     services = build_services(settings)
     try:

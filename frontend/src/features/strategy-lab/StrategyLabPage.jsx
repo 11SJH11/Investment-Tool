@@ -30,15 +30,15 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [params, setParams] = useState({});
   const [symbols, setSymbols] = useState(["AAPL"]);
   const [symbolInput, setSymbolInput] = useState("");
-  const [entryWindows, setEntryWindows] = useState([{ start: "09:30", end: "16:00" }]);
+  const [entryWindows, setEntryWindows] = useState([]);
   const [selectedWeekdays, setSelectedWeekdays] = useState([0, 1, 2, 3, 4]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [runMeta, setRunMeta] = useState({ name: "", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
-    start_date: isoDateOffset(-90), end_date: isoDateOffset(-1), primary_timeframe: "5m", session: "regular",
+    start_date: isoDateOffset(-90), end_date: isoDateOffset(-1), primary_timeframe: "5m", session: "auto",
     starting_balance: "10000", sizing_mode: "risk_pct", risk_value: "1", commission_per_order: "0",
     slippage_bps: "0", spread_bps: "0", max_leverage: "1", max_open_positions: "5", same_bar_policy: "stop_first",
-    allow_overnight: "false", force_close_time: "16:00", max_trades_per_day: "", max_daily_loss_r: "",
+    allow_overnight: "true", force_close_time: "", max_trades_per_day: "", max_daily_loss_r: "",
     max_consecutive_losses: "", cooldown_minutes: "0",
   });
   const [result, setResult] = useState(null);
@@ -63,7 +63,13 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   useEffect(() => {
     if (!strategy) return;
     setParams({ ...(strategy.defaults || {}) });
-    if (strategy.timeframes?.[0]) setForm((old) => ({ ...old, primary_timeframe: strategy.timeframes[0] }));
+    if (strategy.key === "xau_liquidity_type3_baseline_v1") {
+      setSymbols(["XAUUSD"]);
+      setEntryWindows([]);
+      setForm((old) => ({ ...old, primary_timeframe: "1m", session: "auto", allow_overnight: "true", force_close_time: "" }));
+    } else if (strategy.timeframes?.[0]) {
+      setForm((old) => ({ ...old, primary_timeframe: strategy.timeframes[0] }));
+    }
     setResult(null);
   }, [strategyKey, strategies.length]);
 
@@ -74,10 +80,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     setSymbolInput("");
   };
   const updateSession = (session) => {
-    const end = session === "regular" ? "16:00" : "20:00";
-    const start = session === "regular" ? "09:30" : "04:00";
-    setForm((old) => ({ ...old, session, force_close_time: end }));
-    setEntryWindows([{ start, end }]);
+    setForm((old) => ({ ...old, session }));
+    // Session selection controls which bars are loaded. Entry windows are an
+    // independent strategy/account filter and are intentionally not rewritten.
   };
 
   const buildPayload = (overrides = {}) => ({
@@ -140,11 +145,11 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
         slippage_bps: String(config.slippage_bps ?? 0), spread_bps: String(config.spread_bps ?? 0),
         max_leverage: String(config.max_leverage ?? 1), max_open_positions: String(config.max_open_positions ?? 5),
         same_bar_policy: config.same_bar_policy || "stop_first", allow_overnight: String(Boolean(config.allow_overnight)),
-        force_close_time: config.force_close_time || (config.session === "extended" ? "20:00" : "16:00"),
+        force_close_time: config.force_close_time || "",
         max_trades_per_day: config.max_trades_per_day ?? "", max_daily_loss_r: config.max_daily_loss_r ?? "",
         max_consecutive_losses: config.max_consecutive_losses ?? "", cooldown_minutes: String(config.cooldown_minutes ?? 0),
       }));
-      setEntryWindows(config.entry_windows?.length ? config.entry_windows : [{ start: "09:30", end: "16:00" }]);
+      setEntryWindows(config.entry_windows?.length ? config.entry_windows : []);
       setSelectedWeekdays(config.trading_weekdays || [0, 1, 2, 3, 4]);
       setRunMeta({ name: saved.name ? `${saved.name} · copy` : "", notes: saved.notes || "", tags: (saved.tags || []).join(", "), test_role: saved.test_role || "development" });
       setTimeout(() => setParams({ ...(config.strategy_params || {}) }), 0);
@@ -168,7 +173,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
               <Field label="Start date"><input type="date" className="input" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
               <Field label="End date"><input type="date" className="input" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
               <Field label="Primary timeframe"><select className="input" value={form.primary_timeframe} onChange={(e) => setForm({ ...form, primary_timeframe: e.target.value })}>{timeframes.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
-              <Field label="Market data session"><select className="input" value={form.session} onChange={(e) => updateSession(e.target.value)}><option value="regular">Regular · 09:30–16:00 ET</option><option value="extended">Extended · 04:00–20:00 ET</option></select></Field>
+              <Field label="Market data session"><select className="input" value={form.session} onChange={(e) => updateSession(e.target.value)}><option value="auto">Auto · match instrument</option><option value="24h">24h / full provider session</option><option value="regular">US regular · 09:30–16:00 ET</option><option value="extended">US extended · 04:00–20:00 ET</option></select></Field>
               <Field label="Same-bar stop + target"><select className="input" value={form.same_bar_policy} onChange={(e) => setForm({ ...form, same_bar_policy: e.target.value })}><option value="stop_first">Stop first · conservative</option><option value="target_first">Target first · sensitivity test</option></select></Field>
             </div>
             <div className="mt-4"><span className="mb-1 block text-xs font-medium text-stone-500">Symbols</span><div className="flex flex-wrap gap-2">{symbols.map((symbol) => <button key={symbol} type="button" onClick={() => setSymbols((old) => old.filter((x) => x !== symbol))} className="rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-xs font-mono">{symbol} ×</button>)}</div><div className="mt-2 max-w-md"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => addSymbol(item.ticker)} placeholder="Add ticker…" /></div><button type="button" onClick={() => addSymbol()} className="mt-2 text-xs font-medium text-stone-600 underline">Add typed symbol</button></div>
@@ -189,9 +194,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
         </div>
 
         <div className="mt-6 border-t border-stone-100 pt-5">
-          <h3 className="font-semibold">Trading schedule</h3><p className="mt-1 text-xs text-stone-500">Entry windows are exchange time (New York / ET), start-inclusive and end-exclusive. Existing positions can still be managed outside an entry window.</p>
+          <h3 className="font-semibold">Trading schedule</h3><p className="mt-1 text-xs text-stone-500">No entry window means all loaded market hours are eligible. Optional windows use New York / ET, start-inclusive and end-exclusive. This is separate from the market-data session above.</p>
           <div className="mt-4 grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
-            <div><p className="text-xs font-medium text-stone-500">Allowed entry windows</p><div className="mt-2 space-y-2">{entryWindows.map((window, index) => <div key={index} className="flex max-w-xl items-center gap-2"><input type="time" className="input" value={window.start} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, start: e.target.value } : w))} /><span className="text-xs text-stone-500">to</span><input type="time" className="input" value={window.end} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, end: e.target.value } : w))} />{entryWindows.length > 1 && <button type="button" onClick={() => setEntryWindows((old) => old.filter((_,i) => i !== index))} className="px-2 text-xs text-red-700">Remove</button>}</div>)}</div><button type="button" onClick={() => setEntryWindows((old) => [...old, { start: "14:00", end: "15:30" }])} className="mt-2 text-xs font-medium text-stone-600 underline">+ Add another window</button></div>
+            <div><p className="text-xs font-medium text-stone-500">Allowed entry windows <span className="font-normal">(optional)</span></p>{!entryWindows.length && <p className="mt-2 text-xs text-stone-400">None · entries may occur at any loaded market time.</p>}<div className="mt-2 space-y-2">{entryWindows.map((window, index) => <div key={index} className="flex max-w-xl items-center gap-2"><input type="time" className="input" value={window.start} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, start: e.target.value } : w))} /><span className="text-xs text-stone-500">to</span><input type="time" className="input" value={window.end} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, end: e.target.value } : w))} />{entryWindows.length > 1 && <button type="button" onClick={() => setEntryWindows((old) => old.filter((_,i) => i !== index))} className="px-2 text-xs text-red-700">Remove</button>}</div>)}</div><button type="button" onClick={() => setEntryWindows((old) => [...old, { start: "09:30", end: "16:00" }])} className="mt-2 text-xs font-medium text-stone-600 underline">+ Add another window</button></div>
             <div><p className="text-xs font-medium text-stone-500">Trading days</p><div className="mt-2 flex flex-wrap gap-2">{weekdays.map(([value,label]) => <button type="button" key={value} onClick={() => setSelectedWeekdays((old) => old.includes(value) ? old.filter((x) => x !== value) : [...old, value].sort())} className={`rounded-md border px-3 py-2 text-xs ${selectedWeekdays.includes(value) ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white text-stone-600"}`}>{label}</button>)}</div><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Hold overnight?"><select className="input" value={form.allow_overnight} onChange={(e) => setForm({ ...form, allow_overnight: e.target.value })}><option value="false">No · flatten same day</option><option value="true">Yes · allow overnight</option></select></Field>{form.allow_overnight === "false" && <Field label="Force close time (ET)"><input type="time" className="input" value={form.force_close_time} onChange={(e) => setForm({ ...form, force_close_time: e.target.value })} /></Field>}</div></div>
           </div>
         </div>
@@ -238,7 +243,7 @@ function BacktestResults({ result }) {
   return <>
     {result.saved_run && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">Saved as run <strong>#{result.saved_run.id}</strong>{result.saved_run.name ? ` · ${result.saved_run.name}` : ""} · {String(result.saved_run.test_role || "development").replaceAll("_", " ")}. Open the <strong>Runs</strong> tab later without re-running it.</div>}
     <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-      <Stat label="Starting balance" value={money(m.starting_balance)} /><Stat label="Ending balance" value={money(m.ending_balance)} /><Stat label="Net P&L" value={money(m.net_pnl)} /><Stat label="Return" value={pct(m.return_pct)} /><Stat label="Trades" value={m.trades ?? "—"} /><Stat label="Win rate" value={pct(m.win_rate_pct)} /><Stat label="Expectancy" value={r(m.expectancy_r)} /><Stat label="Total R" value={r(m.total_r)} /><Stat label="Avg planned R:R" value={m.average_planned_rr == null ? "—" : `${number(m.average_planned_rr)}:1`} /><Stat label="Profit factor (R)" value={number(m.profit_factor_r)} /><Stat label="Max drawdown" value={pct(m.max_drawdown_pct)} /><Stat label="Longest losing streak" value={m.longest_losing_streak ?? "—"} />
+      <Stat label="Starting balance" value={money(m.starting_balance)} /><Stat label="Ending balance" value={money(m.ending_balance)} /><Stat label="Net P&L" value={money(m.net_pnl)} /><Stat label="Return" value={pct(m.return_pct)} /><Stat label="Trades" value={m.trades ?? "—"} />{result.setup_metrics && <><Stat label="Setups" value={result.setup_metrics.setups ?? "—"} /><Stat label="Entry fill rate" value={pct(result.setup_metrics.entry_fill_rate_pct)} /></>}<Stat label="Win rate" value={pct(m.win_rate_pct)} /><Stat label="Expectancy" value={r(m.expectancy_r)} /><Stat label="Total R" value={r(m.total_r)} /><Stat label="Avg planned R:R" value={m.average_planned_rr == null ? "—" : `${number(m.average_planned_rr)}:1`} /><Stat label="Profit factor (R)" value={number(m.profit_factor_r)} /><Stat label="Max drawdown" value={pct(m.max_drawdown_pct)} /><Stat label="Longest losing streak" value={m.longest_losing_streak ?? "—"} />
     </section>
 
     <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -310,7 +315,7 @@ function RunComparison({ a, b }) {
 function AnalysisPanel({ analysis }) {
   const [breakdown, setBreakdown] = useState("entry_hour");
   const rows = analysis.breakdowns?.[breakdown] || [];
-  const labelMap = { entry_hour: "Entry time", weekday: "Weekday", direction: "Direction", symbol: "Symbol", month: "Month", exit_reason: "Exit reason", signal_reason: "Signal reason" };
+  const labelMap = { session: "Session", entry_hour: "Entry time", weekday: "Weekday", direction: "Direction", symbol: "Symbol", month: "Month", exit_reason: "Exit reason", signal_reason: "Signal reason" };
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
     <div><h3 className="font-semibold">Why is it working / not working?</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Descriptive diagnostics split the same run by time, day, direction, symbol and exit type. Use them to form hypotheses, then validate those hypotheses on unseen data.</p></div>
     {(analysis.observations || []).length > 0 && <div className="mt-4 grid gap-3 lg:grid-cols-2">{analysis.observations.map((item, index) => <div key={`${item.kind}-${index}`} className="rounded-lg bg-stone-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{item.title}</p><p className="mt-2 text-sm text-stone-700">{item.text}</p></div>)}</div>}

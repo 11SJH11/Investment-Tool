@@ -7,7 +7,14 @@ async function request(path, options = {}) {
     headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
+  if (!response.ok) {
+    const detail = body?.detail;
+    let message = `Request failed (${response.status})`;
+    if (typeof detail === "string") message = detail;
+    else if (Array.isArray(detail)) message = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
+    else if (detail && typeof detail === "object") message = detail.message || JSON.stringify(detail);
+    throw new Error(message);
+  }
   return body;
 }
 

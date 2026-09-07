@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CandlestickSeries, ColorType, HistogramSeries, LineSeries, createChart } from "lightweight-charts";
+import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, LineStyle, createChart } from "lightweight-charts";
 import { resolvedZone } from "../../utils/timezones";
 import DrawingOverlay from "../../components/chart/DrawingOverlay";
 
@@ -21,6 +21,7 @@ function cleanBars(bars) {
 
 export default function PriceChart({
   bars,
+  timeframe = "",
   overlays = [],
   timeZone = "America/New_York",
   expanded = false,
@@ -38,6 +39,7 @@ export default function PriceChart({
   onDeleteDrawing,
   drawingMeta = {},
   showVolume = true,
+  volumeStyle = null,
   fill = false,
   initialVisibleBars = 180,
   onNeedMoreHistory,
@@ -51,6 +53,7 @@ export default function PriceChart({
   const loadingHistoryRef = useRef(false);
   const onNeedMoreHistoryRef = useRef(onNeedMoreHistory);
   const [chartState, setChartState] = useState(null);
+  const [crosshairInfo, setCrosshairInfo] = useState(null);
 
   useEffect(() => { onNeedMoreHistoryRef.current = onNeedMoreHistory; }, [onNeedMoreHistory]);
 
@@ -67,7 +70,11 @@ export default function PriceChart({
         tickMarkFormatter: (time) => formatTimestamp(time, timeZone, false), rightOffset: 5,
       },
       localization: { timeFormatter: (time) => formatTimestamp(time, timeZone, true) },
-      crosshair: { vertLine: { color: "#6b7280" }, horzLine: { color: "#6b7280" } },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: "#758696", width: 1, style: LineStyle.Dashed, labelVisible: true, labelBackgroundColor: "#4c525e" },
+        horzLine: { color: "#758696", width: 1, style: LineStyle.Dashed, labelVisible: true, labelBackgroundColor: "#4c525e" },
+      },
       handleScroll: true,
       handleScale: true,
     });
@@ -82,6 +89,12 @@ export default function PriceChart({
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     chartRef.current = chart; candleRef.current = candles; volumeRef.current = volume;
     setChartState({ chart, candles });
+    const crosshairHandler = (param) => {
+      if (!param?.point || !ref.current) { setCrosshairInfo(null); return; }
+      const candle = param.seriesData?.get?.(candles);
+      setCrosshairInfo({ candle: candle && Number.isFinite(Number(candle.close)) ? candle : null });
+    };
+    chart.subscribeCrosshairMove(crosshairHandler);
 
     const rangeHandler = (range) => {
       if (!range || range.from == null || loadingHistoryRef.current) return;
@@ -95,6 +108,7 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(rangeHandler);
     return () => {
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler); } catch { /* ignored */ }
+      try { chart.unsubscribeCrosshairMove(crosshairHandler); } catch { /* ignored */ }
       chart.remove(); chartRef.current = null; candleRef.current = null; volumeRef.current = null; overlayRefs.current = []; setChartState(null); initialisedRef.current = false;
     };
   }, [timeZone]);
@@ -107,18 +121,44 @@ export default function PriceChart({
     const visibleTime = initialisedRef.current ? chart.timeScale().getVisibleRange() : null;
     candles.setData(clean.map(({ volume: _, ...bar }) => bar));
     volume.applyOptions({ visible: showVolume });
-    volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: bar.close >= bar.open ? "rgba(52,211,153,.24)" : "rgba(248,113,113,.24)" })));
+    const upVolume = volumeStyle?.upColor || "#34d399", downVolume = volumeStyle?.downColor || "#f87171", volumeOpacity = Number(volumeStyle?.opacity ?? .28);
+    const volumeHex = (color, opacity) => {
+      if (!/^#[0-9a-fA-F]{6}$/.test(color)) return color;
+      const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2,"0"); return `${color}${alpha}`;
+    };
+    volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: volumeHex(bar.close >= bar.open ? upVolume : downVolume, volumeOpacity) })));
 
     if (!initialisedRef.current) {
       const from = Math.max(0, clean.length - Math.max(60, Number(initialVisibleBars || 180)));
       try { chart.timeScale().setVisibleLogicalRange({ from, to: clean.length + 5 }); } catch { chart.timeScale().fitContent(); }
       initialisedRef.current = true;
     } else if (visibleTime?.from != null && visibleTime?.to != null) {
-      requestAnimationFrame(() => {
-        try { chart.timeScale().setVisibleRange(visibleTime); } catch { /* old range may be outside the newly selected symbol */ }
-      });
+      // Preserve the same market-time window without passing arbitrary timestamps
+      // back into Lightweight Charts. A 1m boundary often does not exist on 5m/15m;
+      // converting the window to valid logical indexes is substantially more robust
+      // and avoids the blank-chart regression introduced in 6.2.3.
+      const fromTarget = Number(visibleTime.from);
+      const toTarget = Number(visibleTime.to);
+      if (Number.isFinite(fromTarget) && Number.isFinite(toTarget)) {
+        const firstAtOrAfter = (target) => {
+          let lo = 0, hi = clean.length;
+          while (lo < hi) { const mid = (lo + hi) >> 1; if (clean[mid].time < target) lo = mid + 1; else hi = mid; }
+          return Math.min(clean.length - 1, lo);
+        };
+        const lastAtOrBefore = (target) => {
+          let lo = 0, hi = clean.length;
+          while (lo < hi) { const mid = (lo + hi) >> 1; if (clean[mid].time <= target) lo = mid + 1; else hi = mid; }
+          return Math.max(0, lo - 1);
+        };
+        const fromIndex = Math.max(0, lastAtOrBefore(fromTarget));
+        const toIndex = Math.max(fromIndex + 1, firstAtOrAfter(toTarget));
+        requestAnimationFrame(() => {
+          try { chart.timeScale().setVisibleLogicalRange({ from: fromIndex, to: Math.min(clean.length + 5, toIndex + 5) }); }
+          catch { chart.timeScale().fitContent(); }
+        });
+      }
     }
-  }, [bars, showVolume, initialVisibleBars]);
+  }, [bars, showVolume, volumeStyle, initialVisibleBars]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -143,7 +183,10 @@ export default function PriceChart({
 
   return <div className={`relative w-full ${fill || expanded ? "h-full" : ""}`} style={!expanded && !fill ? { height } : undefined}>
     <div ref={ref} className="h-full w-full" />
-    {chartState && <DrawingOverlay
+    {crosshairInfo && <div className="chart-crosshair-readout">
+      {crosshairInfo.candle && <span><b>O</b> {Number(crosshairInfo.candle.open).toFixed(2)} <b>H</b> {Number(crosshairInfo.candle.high).toFixed(2)} <b>L</b> {Number(crosshairInfo.candle.low).toFixed(2)} <b>C</b> {Number(crosshairInfo.candle.close).toFixed(2)}</span>}
+    </div>}
+    {chartState && <DrawingOverlay key={`drawings-${timeframe || "default"}`}
       chart={chartState.chart}
       series={chartState.candles}
       container={ref.current}

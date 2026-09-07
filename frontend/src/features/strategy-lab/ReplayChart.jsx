@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CandlestickSeries, ColorType, HistogramSeries, LineSeries, createChart, createSeriesMarkers } from "lightweight-charts";
+import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, LineStyle, createChart, createSeriesMarkers } from "lightweight-charts";
 import { resolvedZone } from "../../utils/timezones";
 import DrawingOverlay from "../../components/chart/DrawingOverlay";
 
@@ -45,6 +45,7 @@ function logicalAtTime(clean, time) {
 
 export default function ReplayChart({
   bars,
+  timeframe = "",
   overlays = [],
   timeZone = "America/New_York",
   position = null,
@@ -54,6 +55,7 @@ export default function ReplayChart({
   followReplay = false,
   jumpToken = 0,
   showVolume = true,
+  volumeStyle = null,
   drawingTool = "cursor",
   magnet = "weak",
   drawings = [],
@@ -76,6 +78,7 @@ export default function ReplayChart({
   const initialisedRef = useRef(false);
   const previousCleanRef = useRef([]);
   const [chartReady, setChartReady] = useState(0);
+  const [crosshairInfo, setCrosshairInfo] = useState(null);
   const clean = useMemo(() => cleanBars(bars), [bars]);
 
   useEffect(() => {
@@ -88,7 +91,11 @@ export default function ReplayChart({
       rightPriceScale: { borderColor: style.getPropertyValue("--ledger-chart-border").trim() || "#333333" },
       timeScale: { borderColor: style.getPropertyValue("--ledger-chart-border").trim() || "#333333", timeVisible: true, secondsVisible: false, tickMarkFormatter: (time) => labelTime(time, timeZone), rightOffset: 8 },
       localization: { timeFormatter: (time) => labelTime(time, timeZone, true) },
-      crosshair: { vertLine: { color: "#737373" }, horzLine: { color: "#737373" } },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: "#758696", width: 1, style: LineStyle.Dashed, labelVisible: true, labelBackgroundColor: "#4c525e" },
+        horzLine: { color: "#758696", width: 1, style: LineStyle.Dashed, labelVisible: true, labelBackgroundColor: "#4c525e" },
+      },
       handleScroll: true, handleScale: true,
     });
     const candles = chart.addSeries(CandlestickSeries, {
@@ -98,9 +105,16 @@ export default function ReplayChart({
     const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "", priceLineVisible: false });
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     chartRef.current = chart; candlesRef.current = candles; volumeRef.current = volume;
+    const crosshairHandler = (param) => {
+      if (!param?.point) { setCrosshairInfo(null); return; }
+      const candle = param.seriesData?.get?.(candles);
+      setCrosshairInfo({ candle: candle && Number.isFinite(Number(candle.close)) ? candle : null });
+    };
+    chart.subscribeCrosshairMove(crosshairHandler);
     initialisedRef.current = false; previousCleanRef.current = [];
     setChartReady((v) => v + 1);
     return () => {
+      try { chart.unsubscribeCrosshairMove(crosshairHandler); } catch { /* ignored */ }
       chart.remove(); chartRef.current = null; candlesRef.current = null; volumeRef.current = null;
       overlayRefs.current = []; priceLinesRef.current = []; previousCleanRef.current = [];
     };
@@ -118,7 +132,9 @@ export default function ReplayChart({
 
     candles.setData(clean.map(({ volume: _, ...bar }) => bar));
     volume.applyOptions({ visible: showVolume });
-    volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: bar.close >= bar.open ? "rgba(34,197,94,.30)" : "rgba(239,68,68,.30)" })));
+    const upVolume = volumeStyle?.upColor || "#34d399", downVolume = volumeStyle?.downColor || "#f87171", volumeOpacity = Number(volumeStyle?.opacity ?? .28);
+    const volumeHex = (color, opacity) => { if (!/^#[0-9a-fA-F]{6}$/.test(color)) return color; const alpha=Math.round(Math.max(0,Math.min(1,opacity))*255).toString(16).padStart(2,"0"); return `${color}${alpha}`; };
+    volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: volumeHex(bar.close >= bar.open ? upVolume : downVolume, volumeOpacity) })));
 
     if (!initialisedRef.current) {
       chart.timeScale().fitContent();
@@ -136,7 +152,7 @@ export default function ReplayChart({
       if (from != null && to != null) requestAnimationFrame(() => { try { chart.timeScale().setVisibleLogicalRange({ from, to }); } catch { /* ignored */ } });
     }
     previousCleanRef.current = clean;
-  }, [clean, followReplay, showVolume]);
+  }, [clean, followReplay, showVolume, volumeStyle]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -181,7 +197,10 @@ export default function ReplayChart({
 
   return <div className={expanded ? "relative h-[calc(100vh-150px)] min-h-[650px] w-full" : "relative h-[600px] w-full"}>
     <div ref={ref} className="h-full w-full" />
-    {chartReady > 0 && chartRef.current && candlesRef.current && <DrawingOverlay
+    {crosshairInfo && <div className="chart-crosshair-readout">
+      {crosshairInfo.candle && <span><b>O</b> {Number(crosshairInfo.candle.open).toFixed(2)} <b>H</b> {Number(crosshairInfo.candle.high).toFixed(2)} <b>L</b> {Number(crosshairInfo.candle.low).toFixed(2)} <b>C</b> {Number(crosshairInfo.candle.close).toFixed(2)}</span>}
+    </div>}
+    {chartReady > 0 && chartRef.current && candlesRef.current && <DrawingOverlay key={`drawings-${timeframe || "default"}`}
       chart={chartRef.current}
       series={candlesRef.current}
       container={ref.current}

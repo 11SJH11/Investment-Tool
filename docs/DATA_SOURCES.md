@@ -1,43 +1,58 @@
-# Ledger v2 data sources — Phase 3
+# Ledger v2 data sources — Phase 6.2
+
+## Shared routing
+
+All OHLCV consumers now enter through `MarketDataService`, which resolves the instrument and provider before consulting the provider-specific cache namespace.
+
+```text
+US equities -> Alpaca
+XAUUSD      -> OANDA XAU_USD
+NQ1!        -> Massive Futures + Ledger continuous-contract construction
+```
+
+The canonical bar columns remain:
+
+```text
+timestamp, open, high, low, close, volume
+```
+
+Continuous futures may additionally carry `source_contract`. `MarketStore` now preserves that provenance field.
 
 ## Alpaca
 
-Used for the active US-equity security master, historical OHLCV and latest market snapshots.
+Unchanged for the active US-equity security master, historical OHLCV and latest market snapshots. Equity session filtering remains New York regular (09:30–16:00) or extended (04:00–20:00).
 
-Ledger keeps historical and latest data provenance explicit:
+## OANDA — XAUUSD
 
-```text
-Historical: configured SIP feed, split adjusted
-Latest:     configured free/live feed (IEX in the current setup)
-```
+Ledger's `XAUUSD` alias maps to OANDA `XAU_USD` midpoint candles. The candle endpoint needs the access token but not an account ID. Incomplete current candles are excluded from the deterministic historical path.
 
-The screener's **Refresh prices** operation uses Alpaca's multi-symbol latest-bar endpoint in chunks and stores one price snapshot per symbol in SQLite. Scans themselves do not call Alpaca.
+OANDA volume is candle activity/tick volume; it should not be interpreted as COMEX contract volume.
 
-Research OHLCV goes through `MarketDataService`, which reuses Phase 2 Parquet cache coverage.
+Intraday Replay aggregation uses a 17:00 America/New_York session anchor.
 
-## SEC EDGAR
+## Massive Futures — NQ1!
 
-Used for ticker/CIK mapping and filing-derived fundamentals.
+Massive supplies dated futures contracts and OHLCV aggregates. Phase 6.2 accepts dated futures-like symbols in the backend and advertises `NQ1!` in SymbolSearch.
 
-Phase 3 adds the SEC nightly bulk Company Facts archive:
+### Continuous contract v1
 
-```text
-https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip
-```
+`NQ1!` currently uses a calendar-front rule: choose the nearest NQ contract whose last-trade date has not passed, fetch each required dated contract, and concatenate the resulting segments. `source_contract` is retained on every bar.
 
-The file is streamed to `backend/data/sec/companyfacts.zip` to avoid holding the whole archive in memory. Ledger parses only companies whose CIK is present in the locally cached security universe and persists normalized screener metrics in SQLite.
+`FUTURES_BACK_ADJUST=false` is the default. When enabled, Ledger applies backward additive gap adjustment across contract switches.
 
-Current normalized values include revenue, YoY revenue growth, net income, margins, assets, liabilities, equity, cash, operating cash flow, capex, free cash flow, diluted EPS, shares outstanding and ROE where the filing tags are available.
+This first rule is intentionally not labelled TradingView-equivalent. The next futures-data refinement should calculate and persist volume-crossover roll dates, then version/cache that roll schedule.
 
-## FRED
+Intraday Replay aggregation uses an 18:00 America/New_York futures-session anchor and does not discard overnight data through the US-equity session filter.
 
-Unchanged from Phase 2. FRED remains the macro provider for later Dashboard/Markets work.
+## SEC EDGAR / FRED
 
-## Derived valuation values
+Unchanged from earlier phases: SEC remains the filing/fundamentals source and FRED remains the macro source.
 
-Phase 3 intentionally distinguishes raw provider values from locally derived metrics:
+## Next data work
 
-- market cap = SEC shares outstanding × latest stored Alpaca price
-- P/E (FY) = latest stored Alpaca price ÷ SEC diluted fiscal-year EPS
-
-These can be improved later (for example, TTM EPS) without changing the screener API/storage boundaries.
+- futures product metadata: tick size, point value, contract multiplier, expiry;
+- CME RTH/ETH session profiles in the UI and backtest engine;
+- volume-derived continuous-contract roll schedules;
+- provider-history capability metadata so the UI can communicate plan/history limits;
+- cursor/range-based historical pagination for Charts instead of growing a whole lookback window;
+- optional GC1!/MNQ1!/MGC1! aliases once the NQ1! path has been validated.

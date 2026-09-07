@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.data.http import JsonHttpClient
 from app.data.providers.alpaca import AlpacaProvider
+from app.data.providers.massive_futures import MassiveFuturesProvider
+from app.data.providers.oanda import OandaProvider
+from app.data.instruments import InstrumentSpec
 from app.data.providers.fred import FredProvider
 from app.data.providers.registry import ProviderRegistry
 from app.data.providers.sec import SecProvider
@@ -63,6 +66,18 @@ class AppServices:
                 "historical_delay_minutes": self.settings.alpaca_historical_delay_minutes,
                 "adjustment": self.settings.alpaca_adjustment,
             },
+            "massive": {
+                "configured": self.settings.massive_configured,
+                "purpose": "CME/CBOT/NYMEX/COMEX futures bars and contract reference data",
+                "continuous_roll": "calendar_front_v1",
+                "back_adjust": self.settings.futures_back_adjust,
+            },
+            "oanda": {
+                "configured": self.settings.oanda_configured,
+                "purpose": "OANDA spot/CFD-style market data (Phase 6.2: XAUUSD)",
+                "environment": self.settings.oanda_environment,
+                "account_id_required_for_candles": False,
+            },
             "sec": {
                 "configured": self.settings.sec_configured,
                 "purpose": "US company filing fundamentals",
@@ -115,6 +130,27 @@ def build_services(settings: Settings) -> AppServices:
     elif sec_provider is not None:
         providers.register("security_master", sec_provider)
 
+    massive_provider: MassiveFuturesProvider | None = None
+    if settings.massive_configured:
+        massive_provider = MassiveFuturesProvider(
+            settings.massive_api_key or "",
+            base_url=settings.massive_futures_base_url,
+            back_adjust=settings.futures_back_adjust,
+            http=http,
+        )
+        providers.register("market_data_futures", massive_provider)
+
+    oanda_provider: OandaProvider | None = None
+    if settings.oanda_configured:
+        oanda_provider = OandaProvider(
+            settings.oanda_access_token or "",
+            environment=settings.oanda_environment,
+            practice_base_url=settings.oanda_practice_base_url,
+            live_base_url=settings.oanda_live_base_url,
+            http=http,
+        )
+        providers.register("market_data_oanda", oanda_provider)
+
     macro_service: MacroService | None = None
     fred_provider: FredProvider | None = None
     if settings.fred_configured:
@@ -125,7 +161,27 @@ def build_services(settings: Settings) -> AppServices:
     configured = set(providers.configured())
     security_master = providers.get("security_master") if "security_master" in configured else None
     symbol_universe = SymbolUniverseService(symbols, security_master, sec_provider) if security_master is not None else None
-    market_data = MarketDataService(alpaca_provider, market_store, coverage) if alpaca_provider is not None else None
+    market_providers = {
+        "alpaca": alpaca_provider,
+        "massive": massive_provider,
+        "oanda": oanda_provider,
+    }
+
+    def resolve_market_provider(symbol: str, spec: InstrumentSpec):
+        provider = market_providers.get(spec.provider_key)
+        if provider is None:
+            if spec.provider_key == "oanda":
+                raise RuntimeError("OANDA market data is not configured; set OANDA_ACCESS_TOKEN in backend/.env")
+            if spec.provider_key == "massive":
+                raise RuntimeError("Massive Futures is not configured; set MASSIVE_API_KEY in backend/.env")
+            raise RuntimeError("Alpaca market data is not configured; set ALPACA_API_KEY and ALPACA_API_SECRET in backend/.env")
+        return provider
+
+    default_market_provider = alpaca_provider or oanda_provider or massive_provider
+    market_data = (
+        MarketDataService(default_market_provider, market_store, coverage, provider_resolver=resolve_market_provider)
+        if default_market_provider is not None else None
+    )
 
     screener = ScreenerService(screener_repository, symbols, alpaca=alpaca_provider, sec=sec_provider)
     research = ResearchService(symbols, screener_repository, screener, fundamentals_service)

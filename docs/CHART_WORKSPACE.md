@@ -56,3 +56,13 @@ This is intentionally a frontend persistence foundation. Moving chart layouts/dr
 - drawing-based alerts
 - anchored VWAP drawing
 - advanced measurement/pattern tools
+
+## Phase 6.1.3 interaction rules
+
+- Crosshair/navigation is the normal chart mode and is also the selection mode for existing drawings.
+- Existing drawings should be selectable directly without switching into a separate selection tool.
+- Horizontal drawings display their exact price on the chart edge.
+- The chart crosshair exposes both the candle OHLC under the vertical crosshair and the exact cursor price under the horizontal crosshair.
+- Freehand strokes are single objects: copy/paste/delete and styling are supported, but individual sampled points are intentionally not resize handles.
+- Long/short position tools place a pre-sized analysis object from one click, then allow Entry / Stop / Target / horizontal extent to be resized. R:R is always derived from those prices.
+- Fib levels, visibility, colours and background fill are object settings, not hard-coded chart constants.

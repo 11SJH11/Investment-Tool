@@ -154,10 +154,10 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
     <div className="mt-4 grid gap-3 lg:grid-cols-4 xl:grid-cols-8">
       <Field label="Chart timeframe"><select className="input" value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>{TIMEFRAMES.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
       <Field label="Timezone"><select className="input" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>{TIMEZONE_OPTIONS.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select></Field>
-      <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="regular">Regular</option><option value="extended">Extended</option></select></Field>
+      <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="24h">24h / full provider session</option><option value="regular">US regular</option><option value="extended">US extended</option></select></Field>
       <Field label="Bars before"><input type="number" min="5" max="500" className="input" value={beforeBars} onChange={(e) => setBeforeBars(e.target.value)} /></Field>
       <Field label="Bars after"><input type="number" min="5" max="200" className="input" value={afterBars} onChange={(e) => setAfterBars(e.target.value)} /></Field>
-      <Toggle label="Volume" value={showVolume} onChange={setShowVolume} />
+      <Toggle label={String(trade.symbol).toUpperCase() === "XAUUSD" ? "Tick volume" : "Volume"} value={showVolume} onChange={setShowVolume} />
       <Toggle label="Price levels" value={showLevels} onChange={setShowLevels} />
       <Toggle label="Entry / exit markers" value={showMarkers} onChange={setShowMarkers} />
     </div>

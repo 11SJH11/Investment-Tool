@@ -14,6 +14,11 @@ class EntrySignal:
     take_profit: float | None = None
     reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Market entries preserve the original engine contract (next bar open). A
+    # limit entry remains pending until a later primary bar touches the price.
+    order_type: Literal["market", "limit"] = "market"
+    entry_price: float | None = None
+    max_wait_bars: int | None = None
 
 
 @dataclass(frozen=True)

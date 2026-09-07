@@ -34,3 +34,11 @@ Phase 6.1 adds a browser-local favourite-symbol watchlist. It is available befor
 
 ## Journal roadmap
 Phase 6 adds filtered analysis by symbol, setup, entry hour, weekday, timeframe, direction, market condition and source. Later additions: broker imports, execution/fill model, MAE/MFE as first-class columns, exit analysis, risk adherence, liquidity reports where data supports them, tags, report presets, and richer comparison charts.
+
+### Futures / metals provider phase
+- Massive Futures provider for CME/CBOT/NYMEX/COMEX contract bars/reference/schedules.
+- Dated NQ/GC contract lookup and symbol search.
+- Ledger continuous aliases (`NQ1!`, `GC1!`, later micros) with explicit roll metadata.
+- TradingView-style volume-derived roll schedule and optional back-adjustment.
+- Futures sessions, tick size, point value and contract multiplier in backtest/replay execution math.
+- Optional OANDA provider for `XAU_USD`/FX when the strategy specifically uses that feed rather than COMEX futures.

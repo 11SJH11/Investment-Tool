@@ -68,3 +68,17 @@ def test_replay_indicator_accepts_generic_indicator_parameters():
     assert result["params"]["stddev"] == 1.5
     assert result["overlay"] is True
     assert result["values"]
+
+
+def test_replay_weekend_start_advances_to_next_available_session():
+    service = BacktestService(FakeMarketData(multi_day_frame()))
+    # 2026-05-31 is Sunday; the fixture's first available session is Monday 1 June.
+    replay = service.replay_bars(
+        symbol="AAPL", timeframe="5m", session="regular",
+        replay_date=pd.Timestamp("2026-05-31").date(),
+        replay_end_date=pd.Timestamp("2026-06-02").date(),
+        start_time="09:30", context_bars=0, context_days=1,
+    )
+    assert replay["requested_replay_date"] == "2026-05-31"
+    assert replay["replay_date"] == "2026-06-01"
+    assert replay["initial_visible_count"] >= 1

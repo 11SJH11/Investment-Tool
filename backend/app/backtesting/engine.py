@@ -76,7 +76,8 @@ class BacktestEngine:
         event_times = sorted({timestamp for rows in primary_rows.values() for timestamp in rows})
         balance = float(self.config.starting_balance)
         positions: dict[str, Position] = {}
-        pending_entries: dict[str, EntrySignal] = {}
+        pending_entries: dict[str, dict[str, Any]] = {}
+        setup_records: list[dict[str, Any]] = []
         pending_exits: dict[str, ExitSignal] = {}
         pending_management: dict[str, ManagePositionSignal] = {}
         current_prices: dict[str, float] = {}
@@ -127,20 +128,35 @@ class BacktestEngine:
                     cooldown_until[symbol] = timestamp_dt + timedelta(minutes=max(0, self.config.cooldown_minutes))
 
                 if symbol in pending_entries and symbol not in positions:
-                    signal = pending_entries.pop(symbol)
+                    pending = pending_entries[symbol]
+                    signal: EntrySignal = pending["signal"]
+                    raw_fill = _entry_fill_price(signal, bar)
+                    if raw_fill is None:
+                        pending["age"] = int(pending.get("age", 0)) + 1
+                        max_wait = signal.max_wait_bars
+                        if max_wait is not None and pending["age"] > int(max_wait):
+                            pending_entries.pop(symbol, None)
+                            record = setup_records[pending["record_index"]]
+                            record.update({"status": "not_filled", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": "limit_expired"})
+                        continue
+
+                    pending_entries.pop(symbol, None)
                     allowed, reason = self._entry_allowed(
                         timestamp_dt, symbol, entries_by_day, day_results, cooldown_until
                     )
+                    record = setup_records[pending["record_index"]]
                     if not allowed:
                         rejected_signals.append(_rejected(symbol, timestamp_dt, reason))
+                        record.update({"status": "filtered", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": reason})
                     elif len(positions) >= max(1, int(self.config.max_open_positions)):
                         rejected_signals.append(_rejected(symbol, timestamp_dt, "max_open_positions"))
+                        record.update({"status": "filtered", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": "max_open_positions"})
                     else:
                         current_exposure = sum(position.notional for position in positions.values())
                         outcome = self._open_position(
                             symbol=symbol,
                             timestamp=timestamp_dt,
-                            raw_open=float(bar["open"]),
+                            raw_open=float(raw_fill),
                             signal=signal,
                             balance=balance,
                             current_exposure=current_exposure,
@@ -149,8 +165,10 @@ class BacktestEngine:
                             positions[symbol] = outcome
                             balance -= outcome.entry_commission
                             entries_by_day[timestamp_dt.astimezone(self._tz).date()] += 1
+                            record.update({"status": "filled", "entry_time": timestamp_dt.isoformat(), "fill_price": float(outcome.entry_price)})
                         else:
                             rejected_signals.append(_rejected(symbol, timestamp_dt, outcome))
+                            record.update({"status": "rejected", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": outcome})
 
             # 2) Intrabar protective exits.
             for symbol in list(symbols_now):
@@ -204,7 +222,9 @@ class BacktestEngine:
                         cooldown_until[symbol] = decision_time + timedelta(minutes=max(0, self.config.cooldown_minutes))
                     # Never let an unfilled signal leak into the next session.
                     if symbol in pending_entries:
-                        pending_entries.pop(symbol, None)
+                        pending = pending_entries.pop(symbol, None)
+                        if pending is not None:
+                            setup_records[pending["record_index"]].update({"status": "not_filled", "resolution_time": decision_time.isoformat(), "resolution_reason": "session_boundary"})
                         rejected_signals.append(_rejected(symbol, decision_time, "session_boundary"))
 
             # 5) Strategy evaluation. A returned entry signal is still gated by
@@ -227,13 +247,28 @@ class BacktestEngine:
                         rejected_signals.append(_rejected(symbol, decision_time, "session_boundary"))
                         continue
                     if symbol not in positions and symbol not in pending_entries:
+                        setup_record = {
+                            "symbol": symbol,
+                            "direction": decision.direction,
+                            "detected_at": decision_time.isoformat(),
+                            "order_type": decision.order_type,
+                            "entry_price": decision.entry_price,
+                            "stop_loss": decision.stop_loss,
+                            "take_profit": decision.take_profit,
+                            "status": "pending",
+                            "reason": decision.reason,
+                            "metadata": dict(decision.metadata),
+                        }
+                        setup_records.append(setup_record)
+                        record_index = len(setup_records) - 1
                         allowed, reason = self._entry_allowed(
                             decision_time, symbol, entries_by_day, day_results, cooldown_until
                         )
                         if allowed:
-                            pending_entries[symbol] = decision
+                            pending_entries[symbol] = {"signal": decision, "age": 0, "record_index": record_index}
                         else:
                             rejected_signals.append(_rejected(symbol, decision_time, reason))
+                            setup_record.update({"status": "filtered", "resolution_time": decision_time.isoformat(), "resolution_reason": reason})
                 elif isinstance(decision, ExitSignal):
                     if symbol in positions:
                         pending_management.pop(symbol, None)
@@ -275,6 +310,9 @@ class BacktestEngine:
                 "closed_trades": [_trade_event(t) for t in final_events],
             })
 
+        for pending in pending_entries.values():
+            setup_records[pending["record_index"]].update({"status": "not_filled", "resolution_reason": "end_of_data"})
+
         equity_curve = _merge_equity_points(equity_curve)
         equity_curve = _decorate_equity_curve(self.config.starting_balance, equity_curve)
         ordered_trades = sorted(trades, key=lambda t: (t.exit_time, t.symbol))
@@ -286,11 +324,13 @@ class BacktestEngine:
             "equity_curve": equity_curve,
             "breakdown_by_symbol": analysis["breakdowns"]["symbol"],
             "analysis": analysis,
+            "setups": setup_records,
+            "setup_metrics": _setup_metrics(setup_records),
             "rejected_signals": rejected_signals,
             "rejected_signal_summary": _rejection_summary(rejected_signals),
             "execution_model": {
                 "signal_timing": "bar_close",
-                "entry_timing": "next_bar_open",
+                "entry_timing": "market: next_bar_open; limit: first subsequent bar that trades through the limit",
                 "same_bar_policy": self.config.same_bar_policy,
                 "stop_gap_policy": "fill_at_open",
                 "target_gap_policy": "fill_at_open",
@@ -619,6 +659,34 @@ class BacktestEngine:
         return trade, new_balance
 
 
+def _entry_fill_price(signal: EntrySignal, bar: pd.Series) -> float | None:
+    if signal.order_type == "market":
+        return float(bar["open"])
+    if signal.order_type != "limit" or signal.entry_price is None:
+        return None
+    price = float(signal.entry_price)
+    open_price, high, low = float(bar["open"]), float(bar["high"]), float(bar["low"])
+    if signal.direction == "long":
+        if open_price <= price:
+            return open_price
+        return price if low <= price else None
+    if open_price >= price:
+        return open_price
+    return price if high >= price else None
+
+
+def _setup_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(records)
+    filled = sum(1 for row in records if row.get("status") == "filled")
+    not_filled = sum(1 for row in records if row.get("status") == "not_filled")
+    return {
+        "setups": total,
+        "filled_entries": filled,
+        "not_filled": not_filled,
+        "entry_fill_rate_pct": (filled / total * 100.0) if total else None,
+    }
+
+
 def calculate_metrics(
     trades: list[BacktestTrade],
     starting_balance: float,
@@ -675,6 +743,7 @@ def calculate_analysis(trades: list[BacktestTrade], tz: ZoneInfo) -> dict[str, A
     def direction(t: BacktestTrade) -> str: return t.direction
     def exit_reason(t: BacktestTrade) -> str: return t.exit_reason
     def signal_reason(t: BacktestTrade) -> str: return t.signal_reason or "unspecified"
+    def session(t: BacktestTrade) -> str: return str((t.metadata or {}).get("session") or "unlabelled")
     def entry_hour(t: BacktestTrade) -> str:
         hour = t.entry_time.astimezone(tz).hour
         return f"{hour:02d}:00–{hour:02d}:59 ET"
@@ -686,6 +755,7 @@ def calculate_analysis(trades: list[BacktestTrade], tz: ZoneInfo) -> dict[str, A
     breakdowns = {
         "symbol": _group_breakdown(trades, symbol, "symbol"),
         "direction": _group_breakdown(trades, direction, "direction"),
+        "session": _group_breakdown(trades, session, "session"),
         "entry_hour": _group_breakdown(trades, entry_hour, "entry_hour"),
         "weekday": _ordered_weekday_breakdown(trades, weekday),
         "month": _group_breakdown(trades, month, "month"),

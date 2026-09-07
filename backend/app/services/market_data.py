@@ -1,24 +1,64 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Callable
 
 import pandas as pd
 
+from app.data.instruments import InstrumentSpec, instrument_spec, normalize_symbol
 from app.data.providers.base import MarketDataProvider, Timeframe
 from app.storage.market_cache_repository import MarketCacheRepository
 from app.storage.market_store import MarketStore
 
 
+ProviderResolver = Callable[[str, InstrumentSpec], MarketDataProvider]
+
+
 class MarketDataService:
     def __init__(
         self,
-        provider: MarketDataProvider,
+        provider: MarketDataProvider | None,
         store: MarketStore,
         coverage: MarketCacheRepository,
+        *,
+        provider_resolver: ProviderResolver | None = None,
     ):
+        # ``provider`` remains the default/legacy provider (normally Alpaca) so
+        # existing integrations/tests can continue to inspect it. Actual requests
+        # route through provider_for().
         self.provider = provider
         self.store = store
         self.coverage = coverage
+        self.provider_resolver = provider_resolver
+
+    def instrument_info(self, ticker: str) -> InstrumentSpec:
+        return instrument_spec(ticker)
+
+    def provider_for(self, ticker: str) -> MarketDataProvider:
+        symbol = normalize_symbol(ticker)
+        spec = instrument_spec(symbol)
+        if self.provider_resolver is not None:
+            return self.provider_resolver(symbol, spec)
+        if self.provider is None:
+            raise RuntimeError(f"No market-data provider configured for {symbol}")
+        return self.provider
+
+    def historical_delay_minutes(self, ticker: str) -> int:
+        return max(0, int(getattr(self.provider_for(ticker), "historical_delay_minutes", 0)))
+
+    def latest_available_end(self, ticker: str, timeframe: Timeframe, reference: datetime | None = None) -> datetime:
+        """Clamp a requested end to the provider's newest complete candle when supported."""
+        provider = self.provider_for(ticker)
+        reference = _utc(reference or datetime.now(timezone.utc))
+        resolver = getattr(provider, "latest_available_end", None)
+        if callable(resolver):
+            try:
+                return min(reference, _utc(resolver(ticker, timeframe, reference)))
+            except Exception:
+                # Do not make charting less reliable because an optional freshness probe
+                # failed. The main data request still has its normal error handling.
+                return reference
+        return reference
 
     def get_bars(
         self,
@@ -29,36 +69,44 @@ class MarketDataService:
         *,
         force_refresh: bool = False,
     ) -> pd.DataFrame:
-        ticker = ticker.upper().strip()
+        ticker = normalize_symbol(ticker)
         start = _utc(start)
         end = _utc(end)
         if start >= end:
             raise ValueError("start must be before end")
 
-        namespace = self.provider.cache_namespace
+        provider = self.provider_for(ticker)
+        namespace = provider.cache_namespace
         if force_refresh:
-            self._fetch_and_store(ticker, timeframe, start, end)
+            self._fetch_and_store(provider, ticker, timeframe, start, end)
         else:
             cached = self.coverage.get(namespace, ticker, timeframe)
             if cached is None:
-                self._fetch_and_store(ticker, timeframe, start, end)
+                self._fetch_and_store(provider, ticker, timeframe, start, end)
             else:
                 cached_start, cached_end = cached
                 if start < cached_start:
-                    self._fetch_and_store(ticker, timeframe, start, cached_start)
+                    self._fetch_and_store(provider, ticker, timeframe, start, cached_start)
                 if end > cached_end:
-                    self._fetch_and_store(ticker, timeframe, cached_end, end)
+                    self._fetch_and_store(provider, ticker, timeframe, cached_end, end)
 
         return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
 
-    def _fetch_and_store(self, ticker: str, timeframe: Timeframe, start: datetime, end: datetime) -> None:
+    def _fetch_and_store(
+        self,
+        provider: MarketDataProvider,
+        ticker: str,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+    ) -> None:
         if start >= end:
             return
-        bars = self.provider.get_bars(ticker, timeframe, start, end)
+        bars = provider.get_bars(ticker, timeframe, start, end)
         if not bars.empty:
-            self.store.write_bars(self.provider.cache_namespace, ticker, timeframe, bars)
+            self.store.write_bars(provider.cache_namespace, ticker, timeframe, bars)
         # Mark requested coverage even when the market was closed/no bars were returned.
-        self.coverage.extend(self.provider.cache_namespace, ticker, timeframe, start, end)
+        self.coverage.extend(provider.cache_namespace, ticker, timeframe, start, end)
 
 
 def _utc(value: datetime) -> datetime:

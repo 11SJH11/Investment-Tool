@@ -5,6 +5,7 @@ import pandas as pd
 
 
 _REQUIRED_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+_OPTIONAL_COLUMNS = ["source_contract"]
 
 
 class MarketStore:
@@ -80,7 +81,8 @@ class MarketStore:
         if missing:
             raise ValueError(f"Missing OHLCV columns: {', '.join(missing)}")
 
-        frame = frame[_REQUIRED_COLUMNS]
+        columns = _REQUIRED_COLUMNS + [column for column in _OPTIONAL_COLUMNS if column in frame.columns]
+        frame = frame[columns]
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
         frame = frame.drop_duplicates("timestamp", keep="last")
         return frame.sort_values("timestamp").reset_index(drop=True)

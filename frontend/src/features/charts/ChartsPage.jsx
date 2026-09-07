@@ -10,15 +10,20 @@ import PriceChart from "../research/PriceChart";
 import ResearchPage from "../research/ResearchPage";
 
 const TF = ["1m","5m","15m","30m","1h","4h","1d"];
-const INITIAL_LOOK = {"1m":93,"5m":186,"15m":186,"30m":186,"1h":365,"4h":730,"1d":1825};
+const INITIAL_LOOK = {"1m":14,"5m":60,"15m":186,"30m":186,"1h":365,"4h":730,"1d":1825};
 const MAX_LOOK = {"1m":365,"5m":1095,"15m":1825,"30m":1825,"1h":3650,"4h":5000,"1d":5000};
+const MULTI_ASSET_INITIAL_LOOK = {"1m":7,"5m":31,"15m":93,"30m":186,"1h":365,"4h":730,"1d":730};
 const COLORS = ["#60a5fa","#f59e0b","#a78bfa","#22c55e","#f43f5e","#06b6d4","#e879f9","#84cc16","#fb7185","#38bdf8","#facc15","#c084fc"];
 let indicatorSeq = 0;
 
 function makeIndicator(spec, index) {
-  return { id:`chart-ind-${Date.now()}-${indicatorSeq++}`, key:spec.key, name:spec.name, overlay:Boolean(spec.overlay), params:{...(spec.defaults||{})}, visible:true, color:COLORS[index%COLORS.length], lineWidth:2 };
+  return { id:`chart-ind-${Date.now()}-${indicatorSeq++}`, key:spec.key, name:spec.name, overlay:Boolean(spec.overlay), params:{...(spec.defaults||{})}, visible:true, color:COLORS[index%COLORS.length], lineWidth:2,
+    ...(spec.key==="volume"?{upColor:"#34d399",downColor:"#f87171",volumeOpacity:.28}:{}),
+  };
 }
 function historyLabel(days){ if(days>=365)return `${(days/365).toFixed(days%365===0?0:1)}y loaded`; return `${Math.round(days/30)}mo loaded`; }
+function isMultiAssetSymbol(symbol){ const s=String(symbol||"").toUpperCase(); return s==="XAUUSD"||/^[A-Z]{1,5}[1-9]!$/.test(s); }
+function initialLook(symbol,timeframe){ return (isMultiAssetSymbol(symbol)?MULTI_ASSET_INITIAL_LOOK:INITIAL_LOOK)[timeframe]||365; }
 
 export default function ChartsPage({selectedTicker="AAPL",onTickerChange}){
   const [mode,setMode]=useState("charts");
@@ -71,6 +76,7 @@ export default function ChartsPage({selectedTicker="AAPL",onTickerChange}){
 function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,layout,onLayoutChange,session,zone,indicatorSpecs,expanded,onExpand}) {
   const watchlist=useWatchlist();
   const [bars,setBars]=useState([]);
+  const [marketMeta,setMarketMeta]=useState(null);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [tool,setTool]=useState("cursor");
@@ -86,13 +92,14 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
   const [indicatorPicker,setIndicatorPicker]=useState("");
   const [editingIndicator,setEditingIndicator]=useState(null);
   const [historyDays,setHistoryDays]=useState(()=>({}));
-  const lookbackDays=historyDays[timeframe]||INITIAL_LOOK[timeframe]||365;
+  const baseLookback=initialLook(symbol,timeframe);
+  const lookbackDays=historyDays[timeframe]||baseLookback;
   const maxLookback=MAX_LOOK[timeframe]||5000;
 
-  useEffect(()=>{ setDrawings(loadDrawings("charts",symbol)); setHistory([]);setRedo([]);setSelectedDrawingId(null); },[symbol]);
+  useEffect(()=>{ setDrawings(loadDrawings("charts",symbol)); setHistory([]);setRedo([]);setSelectedDrawingId(null);setHistoryDays({});setMarketMeta(null); },[symbol]);
   useEffect(()=>{ if(indicatorDefaultsReady||!indicatorSpecs.length)return; const volume=indicatorSpecs.find(x=>x.key==="volume"); if(volume)setIndicators([makeIndicator(volume,0)]); setIndicatorDefaultsReady(true); },[indicatorSpecs,indicatorDefaultsReady]);
   useEffect(()=>{ saveDrawings("charts",symbol,drawings); },[symbol,drawings]);
-  useEffect(()=>{ let cancelled=false; setLoading(true);setError(""); api.researchBars(symbol,timeframe,lookbackDays,false,session).then(r=>{if(!cancelled)setBars(r.bars||[])}).catch(e=>{if(!cancelled)setError(e.message)}).finally(()=>{if(!cancelled)setLoading(false)}); return()=>{cancelled=true}; },[symbol,timeframe,session,lookbackDays]);
+  useEffect(()=>{ let cancelled=false; setLoading(true);setError(""); api.researchBars(symbol,timeframe,lookbackDays,false,session).then(r=>{if(!cancelled){setBars(r.bars||[]);setMarketMeta(r)}}).catch(e=>{if(!cancelled)setError(e.message)}).finally(()=>{if(!cancelled)setLoading(false)}); return()=>{cancelled=true}; },[symbol,timeframe,session,lookbackDays]);
 
   useEffect(()=>{
     if(!indicators.length)return;
@@ -106,8 +113,10 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
     return()=>{cancelled=true};
   },[symbol,timeframe,session,lookbackDays,indicators]);
 
-  const overlays=useMemo(()=>indicators.filter(x=>x.visible!==false&&x.overlay).map(item=>({...item,values:indicatorData[item.id]?.values||[],label:indicatorLabel(item)})),[indicators,indicatorData]);
-  const showVolume=indicators.some(x=>x.key==="volume"&&x.visible!==false) || !indicators.length;
+  const overlays=useMemo(()=>indicators.filter(x=>x.visible!==false&&x.overlay).map(item=>({...item,values:indicatorData[item.id]?.values||[],label:indicatorLabel(item,symbol)})),[indicators,indicatorData,symbol]);
+  const volumeIndicator=indicators.find(x=>x.key==="volume");
+  const showVolume=Boolean(volumeIndicator ? volumeIndicator.visible!==false : !indicators.length);
+  const volumeStyle=volumeIndicator?{upColor:volumeIndicator.upColor||"#34d399",downColor:volumeIndicator.downColor||"#f87171",opacity:Number(volumeIndicator.volumeOpacity??.28)}:null;
   const currentNonOverlay=indicators.filter(x=>x.visible!==false&&!x.overlay&&x.key!=="volume").map(item=>{const values=indicatorData[item.id]?.values||[];return {...item,current:values.length?Number(values[values.length-1].value):null}});
 
   const applyDrawings=(next,meta={})=>{if(meta.checkpoint){setHistory(h=>[...h.slice(-49),drawings]);setRedo([]);return;}if(meta.transient){setDrawings(next);return;}setHistory(h=>[...h.slice(-49),drawings]);setRedo([]);setDrawings(next)};
@@ -122,7 +131,7 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
   const updateIndicatorParam=(id,key,value)=>setIndicators(items=>items.map(x=>x.id===id?{...x,params:{...x.params,[key]:numericMaybe(value)}}:x));
   const loadMoreHistory=()=>{
     if(loading||lookbackDays>=maxLookback)return;
-    setHistoryDays(current=>({...current,[timeframe]:Math.min(maxLookback,Math.max(lookbackDays+INITIAL_LOOK[timeframe],lookbackDays*2))}));
+    setHistoryDays(current=>({...current,[timeframe]:Math.min(maxLookback,Math.max(lookbackDays+baseLookback,lookbackDays*2))}));
   };
 
   const panel=<section className={`market-chart-panel ${expanded?"expanded-chart-panel":""}`}>
@@ -130,31 +139,34 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
       <button type="button" className={`favorite-btn ${watchlist.has(symbol)?"active":""}`} onClick={()=>watchlist.toggle(symbol)} title={watchlist.has(symbol)?"Remove from watchlist":"Add to watchlist"}>★</button>
       <div className="chart-symbol-search"><SymbolSearch value={symbol} onChange={(v)=>onSymbolChange(v.toUpperCase())} onSelect={(x)=>onSymbolChange(x.ticker)}/></div>
       <span className="chart-timeframe-badge">{timeframe}</span>
+      {marketMeta?.session_profile&&marketMeta.session_profile!=="us_equity"&&<span className="chart-timeframe-badge" title={`Provider: ${marketMeta.provider||"market data"}`}>24h · {marketMeta.provider||"data"}</span>}
       <span className="chart-history-badge" title="Scroll near the left edge to load more history">{historyLabel(lookbackDays)}{lookbackDays<maxLookback?" · scroll left for more":""}</span>
       {expanded && <div className="expanded-chart-controls"><div className="chart-toolbar-group compact">{TF.map(x=><button key={x} onClick={()=>onTimeframeChange?.(x)} className={`chart-toolbar-btn ${timeframe===x?"active":""}`}>{x}</button>)}</div><div className="chart-toolbar-group compact">{[1,2,4].map(n=><button key={n} onClick={()=>onLayoutChange?.(n)} className={`chart-toolbar-btn ${layout===n?"active":""}`}>{n}×</button>)}</div></div>}
-      <div className="indicator-picker-wrap"><select className="chart-select" value={indicatorPicker} onChange={e=>{setIndicatorPicker(e.target.value);addIndicator(e.target.value)}}><option value="">＋ Indicators</option>{indicatorSpecs.map(x=><option key={x.key} value={x.key}>{x.name}</option>)}</select></div>
+      <div className="indicator-picker-wrap"><select className="chart-select" value={indicatorPicker} onChange={e=>{setIndicatorPicker(e.target.value);addIndicator(e.target.value)}}><option value="">＋ Indicators</option>{indicatorSpecs.map(x=><option key={x.key} value={x.key}>{x.key==="volume"&&String(symbol).toUpperCase()==="XAUUSD"?"Tick Volume · OANDA activity":x.name}</option>)}</select></div>
       <button className={`chart-icon-btn ${objectsOpen?"active":""}`} title="Object panel" onClick={()=>setObjectsOpen(v=>!v)}>☷</button>
       <button className="chart-icon-btn" title={expanded?"Restore layout":"Maximise chart"} onClick={onExpand}>{expanded?"↙":"⛶"}</button>
     </header>
     <div className="indicator-strip">
-      {indicators.map(item=><div key={item.id} className="indicator-chip" style={{"--indicator-color":item.color}}><span className="indicator-dot"/><span>{indicatorLabel(item)}</span><button title={item.visible===false?"Show":"Hide"} onClick={()=>updateIndicator(item.id,{visible:item.visible===false})}>{item.visible===false?"○":"●"}</button><button title="Settings" onClick={()=>setEditingIndicator(editingIndicator===item.id?null:item.id)}>⚙</button><button title="Remove" onClick={()=>setIndicators(xs=>xs.filter(x=>x.id!==item.id))}>×</button></div>)}
-      {currentNonOverlay.map(item=><span key={`value-${item.id}`} className="indicator-value-chip">{indicatorLabel(item)} {item.current==null?"—":item.current.toFixed(2)}</span>)}
+      {indicators.map(item=><div key={item.id} className="indicator-chip" style={{"--indicator-color":item.color}}><span className="indicator-dot"/><span>{indicatorLabel(item,symbol)}</span><button title={item.visible===false?"Show":"Hide"} onClick={()=>updateIndicator(item.id,{visible:item.visible===false})}>{item.visible===false?"○":"●"}</button><button title="Settings" onClick={()=>setEditingIndicator(editingIndicator===item.id?null:item.id)}>⚙</button><button title="Remove" onClick={()=>setIndicators(xs=>xs.filter(x=>x.id!==item.id))}>×</button></div>)}
+      {currentNonOverlay.map(item=><span key={`value-${item.id}`} className="indicator-value-chip">{indicatorLabel(item,symbol)} {item.current==null?"—":item.current.toFixed(2)}</span>)}
     </div>
-    {editingIndicator&&<IndicatorSettings item={indicators.find(x=>x.id===editingIndicator)} onChange={patch=>updateIndicator(editingIndicator,patch)} onParam={(k,v)=>updateIndicatorParam(editingIndicator,k,v)} onClose={()=>setEditingIndicator(null)}/>} 
+    {editingIndicator&&<IndicatorSettings symbol={symbol} item={indicators.find(x=>x.id===editingIndicator)} onChange={patch=>updateIndicator(editingIndicator,patch)} onParam={(k,v)=>updateIndicatorParam(editingIndicator,k,v)} onClose={()=>setEditingIndicator(null)}/>} 
     <div className="chart-stage">
       <ChartDrawingToolbar tool={tool} onToolChange={setTool} magnet={magnet} onMagnetChange={setMagnet} onUndo={undo} onRedo={redoOne} canDelete={Boolean(selectedDrawingId)} onDelete={()=>deleteDrawing(selectedDrawingId)}/>
       <div className="chart-canvas-wrap">
-        {loading&&!bars.length?<div className="chart-loading">Loading {symbol}…</div>:error?<div className="chart-error">{error}</div>:<PriceChart bars={bars} overlays={overlays} timeZone={zone} height={400} fill expanded={expanded} showVolume={showVolume} drawingTool={tool} magnet={magnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setTool} onUndoDrawing={undo} onRedoDrawing={redoOne} onDeleteDrawing={deleteDrawing} onNeedMoreHistory={loadMoreHistory}/>} 
+        {loading&&!bars.length?<div className="chart-loading">Loading {symbol}…</div>:error?<div className="chart-error">{error}</div>:<PriceChart bars={bars} overlays={overlays} timeframe={timeframe} timeZone={zone} height={400} fill expanded={expanded} showVolume={showVolume} volumeStyle={volumeStyle} drawingTool={tool} magnet={magnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setTool} onUndoDrawing={undo} onRedoDrawing={redoOne} onDeleteDrawing={deleteDrawing} drawingMeta={{created_timeframe:timeframe}} onNeedMoreHistory={loadMoreHistory}/>} 
         {loading&&bars.length>0&&<div className="chart-history-loading">Loading more history…</div>}
       </div>
-      {objectsOpen&&<DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id)=>{setSelectedDrawingId(id);setTool("select")}} onToggleVisible={(id)=>toggleDrawing(id,"visible")} onToggleLock={(id)=>toggleDrawing(id,"locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={()=>setObjectsOpen(false)}/>} 
+      {objectsOpen&&<DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id)=>{setSelectedDrawingId(id);setTool("cursor")}} onToggleVisible={(id)=>toggleDrawing(id,"visible")} onToggleLock={(id)=>toggleDrawing(id,"locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={()=>setObjectsOpen(false)}/>} 
     </div>
   </section>;
   return expanded?<div className="chart-expanded-backdrop">{panel}</div>:panel;
 }
 
-function indicatorLabel(item){const p=item.params||{};if(p.length)return `${item.name||item.key} ${p.length}`;return item.name||item.key}
+function indicatorLabel(item,symbol=""){const p=item.params||{};const base=item.key==="volume"&&String(symbol).toUpperCase()==="XAUUSD"?"Tick Volume":(item.name||item.key);if(p.length)return `${base} ${p.length}`;return base}
 function numericMaybe(value){if(value==="")return "";const n=Number(value);return Number.isFinite(n)&&String(value).trim()!==""?n:value}
-function IndicatorSettings({item,onChange,onParam,onClose}){
-  if(!item)return null;return <div className="indicator-settings-popover"><div className="indicator-settings-head"><strong>{indicatorLabel(item)}</strong><button onClick={onClose}>×</button></div><div className="indicator-settings-grid">{Object.entries(item.params||{}).map(([key,value])=><label key={key}><span>{key}</span><input className="input" value={value} onChange={e=>onParam(key,e.target.value)}/></label>)}<label><span>Line colour</span><input type="color" value={item.color} onChange={e=>onChange({color:e.target.value})}/></label><label><span>Line width</span><input type="number" min="1" max="5" className="input" value={item.lineWidth} onChange={e=>onChange({lineWidth:Number(e.target.value)})}/></label></div></div>
+function IndicatorSettings({item,onChange,onParam,onClose,symbol}){
+  if(!item)return null;
+  if(item.key==="volume")return <div className="indicator-settings-popover"><div className="indicator-settings-head"><strong>{String(symbol).toUpperCase()==="XAUUSD"?"Tick Volume · OANDA activity":"Volume"}</strong><button onClick={onClose}>×</button></div><div className="indicator-settings-grid"><label><span>Up bars</span><input type="color" value={item.upColor||"#34d399"} onChange={e=>onChange({upColor:e.target.value})}/></label><label><span>Down bars</span><input type="color" value={item.downColor||"#f87171"} onChange={e=>onChange({downColor:e.target.value})}/></label><label><span>Opacity</span><input type="number" min="0.05" max="1" step="0.05" className="input" value={item.volumeOpacity??.28} onChange={e=>onChange({volumeOpacity:Number(e.target.value)})}/></label></div></div>;
+  return <div className="indicator-settings-popover"><div className="indicator-settings-head"><strong>{indicatorLabel(item,symbol)}</strong><button onClick={onClose}>×</button></div><div className="indicator-settings-grid">{Object.entries(item.params||{}).map(([key,value])=><label key={key}><span>{key}</span><input className="input" value={value} onChange={e=>onParam(key,e.target.value)}/></label>)}<label><span>Line colour</span><input type="color" value={item.color} onChange={e=>onChange({color:e.target.value})}/></label><label><span>Line width</span><input type="number" min="1" max="5" className="input" value={item.lineWidth} onChange={e=>onChange({lineWidth:Number(e.target.value)})}/></label></div></div>
 }

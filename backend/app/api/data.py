@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies import get_services
 from app.data.providers.base import Timeframe
+from app.data.instruments import normalize_symbol, virtual_symbol, virtual_symbols
 from app.services.container import AppServices
 
 
@@ -42,17 +43,31 @@ def symbols(
     offset: int = Query(default=0, ge=0),
     services: AppServices = Depends(get_services),
 ):
+    # XAUUSD/NQ1! are provider-routed Ledger aliases rather than Alpaca security-
+    # master rows. Surface them in the same search control without polluting the
+    # equity refresh table (which intentionally mirrors Alpaca/SEC).
+    specials = virtual_symbols(query) if offset == 0 else []
+    database_limit = max(0, limit - len(specials))
+    database_items = services.symbols.search(query=query, limit=max(1, database_limit), offset=offset) if database_limit else []
+    merged = []
+    seen = set()
+    for item in [*specials, *database_items]:
+        ticker = str(item.get("ticker") or "").upper()
+        if ticker and ticker not in seen:
+            merged.append(item); seen.add(ticker)
+        if len(merged) >= limit:
+            break
     return {
-        "total": services.symbols.count(),
-        "items": services.symbols.search(query=query, limit=limit, offset=offset),
+        "total": services.symbols.count() + len(virtual_symbols()),
+        "items": merged,
     }
 
 
 @router.get("/symbols/{ticker}")
 def symbol(ticker: str, services: AppServices = Depends(get_services)):
-    item = services.symbols.get(ticker)
+    item = virtual_symbol(ticker) or services.symbols.get(normalize_symbol(ticker))
     if item is None:
-        raise HTTPException(status_code=404, detail=f"Unknown cached symbol: {ticker.upper()}")
+        raise HTTPException(status_code=404, detail=f"Unknown cached symbol: {normalize_symbol(ticker)}")
     return item
 
 
@@ -66,7 +81,7 @@ def market_bars(
     services: AppServices = Depends(get_services),
 ):
     if services.market_data is None:
-        raise HTTPException(status_code=503, detail="Alpaca market data is not configured")
+        raise HTTPException(status_code=503, detail="No market data provider is configured")
     try:
         frame = services.market_data.get_bars(ticker, timeframe, start, end, force_refresh=refresh)
     except ValueError as exc:

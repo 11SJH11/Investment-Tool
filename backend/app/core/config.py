@@ -28,6 +28,19 @@ class Settings(BaseSettings):
         validation_alias="ALPACA_DATA_BASE_URL",
     )
 
+    # Futures / metals providers. Phase 6.1.2 records configuration now; provider
+    # routing is intentionally added in the dedicated futures phase rather than
+    # pretending Alpaca equity bars can represent CME/COMEX instruments.
+    futures_data_provider: str = Field(default="massive", validation_alias="FUTURES_DATA_PROVIDER")
+    massive_api_key: str | None = Field(default=None, validation_alias="MASSIVE_API_KEY")
+    massive_futures_base_url: str = Field(default="https://api.massive.com", validation_alias="MASSIVE_FUTURES_BASE_URL")
+    futures_back_adjust: bool = Field(default=False, validation_alias="FUTURES_BACK_ADJUST")
+    oanda_access_token: str | None = Field(default=None, validation_alias="OANDA_ACCESS_TOKEN")
+    oanda_account_id: str | None = Field(default=None, validation_alias="OANDA_ACCOUNT_ID")
+    oanda_environment: str = Field(default="practice", validation_alias="OANDA_ENVIRONMENT")
+    oanda_practice_base_url: str = Field(default="https://api-fxpractice.oanda.com", validation_alias="OANDA_PRACTICE_BASE_URL")
+    oanda_live_base_url: str = Field(default="https://api-fxtrade.oanda.com", validation_alias="OANDA_LIVE_BASE_URL")
+
     # SEC EDGAR APIs do not need a key, but the SEC requires a declared User-Agent.
     sec_user_agent: str | None = Field(default=None, validation_alias="SEC_USER_AGENT")
     sec_data_base_url: str = Field(default="https://data.sec.gov", validation_alias="SEC_DATA_BASE_URL")
@@ -60,6 +73,14 @@ class Settings(BaseSettings):
     @property
     def alpaca_configured(self) -> bool:
         return bool(self.alpaca_api_key and self.alpaca_api_secret)
+
+    @property
+    def massive_configured(self) -> bool:
+        return bool(self.massive_api_key)
+
+    @property
+    def oanda_configured(self) -> bool:
+        return bool(self.oanda_access_token)
 
     @property
     def sec_configured(self) -> bool:

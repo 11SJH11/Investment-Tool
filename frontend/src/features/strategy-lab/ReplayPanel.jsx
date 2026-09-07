@@ -50,6 +50,7 @@ function makeIndicator(spec, colorIndex) {
     visible: true,
     color: INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length],
     lineWidth: 2,
+    ...(spec.key === "volume" ? { upColor: "#34d399", downColor: "#f87171", volumeOpacity: 0.28 } : {}),
   };
 }
 function plannedMetrics(position) {
@@ -69,11 +70,11 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const [symbol, setSymbol] = useState("AAPL");
   const [symbolInput, setSymbolInput] = useState("AAPL");
   const [replayDate, setReplayDate] = useState(initialDate);
-  const [replayEndDate, setReplayEndDate] = useState(addDays(initialDate, 30));
+  const [replayEndDate, setReplayEndDate] = useState(addDays(initialDate, 7));
   const [startTime, setStartTime] = useState("09:30");
   const [timeframe, setTimeframe] = useState(() => localStorage.getItem("ledger.chartTimeframe") || "5m");
   const [session, setSession] = useState("regular");
-  const [contextMode, setContextMode] = useState("1m");
+  const [contextMode, setContextMode] = useState("5d");
   const [contextBars, setContextBars] = useState(500);
   const [timeZone, setTimeZone] = useState("America/New_York");
   const [dataset, setDataset] = useState(null);
@@ -206,7 +207,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
           symbol, replayDate, replayEndDate, startTime, item.key, timeframe, session,
           context.contextBars, context.contextDays, item.params,
         );
-        return [item.id, { ...data, label: indicatorLabel(item, indicators), _signature: signature }];
+        return [item.id, { ...data, label: indicatorLabel(item, indicators, symbol), _signature: signature }];
       } catch { return null; }
     })).then((items) => {
       if (cancelled) return;
@@ -369,11 +370,12 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const cutoff = new Date(currentBar.timestamp).getTime();
     return selectedIndicators.map((item) => {
       const data = indicatorData[item.id] || {};
-      return { ...data, ...item, label: indicatorLabel(item, indicators), values: (data.values || []).filter((point) => new Date(point.timestamp).getTime() <= cutoff) };
+      return { ...data, ...item, label: indicatorLabel(item, indicators, symbol), values: (data.values || []).filter((point) => new Date(point.timestamp).getTime() <= cutoff) };
     });
   }, [indicatorData, currentBar, selectedIndicators, indicators]);
   const volumeIndicator = visibleIndicators.find((item) => item.key === "volume");
   const showVolume = Boolean(volumeIndicator && volumeIndicator.visible !== false);
+  const volumeStyle = volumeIndicator ? { upColor: volumeIndicator.upColor || "#34d399", downColor: volumeIndicator.downColor || "#f87171", opacity: Number(volumeIndicator.volumeOpacity ?? .28) } : null;
   const paneIndicators = visibleIndicators.filter((item) => item.key !== "volume" && !item.overlay && item.visible !== false);
   const metrics = plannedMetrics(position);
 
@@ -403,7 +405,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const workspace = dataset && <div className={expanded ? "fixed inset-0 z-50 overflow-auto bg-stone-100 p-3" : "mt-4"}>
     <div className={`rounded-xl border border-stone-200 bg-white ${expanded ? "min-h-[calc(100vh-24px)] p-3 shadow-2xl" : "p-4"}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 pb-3">
-        <div className="mr-2"><strong>{symbol}</strong> <span className="text-xs text-stone-500">{timeframe} · {session} · {fmt(currentBar?.timestamp, timeZone)}</span></div>
+        <div className="mr-2"><strong>{symbol}</strong> <span className="text-xs text-stone-500">{timeframe} · {dataset?.effective_session||session} · {fmt(currentBar?.timestamp, timeZone)}</span></div>
         {expanded && <div className="replay-fullscreen-timeframes">{TIMEFRAMES.map((tf) => <button key={tf} type="button" onClick={() => switchTimeframe(tf)} className={`chart-toolbar-btn ${timeframe === tf ? "active" : ""}`}>{tf}</button>)}</div>}
         <button disabled={visibleCount <= (dataset.initial_visible_count || 1) || position || pendingOrder} onClick={rewindOne} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">◀ -1</button>
         <button disabled={!nextBar} onClick={() => advance(1)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">▶ +1</button>
@@ -419,25 +421,25 @@ export default function ReplayPanel({ indicators = [], onError }) {
         <button onClick={() => setExpanded((value) => !value)} className="ml-auto rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">{expanded ? "Exit full screen" : "Full screen"}</button>
       </div>
       <div className={`mt-3 rounded-md px-3 py-2 text-xs ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
-        Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.source_timeframe || timeframe}{dataset.aggregation === "session_aligned_from_1m" ? ` → ${timeframe}` : ""}.</span>
+        Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.provider ? `${dataset.provider} · ` : ""}{dataset.source_timeframe || timeframe}{String(dataset.aggregation||"").includes("aligned_from_1m") ? ` → ${timeframe}` : ""}{dataset.effective_session==="24h" ? " · 24h market" : ""}.</span>
       </div>
       <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
           <div className="chart-stage replay-chart-stage">
             <ChartDrawingToolbar tool={drawingTool} onToolChange={setDrawingTool} magnet={drawingMagnet} onMagnetChange={setDrawingMagnet} onUndo={undoDrawing} onRedo={redoDrawing} canDelete={Boolean(selectedDrawingId)} onDelete={() => deleteDrawing(selectedDrawingId)} />
-            <div className="chart-canvas-wrap"><ReplayChart bars={visibleBars} overlays={visibleIndicators} timeZone={timeZone} position={position} closedTrade={closedTrade} pendingOrder={pendingOrder} expanded={expanded} followReplay={followReplay} jumpToken={jumpToken} showVolume={showVolume} drawingTool={drawingTool} magnet={drawingMagnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setDrawingTool} onPositionDrawing={usePositionDrawing} onUndoDrawing={undoDrawing} onRedoDrawing={redoDrawing} onDeleteDrawing={deleteDrawing} drawingMeta={{ created_at_replay_timestamp: currentBar?.timestamp || null }} /></div>
-            {objectsOpen && <DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id) => { setSelectedDrawingId(id); setDrawingTool("select"); }} onToggleVisible={(id) => toggleDrawing(id, "visible")} onToggleLock={(id) => toggleDrawing(id, "locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={() => setObjectsOpen(false)} />}
+            <div className="chart-canvas-wrap"><ReplayChart bars={visibleBars} overlays={visibleIndicators} timeframe={timeframe} timeZone={timeZone} position={position} closedTrade={closedTrade} pendingOrder={pendingOrder} expanded={expanded} followReplay={followReplay} jumpToken={jumpToken} showVolume={showVolume} volumeStyle={volumeStyle} drawingTool={drawingTool} magnet={drawingMagnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setDrawingTool} onPositionDrawing={usePositionDrawing} onUndoDrawing={undoDrawing} onRedoDrawing={redoDrawing} onDeleteDrawing={deleteDrawing} drawingMeta={{ created_at_replay_timestamp: currentBar?.timestamp || null, created_timeframe: timeframe }} /></div>
+            {objectsOpen && <DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id) => { setSelectedDrawingId(id); setDrawingTool("cursor"); }} onToggleVisible={(id) => toggleDrawing(id, "visible")} onToggleLock={(id) => toggleDrawing(id, "locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={() => setObjectsOpen(false)} />}
           </div>
-          {paneIndicators.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{paneIndicators.map((item) => { const value = currentBar ? currentValue(item, currentBar.timestamp) : null; return <span key={item.id} className="rounded bg-stone-100 px-2 py-1 text-xs"><span style={{ color: item.color }}>●</span> {indicatorLabel(item, indicators)}: <strong>{value == null ? "—" : value.toFixed(3)}</strong></span>; })}</div>}
+          {paneIndicators.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{paneIndicators.map((item) => { const value = currentBar ? currentValue(item, currentBar.timestamp) : null; return <span key={item.id} className="rounded bg-stone-100 px-2 py-1 text-xs"><span style={{ color: item.color }}>●</span> {indicatorLabel(item, indicators, symbol)}: <strong>{value == null ? "—" : value.toFixed(3)}</strong></span>; })}</div>}
         </div>
         <div className="space-y-3">
           <div className="rounded-lg border border-stone-200 p-4">
-            <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Indicators</h4><select className="rounded-md border border-stone-300 px-2 py-1 text-xs" defaultValue="" onChange={(e) => { addIndicator(e.target.value); e.target.value = ""; }}><option value="">+ Add indicator</option>{indicators.filter((item) => item.causal).map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</select></div>
+            <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Indicators</h4><select className="rounded-md border border-stone-300 px-2 py-1 text-xs" defaultValue="" onChange={(e) => { addIndicator(e.target.value); e.target.value = ""; }}><option value="">+ Add indicator</option>{indicators.filter((item) => item.causal).map((item) => <option key={item.key} value={item.key}>{item.key === "volume" && symbol === "XAUUSD" ? "Tick Volume · OANDA activity" : item.name}</option>)}</select></div>
             <div className="mt-3 space-y-2">{selectedIndicators.map((item) => {
               const data = indicatorData[item.id]; const value = currentBar && data ? currentValue(data, currentBar.timestamp) : null;
               const displayValue = value == null ? "—" : item.key === "volume" ? Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 }).format(value) : value.toFixed(3);
-              return <div key={item.id} className="rounded bg-stone-50 p-2 text-xs"><div className="flex items-center gap-2"><button title={item.visible ? "Hide" : "Show"} onClick={() => patchIndicator(item.id, { visible: !item.visible })} className="w-6">{item.visible ? "👁" : "○"}</button><span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} /><span className="font-medium">{indicatorLabel(item, indicators)}</span><span className="ml-auto tabular-nums text-stone-600">{displayValue}</span><button title="Settings" onClick={() => setEditingIndicatorId(editingIndicatorId === item.id ? null : item.id)}>⚙</button><button title="Remove" onClick={() => { setSelectedIndicators((old) => old.filter((x) => x.id !== item.id)); setEditingIndicatorId(null); }} className="text-red-700">🗑</button></div>
-                {editingIndicatorId === item.id && <IndicatorSettings item={item} spec={indicators.find((spec) => spec.key === item.key)} onParam={(key, value) => patchIndicatorParam(item.id, key, value)} onPatch={(patch) => patchIndicator(item.id, patch)} />}
+              return <div key={item.id} className="rounded bg-stone-50 p-2 text-xs"><div className="flex items-center gap-2"><button title={item.visible ? "Hide" : "Show"} onClick={() => patchIndicator(item.id, { visible: !item.visible })} className="w-6">{item.visible ? "👁" : "○"}</button><span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} /><span className="font-medium">{indicatorLabel(item, indicators, symbol)}</span><span className="ml-auto tabular-nums text-stone-600">{displayValue}</span><button title="Settings" onClick={() => setEditingIndicatorId(editingIndicatorId === item.id ? null : item.id)}>⚙</button><button title="Remove" onClick={() => { setSelectedIndicators((old) => old.filter((x) => x.id !== item.id)); setEditingIndicatorId(null); }} className="text-red-700">🗑</button></div>
+                {editingIndicatorId === item.id && <IndicatorSettings symbol={symbol} item={item} spec={indicators.find((spec) => spec.key === item.key)} onParam={(key, value) => patchIndicatorParam(item.id, key, value)} onPatch={(patch) => patchIndicator(item.id, patch)} />}
               </div>;
             })}</div>
             <p className="mt-2 text-[11px] text-stone-500">Eye hides without deleting. Volume now behaves like an indicator instead of a separate Replay toggle. Settings change indicator inputs/style. The 12-colour palette is assigned per instance; colours repeat only after the palette is exhausted.</p>
@@ -462,14 +464,14 @@ export default function ReplayPanel({ indicators = [], onError }) {
 
   return <section className="replay-page-section mt-4 rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Historical Replay · workspace</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Replay can span days or months while future bars remain hidden. Context and replay horizon are separate: load as much prior structure as you need, then move continuously through later sessions.</p></div><button onClick={resumeCheckpoint} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Resume saved replay</button></div>
-    <div className="mt-3"><WatchlistBar compact onSelect={(ticker) => { setSymbol(ticker); setSymbolInput(ticker); }} /></div>
+    <div className="mt-3"><WatchlistBar compact onSelect={(ticker) => { setSymbol(ticker); setSymbolInput(ticker); if (String(ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} /></div>
     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-      <Field label="Symbol"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => { setSymbol(item.ticker); setSymbolInput(item.ticker); }} placeholder="AAPL" /></Field>
-      <Field label="Replay starts"><input type="date" className="input" value={replayDate} onChange={(e) => { setReplayDate(e.target.value); if (replayEndDate < e.target.value) setReplayEndDate(addDays(e.target.value, 30)); }} /></Field>
+      <Field label="Symbol"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => { setSymbol(item.ticker); setSymbolInput(item.ticker); if (String(item.ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} placeholder="AAPL" /></Field>
+      <Field label="Replay starts"><input type="date" className="input" value={replayDate} onChange={(e) => { setReplayDate(e.target.value); if (replayEndDate < e.target.value) setReplayEndDate(addDays(e.target.value, 7)); }} /></Field>
       <Field label="Replay through"><input type="date" className="input" value={replayEndDate} onChange={(e) => setReplayEndDate(e.target.value)} /></Field>
       <Field label="Start time · ET"><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
       <Field label="Timeframe"><select className="input" value={timeframe} onChange={(e) => switchTimeframe(e.target.value)}>{TIMEFRAMES.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
-      <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="regular">Regular</option><option value="extended">Extended</option></select></Field>
+      <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="regular">Regular</option><option value="extended">Extended</option><option value="24h">24h / full market</option></select></Field>
       <Field label="Historical context"><select className="input" value={contextMode} onChange={(e) => setContextMode(e.target.value)}><option value="1d">1 calendar day</option><option value="5d">~5 trading days</option><option value="1m">1 month</option><option value="3m">3 months</option><option value="custom">Custom bars</option></select></Field>
       <div className="flex items-end"><button disabled={loading} onClick={load} className="w-full rounded-md bg-stone-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Loading…" : "Load replay"}</button></div>
     </div>
@@ -502,15 +504,16 @@ function validProtection(position) {
   }
   return true;
 }
-function indicatorLabel(item, specs) {
+function indicatorLabel(item, specs, symbol = "") {
   const spec = specs.find((candidate) => candidate.key === item.key);
   const params = item.params || {};
   const primary = params.length ?? (item.key.startsWith("macd") ? `${params.fast ?? 12}/${params.slow ?? 26}` : null);
-  return `${spec?.name || item.key.toUpperCase()}${primary != null ? ` ${primary}` : ""}`;
+  const base = item.key === "volume" && String(symbol).toUpperCase() === "XAUUSD" ? "Tick Volume" : (spec?.name || item.key.toUpperCase());
+  return `${base}${primary != null ? ` ${primary}` : ""}`;
 }
-function IndicatorSettings({ item, spec, onParam, onPatch }) {
+function IndicatorSettings({ item, spec, onParam, onPatch, symbol }) {
   const defaults = spec?.defaults || {};
-  if (item.key === "volume") return <div className="mt-2 rounded border border-stone-200 bg-white p-3 text-xs text-stone-600"><p className="font-semibold text-stone-800">Volume settings</p><p className="mt-1">Volume uses candle-direction colours in this version. Dedicated pane height, volume MA and up/down colour controls are part of the later shared pane system.</p></div>;
+  if (item.key === "volume") return <div className="mt-2 rounded border border-stone-200 bg-white p-3"><p className="font-semibold">{String(symbol).toUpperCase() === "XAUUSD" ? "Tick Volume · OANDA activity" : "Volume settings"}</p><div className="mt-2 grid grid-cols-3 gap-2"><Field label="Up bars"><input type="color" value={item.upColor || "#34d399"} onChange={(e) => onPatch({ upColor: e.target.value })}/></Field><Field label="Down bars"><input type="color" value={item.downColor || "#f87171"} onChange={(e) => onPatch({ downColor: e.target.value })}/></Field><Field label="Opacity"><input type="number" min="0.05" max="1" step="0.05" className="input" value={item.volumeOpacity ?? .28} onChange={(e) => onPatch({ volumeOpacity: Number(e.target.value) })}/></Field></div><p className="mt-2 text-xs text-stone-500">Pane height and volume MA will arrive with the shared lower-pane system.</p></div>;
   return <div className="mt-2 rounded border border-stone-200 bg-white p-3"><p className="font-semibold">Indicator settings</p><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(defaults).map(([key, defaultValue]) => <Field key={key} label={key.replaceAll("_", " ")}>{key === "source" ? <select className="input" value={item.params?.[key] ?? defaultValue} onChange={(e) => onParam(key, e.target.value)}>{["close","open","high","low"].map((value) => <option key={value}>{value}</option>)}</select> : typeof defaultValue === "boolean" ? <select className="input" value={String(item.params?.[key] ?? defaultValue)} onChange={(e) => onParam(key, e.target.value === "true")}><option value="true">Yes</option><option value="false">No</option></select> : <input type={typeof defaultValue === "number" ? "number" : "text"} step="any" className="input" value={item.params?.[key] ?? defaultValue} onChange={(e) => onParam(key, typeof defaultValue === "number" ? Number(e.target.value) : e.target.value)} />}</Field>)}</div><div className="mt-3"><p className="text-[10px] font-medium uppercase tracking-wide text-stone-500">Colour</p><div className="mt-1 flex flex-wrap gap-1">{INDICATOR_COLORS.map((color) => <button key={color} title={color} onClick={() => onPatch({ color })} className={`h-5 w-5 rounded-full border ${item.color === color ? "ring-2 ring-stone-900" : "border-stone-300"}`} style={{ backgroundColor: color }} />)}</div></div><Field label="Line width"><select className="input" value={item.lineWidth || 2} onChange={(e) => onPatch({ lineWidth: Number(e.target.value) })}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></Field></div>;
 }
 function Field({ label, children }) { return <label className="block"><span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-stone-500">{label}</span>{children}</label>; }

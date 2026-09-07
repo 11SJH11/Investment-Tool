@@ -200,7 +200,7 @@ body { background: var(--ledger-app-bg); color: var(--ledger-text); }
 .drawing-tool-btn.active-soft { background:#2b2d31; color:#93c5fd; }
 .drawing-tool-btn.danger:hover { color:#fca5a5; }
 .drawing-tool-btn:disabled { opacity:.28; cursor:not-allowed; }
-.chart-drawing-overlay { position:absolute; inset:0; z-index:12; overflow:visible; }
+.chart-drawing-overlay { position:absolute; inset:0; z-index:12; overflow:hidden; }
 
 .chart-object-panel { position:absolute; z-index:26; top:.5rem; right:.5rem; width:285px; max-height:calc(100% - 1rem); overflow:auto; border:1px solid var(--ledger-border-strong); border-radius:.65rem; background:rgba(30,31,34,.97); color:#f2f3f5; box-shadow:0 18px 50px rgba(0,0,0,.36); }
 [data-theme="light"] .chart-object-panel { background:rgba(255,255,255,.98); color:#1c1917; }
@@ -261,3 +261,20 @@ body { background: var(--ledger-app-bg); color: var(--ledger-text); }
   .chart-layout-fullscreen .multi-chart-workspace.layout-4 { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); height:auto; }
   .chart-layout-fullscreen .market-chart-panel { min-height:0; }
 }
+
+/* Phase 6.1.2 drawing interaction / readout polish */
+.chart-crosshair-readout { position:absolute; z-index:18; top:.45rem; left:.55rem; display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; pointer-events:none; border:1px solid rgba(82,82,91,.65); border-radius:.38rem; background:rgba(17,18,20,.82); color:#d7d9dc; padding:.26rem .42rem; font-size:.62rem; line-height:.9rem; backdrop-filter:blur(5px); }
+.chart-crosshair-readout b { color:#949ba4; font-weight:700; }
+.cursor-price-readout { color:#93c5fd; font-weight:700; border-left:1px solid #3f4147; padding-left:.45rem; }
+[data-theme="light"] .chart-crosshair-readout { background:rgba(255,255,255,.9); color:#292524; border-color:#d6d3d1; }
+[data-theme="light"] .cursor-price-readout { color:#2563eb; border-left-color:#d6d3d1; }
+.fib-settings { margin-top:.6rem; }
+.fib-level-list { display:flex; flex-direction:column; gap:.3rem; margin-top:.55rem; max-height:185px; overflow:auto; padding-right:.15rem; }
+.fib-level-row { display:grid; grid-template-columns:22px minmax(0,1fr) 38px; align-items:center; gap:.35rem; }
+.fib-level-row input[type="color"] { width:34px; height:28px; padding:2px; border:1px solid var(--ledger-border); border-radius:.3rem; background:var(--ledger-surface-2); }
+.fib-level-row .input { height:28px; padding:.2rem .35rem; font-size:.62rem; }
+
+/* Phase 6.2.2: navigation/select mode should feel like a chart crosshair rather than
+   the browser's arrow pointer. Drawing handles/objects still override this locally. */
+.chart-canvas-wrap,
+.chart-canvas-wrap canvas { cursor: crosshair !important; }
