@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+pandas
+duckdb
+python-dotenv
+httpx
+python-multipart
