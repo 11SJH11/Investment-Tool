@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS, resolvedZone } from "../../utils/timezones";
@@ -32,7 +32,7 @@ function indicatorRequestSignature(item, dataset, symbol, timeframe, session, re
     id: item.id, key: item.key, params: item.params || {},
     symbol, timeframe, session, replayDate, replayEndDate, startTime,
     contextBars: context.contextBars, contextDays: context.contextDays,
-    datasetCount: dataset?.count, sourceTimeframe: dataset?.source_timeframe, aggregation: dataset?.aggregation,
+    frontier: dataset?.frontier, datasetCount: dataset?.count, sourceTimeframe: dataset?.source_timeframe, aggregation: dataset?.aggregation,
   });
 }
 function contextArgs(mode, customBars) {
@@ -66,6 +66,7 @@ function plannedMetrics(position) {
 }
 
 export default function ReplayPanel({ indicators = [], onError }) {
+  const busy = useRef(false);
   const initialDate = daysAgo(30);
   const [symbol, setSymbol] = useState("AAPL");
   const [symbolInput, setSymbolInput] = useState("AAPL");
@@ -118,9 +119,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
     setIndicatorDefaultsInitialised(true);
   }, [indicators, indicatorDefaultsInitialised]);
 
-  const bars = dataset?.bars || [];
-  const visibleBars = bars.slice(0, visibleCount);
-  const currentBar = visibleBars[visibleBars.length - 1];
+  const bars = (dataset?.timeline || []).map((timestamp, i) => dataset.source_bars[i] || { timestamp });
+  const visibleBars = dataset?.bars || [];
+  const currentBar = dataset?.source_bars?.at(-1);
   const nextBar = bars[visibleCount];
   const finished = Boolean(dataset && visibleCount >= bars.length);
   const atFrontier = visibleCount >= furthestVisibleCount;
@@ -148,29 +149,30 @@ export default function ReplayPanel({ indicators = [], onError }) {
 
   const fetchReplay = async (config, restore = null) => {
     const activeSymbol = String(config.symbol || symbol).trim().toUpperCase();
-    if (!activeSymbol) return;
+    if (!activeSymbol || busy.current) return;
+    busy.current = true;
     setLoading(true); setPlaying(false); onError?.(""); setJournalStatus("");
     try {
       const response = await api.strategyLabReplayBars(
         activeSymbol, config.replayDate, config.replayEndDate, config.startTime,
-        config.timeframe, config.session, config.contextBars, config.contextDays,
+        config.timeframe, config.session, config.contextBars, config.contextDays, restore?.anchorTimestamp || null,
       );
-      setSymbol(activeSymbol); setSymbolInput(activeSymbol); setTimeframe(config.timeframe); setSession(config.session); setDataset(response);
+      setSymbol(activeSymbol); setSymbolInput(activeSymbol); setTimeframe(config.timeframe); setSession(config.session); setDataset({...response, config: {...config, symbol: activeSymbol}}); setIndicatorData({});
       const initial = response.initial_visible_count || 1;
       const restoredVisible = restore?.anchorTimestamp
-        ? countThroughTimestamp(response.bars, restore.anchorTimestamp, initial)
-        : restore ? Math.min(Number(restore.visibleCount || initial), response.bars.length) : initial;
+        ? countThroughTimestamp(response.timeline.map(timestamp => ({timestamp})), restore.anchorTimestamp, initial)
+        : response.visible_count || initial;
       const frontierCount = restore?.frontierTimestamp
-        ? countThroughTimestamp(response.bars, restore.frontierTimestamp, restoredVisible)
+        ? countThroughTimestamp(response.timeline.map(timestamp => ({timestamp})), restore.frontierTimestamp, restoredVisible)
         : restore ? Number(restore.furthestVisibleCount || restoredVisible) : initial;
-      const restoredFurthest = Math.min(Math.max(restoredVisible, frontierCount), response.bars.length);
+      const restoredFurthest = Math.min(Math.max(restoredVisible, frontierCount), response.timeline.length);
       setVisibleCount(restoredVisible); setFurthestVisibleCount(restoredFurthest);
-      setPosition(restore?.position || null); setClosedTrade(null); setPendingOrder(restore?.pendingOrder || null); setPendingClose(false);
+      setPosition(restore?.position || null); setClosedTrade(null); setPendingOrder(restore?.pendingOrder || null); setPendingClose(Boolean(restore?.pendingClose));
       setIntegrityCompromised(Boolean(restore?.integrityCompromised));
       setFollowReplay(restore?.followReplay ?? false);
       if (!restore?.preserveViewport) setJumpToken((value) => value + 1);
     } catch (error) { onError?.(error.message || String(error)); }
-    finally { setLoading(false); }
+    finally { setLoading(false); busy.current = false; }
   };
 
   const load = async () => {
@@ -184,10 +186,10 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const frontierTimestamp = bars[Math.max(0, furthestVisibleCount - 1)]?.timestamp || anchorTimestamp;
     if (!dataset) { setTimeframe(nextTimeframe); return; }
     await fetchReplay(
-      { symbol, replayDate, replayEndDate, startTime, timeframe: nextTimeframe, session, ...context },
+      { ...dataset.config, timeframe: nextTimeframe },
       {
         visibleCount, furthestVisibleCount, anchorTimestamp, frontierTimestamp,
-        position, pendingOrder, integrityCompromised, followReplay, preserveViewport: true,
+        position, pendingOrder, pendingClose, integrityCompromised, followReplay, preserveViewport: true,
       },
     );
   };
@@ -195,6 +197,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   useEffect(() => {
     if (!dataset || !selectedIndicators.length) return;
     let cancelled = false;
+    const {symbol, replayDate, replayEndDate, startTime, timeframe, session, ...context} = dataset.config;
     const pending = selectedIndicators.map((item) => {
       const signature = indicatorRequestSignature(item, dataset, symbol, timeframe, session, replayDate, replayEndDate, startTime, context);
       if (indicatorData[item.id]?._signature === signature) return null;
@@ -205,7 +208,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
       try {
         const data = await api.strategyLabReplayIndicator(
           symbol, replayDate, replayEndDate, startTime, item.key, timeframe, session,
-          context.contextBars, context.contextDays, item.params,
+          context.contextBars, context.contextDays, item.params, dataset.frontier,
         );
         return [item.id, { ...data, label: indicatorLabel(item, indicators, symbol), _signature: signature }];
       } catch { return null; }
@@ -240,6 +243,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
 
   const closeTrade = async (exitPriceValue, exitTime, reason, pos = position) => {
     if (!pos) return;
+    const {symbol, replayDate, replayEndDate, startTime, timeframe, session} = dataset.config;
     const mult = pos.direction === "long" ? 1 : -1;
     const gross = (Number(exitPriceValue) - pos.entry_price) * mult * pos.quantity;
     const trade = { ...pos, exit_price: Number(exitPriceValue), exit_time: exitTime, exit_reason: reason, net_pnl: gross };
@@ -296,20 +300,23 @@ export default function ReplayPanel({ indicators = [], onError }) {
   };
 
   const advance = async (count = 1) => {
-    if (!dataset || count <= 0) return;
+    if (!dataset || count <= 0 || busy.current) return;
+    busy.current = true; setLoading(true);
+    try {
     let cursor = visibleCount;
-    let remaining = count;
-    if (cursor < furthestVisibleCount) {
-      const known = Math.min(remaining, furthestVisibleCount - cursor);
-      cursor += known; remaining -= known;
-      setVisibleCount(cursor);
-      if (!remaining) return;
-    }
+    const targetCursor = Math.min(bars.length, cursor + count);
+    if (targetCursor === cursor) return;
+    const {symbol, replayDate, replayEndDate, startTime, timeframe, session, ...context} = dataset.config;
+    const response = await api.strategyLabReplayBars(symbol, replayDate, replayEndDate, startTime,
+      timeframe, session, context.contextBars, context.contextDays, bars[targetCursor-1].timestamp);
+    const revealedSource = response.source_bars;
+    if (cursor < furthestVisibleCount) cursor = Math.min(targetCursor, furthestVisibleCount);
+    const remaining = targetCursor - cursor;
     let active = position;
     let order = pendingOrder;
     let closeQueued = pendingClose;
     for (let i = 0; i < remaining && cursor < bars.length; i += 1) {
-      const bar = bars[cursor];
+      const bar = revealedSource[cursor];
       if (order && !active) {
         const fill = orderFill(bar, order);
         if (fill != null) {
@@ -336,13 +343,20 @@ export default function ReplayPanel({ indicators = [], onError }) {
       }
       cursor += 1;
     }
+    setDataset({...response, config: dataset.config}); setIndicatorData({});
     setVisibleCount(cursor); setFurthestVisibleCount((old) => Math.max(old, cursor));
+    } catch (error) { setPlaying(false); onError?.(error.message); }
+    finally { busy.current = false; setLoading(false); }
   };
 
-  const rewindOne = () => {
+  const rewindOne = async () => {
     if (!dataset || visibleCount <= (dataset.initial_visible_count || 1)) return;
     if (position || pendingOrder || pendingClose) { onError?.("Close/cancel the active replay trade or order before rewinding."); return; }
-    setPlaying(false); setVisibleCount((value) => Math.max(dataset.initial_visible_count || 1, value - 1)); setIntegrityCompromised(true); setFollowReplay(false);
+    const cursor = Math.max(dataset.initial_visible_count || 1, visibleCount - 1);
+    await fetchReplay(dataset.config, {
+      anchorTimestamp: bars[cursor-1].timestamp, frontierTimestamp: bars[furthestVisibleCount-1].timestamp,
+      integrityCompromised: true, followReplay: false, preserveViewport: true,
+    });
   };
 
   const jumpNextSession = async () => {
@@ -353,7 +367,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   };
 
   const placeOrder = (direction) => {
-    if (!dataset || !nextBar || !atFrontier) { onError?.("Return to the newest revealed candle before placing a replay order."); return; }
+    if (busy.current || !dataset || !nextBar || !atFrontier) { onError?.("Return to the newest revealed candle before placing a replay order."); return; }
     const explicitEntry = orderType === "market" ? null : Number(entryPrice);
     if (orderType !== "market" && (!Number.isFinite(explicitEntry) || explicitEntry <= 0)) { onError?.("Enter a valid order price for limit/stop entry."); return; }
     const amount = Number(positionAmount || 0);
@@ -390,11 +404,12 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const metrics = plannedMetrics(position);
 
   const saveCheckpoint = () => {
-    if (!dataset) return;
+    if (!dataset || busy.current) return;
     const payload = {
-      config: { symbol, replayDate, replayEndDate, startTime, timeframe, session, ...context },
+      config: dataset.config,
+      anchorTimestamp: currentBar?.timestamp, frontierTimestamp: bars[furthestVisibleCount-1]?.timestamp,
       visibleCount, furthestVisibleCount, integrityCompromised, followReplay,
-      selectedIndicators, position, pendingOrder, setup, positionAmount, orderType, entryPrice, stop, target,
+      selectedIndicators, position, pendingOrder, pendingClose, setup, positionAmount, orderType, entryPrice, stop, target,
     };
     localStorage.setItem("ledger.replay.checkpoint", JSON.stringify(payload)); setCheckpointStatus("Checkpoint saved in this browser.");
   };
@@ -402,7 +417,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const raw = localStorage.getItem("ledger.replay.checkpoint");
     if (!raw) { setCheckpointStatus("No saved Replay checkpoint found in this browser."); return; }
     try {
+      if (busy.current) return;
       const saved = JSON.parse(raw); const cfg = saved.config || {};
+      if (!saved.anchorTimestamp) throw new Error("This older checkpoint has no canonical frontier. Start a new Replay session.");
       setReplayDate(cfg.replayDate); setReplayEndDate(cfg.replayEndDate); setStartTime(cfg.startTime); setTimeframe(cfg.timeframe); setSession(cfg.session);
       setContextMode(cfg.contextDays === 1 ? "1d" : cfg.contextDays === 8 ? "5d" : cfg.contextDays === 31 ? "1m" : cfg.contextDays === 93 ? "3m" : "custom");
       if (cfg.contextBars != null) setContextBars(cfg.contextBars);
@@ -417,9 +434,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 pb-3">
         <div className="mr-2"><strong>{symbol}</strong> <span className="text-xs text-stone-500">{timeframe} · {dataset?.effective_session||session} · {fmt(currentBar?.timestamp, timeZone)}</span></div>
         {expanded && <div className="replay-fullscreen-timeframes">{TIMEFRAMES.map((tf) => <button key={tf} type="button" onClick={() => switchTimeframe(tf)} className={`chart-toolbar-btn ${timeframe === tf ? "active" : ""}`}>{tf}</button>)}</div>}
-        <button disabled={visibleCount <= (dataset.initial_visible_count || 1) || position || pendingOrder} onClick={rewindOne} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">◀ -1</button>
-        <button disabled={!nextBar} onClick={() => advance(1)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">▶ +1</button>
-        <button disabled={!nextBar} onClick={() => advance(5)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">+5</button>
+        <button disabled={visibleCount <= (dataset.initial_visible_count || 1) || position || pendingOrder} onClick={rewindOne} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">◀ -1 min</button>
+        <button disabled={!nextBar} onClick={() => advance(1)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">▶ +1 min</button>
+        <button disabled={!nextBar} onClick={() => advance(5)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">+5 min</button>
         <button disabled={!nextBar} onClick={() => setPlaying((value) => !value)} className="rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white">{playing ? "Pause" : "Play"}</button>
         <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))} className="rounded-md border border-stone-300 px-2 py-2 text-xs"><option value="0.5">0.5x</option><option value="1">1x</option><option value="2">2x</option><option value="5">5x</option><option value="10">10x</option></select>
         <button onClick={jumpNextSession} disabled={!nextBar} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">Next session</button>

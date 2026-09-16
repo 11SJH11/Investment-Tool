@@ -60,7 +60,7 @@ export const api = {
 
   journalTrades: (params = {}) => request(`/journal/trades?${queryString(params)}`),
   journalTrade: (id) => request(`/journal/trades/${id}`),
-  journalOptions: () => request("/journal/options"),
+  journalOptions: (timezone = "") => request(`/journal/options?${queryString({ timezone })}`),
   journalSettings: () => request("/journal/settings"),
   saveJournalSettings: (timezone) => request("/journal/settings", { method: "PUT", body: JSON.stringify({ timezone }) }),
   brokerStatus: () => request("/journal/brokers"),
@@ -96,10 +96,10 @@ export const api = {
   runBacktest: (payload) => request("/strategy-lab/backtest", { method: "POST", body: JSON.stringify(payload) }),
   strategyLabAuditBars: (symbol, timeframe, session, entry, exit, beforeBars = 50, afterBars = 20) =>
     request(`/strategy-lab/audit-bars?${queryString({ symbol, timeframe, session, entry, exit, before_bars: beforeBars, after_bars: afterBars })}`),
-  strategyLabReplayBars: (symbol, replayDate, replayEndDate, startTime, timeframe = "5m", session = "regular", contextBars = 100, contextDays = null) =>
-    request(`/strategy-lab/replay/bars?${queryString({ symbol, replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime, timeframe, session, context_bars: contextBars, context_days: contextDays })}`),
-  strategyLabReplayIndicator: (symbol, replayDate, replayEndDate, startTime, key, timeframe = "5m", session = "regular", contextBars = 100, contextDays = null, params = {}) =>
-    request(`/strategy-lab/replay/indicator?${queryString({ symbol, replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime, key, timeframe, session, context_bars: contextBars, context_days: contextDays, params_json: JSON.stringify(params || {}) })}`),
+  strategyLabReplayBars: (symbol, replayDate, replayEndDate, startTime, timeframe = "5m", session = "regular", contextBars = 100, contextDays = null, frontier = null) =>
+    request(`/strategy-lab/replay/bars?${queryString({ symbol, replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime, timeframe, session, context_bars: contextBars, context_days: contextDays, frontier })}`),
+  strategyLabReplayIndicator: (symbol, replayDate, replayEndDate, startTime, key, timeframe = "5m", session = "regular", contextBars = 100, contextDays = null, params = {}, frontier = null) =>
+    request(`/strategy-lab/replay/indicator?${queryString({ symbol, replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime, key, timeframe, session, context_bars: contextBars, context_days: contextDays, params_json: JSON.stringify(params || {}), frontier })}`),
 };
 
 export function backendFileUrl(path) {

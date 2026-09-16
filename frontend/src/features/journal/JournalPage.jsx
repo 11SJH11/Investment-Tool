@@ -15,9 +15,10 @@ export default function JournalPage({onDirtyChange}) {
   useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false);},[dirty,onDirtyChange]);
   const changed=()=>setRevision(v=>v+1);
   useEffect(()=>{let active=true;api.journalSettings().then(async s=>{const timezone=s.timezone||resolvedZone(localStorage.getItem('ledger.timeZone')||'UTC');if(!s.timezone)await api.saveJournalSettings(timezone);if(active)setZone(timezone);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[]);
-  useEffect(()=>{let active=true;Promise.all([api.playbook(),api.journalOptions()]).then(([p,o])=>{if(active){setPlaybooks(p.items||[]);setOptions(o);}}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[revision]);
+  useEffect(()=>{let active=true;api.playbook().then(p=>{if(active)setPlaybooks(p.items||[]);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[revision]);
   const navigate=fn=>{if(!dirty||confirm('Discard unsaved Journal changes?')){setDirty(false);fn();}};
-  const openDay=(date,target)=>navigate(()=>{setDay({date,account:filters.account||'Main'});if(target==='Trades')setFilters({...filters,date_from:date,date_to:date});setTab(target);});
+  useEffect(()=>{if(!zone)return;let active=true;api.journalOptions(zone).then(v=>{if(active)setOptions(v);}).catch(e=>setError(e.message));return()=>{active=false;};},[zone,revision]);
+  const openDay=(date,target)=>navigate(()=>{setDay({date,account:JSON.parse(filters.dimensions_json||'{}').account?.[0]||'Main'});if(target==='Trades')setFilters({...filters,date_from:date,date_to:date});setTab(target);});
   const shared={filters:{...Object.fromEntries(Object.entries(filters).filter(([,v])=>v!=='')),timezone:zone},timeZone:zone,playbooks,options,revision,onChanged:changed,onDirtyChange:setDirty};
   return <div className="max-w-[1550px]"><p className="text-xs uppercase tracking-widest text-stone-500">Trading journal</p><h2 className="mt-1 text-3xl font-semibold">Journal</h2><p className="mt-2 text-sm text-stone-600">Execution facts, your trading plan, and what you learned.</p><BrokerSyncPanel onSynced={changed}/>
     {error&&<p role="alert" className="my-3 text-sm text-red-700">{error}</p>}

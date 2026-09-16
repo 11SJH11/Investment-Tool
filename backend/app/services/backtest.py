@@ -11,6 +11,7 @@ from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as 
 from app.backtesting.strategies import strategy_registry
 from app.indicators import indicator_registry
 from app.services.chart_data import prepare_chart_bars
+from app.services.replay_snapshot import aggregate_revealed
 from app.services.market_data import MarketDataService
 from app.data.instruments import instrument_spec
 from app.storage.backtest_run_repository import BacktestRunRepository
@@ -228,6 +229,7 @@ class BacktestService:
         self, *, symbol: str, timeframe: str, session: str, replay_date: date,
         start_time: str, context_bars: int = 100, replay_end_date: date | None = None,
         context_days: int | None = None,
+        frontier: datetime | None = None,
     ) -> dict:
         """Load a multi-session historical replay dataset with a strict reveal boundary."""
         if self.market_data is None:
@@ -235,7 +237,7 @@ class BacktestService:
         symbol = str(symbol or "").strip().upper()
         if not symbol:
             raise ValueError("symbol is required")
-        if timeframe not in SUPPORTED_TIMEFRAMES:
+        if timeframe not in SUPPORTED_TIMEFRAMES or timeframe == "1d":
             raise ValueError(f"Unsupported timeframe '{timeframe}'")
         if session not in {"regular", "extended", "24h"}:
             raise ValueError("session must be regular, extended or 24h")
@@ -267,16 +269,17 @@ class BacktestService:
         replay_end = min(requested_end, latest_allowed)
 
         if context_days is not None:
-            frame, aggregation = self._load_replay_timeframe(symbol, timeframe, reveal_at - timedelta(days=context_days), replay_end, session)
+            frame, aggregation = self._load_replay_timeframe(symbol, "1m", reveal_at - timedelta(days=context_days), replay_end, session)
         else:
             before_days = _audit_calendar_days(timeframe, session, context_bars)
             frame = None
             for _ in range(6):
-                frame, aggregation = self._load_replay_timeframe(symbol, timeframe, reveal_at - timedelta(days=before_days), replay_end, session)
+                frame, aggregation = self._load_replay_timeframe(symbol, "1m", reveal_at - timedelta(days=before_days), replay_end, session)
                 if frame is not None and not frame.empty:
                     import pandas as pd
                     ts = pd.to_datetime(frame["timestamp"], utc=True)
-                    if int((ts < pd.Timestamp(reveal_at)).sum()) >= context_bars:
+                    known = aggregate_revealed(frame.loc[ts < pd.Timestamp(reveal_at)], timeframe, session, spec.session_profile)
+                    if len(known) >= context_bars:
                         break
                 before_days = min(900, max(before_days + 1, before_days * 2))
 
@@ -288,7 +291,7 @@ class BacktestService:
         local_dates = timestamps.dt.tz_convert(NY).dt.date
         requested_replay_date = replay_date
         effective_reveal_at = reveal_at
-        if int((local_dates == replay_date).sum()) <= 0:
+        if int((local_dates == replay_date).sum()) <= 0 or not (timestamps <= pd.Timestamp(reveal_at)).any():
             # A weekend/holiday should not make Replay unusable. Move the reveal
             # frontier to the first available displayed bar after the requested
             # start, while preserving the originally requested date in metadata.
@@ -299,11 +302,20 @@ class BacktestService:
             effective_reveal_at = timestamps.iloc[first_available_idx].to_pydatetime()
             replay_date = local_dates.iloc[first_available_idx]
         if context_days is None:
-            before_idx = working.index[timestamps < pd.Timestamp(effective_reveal_at)].tolist()
-            first_index = max(0, (before_idx[-1] + 1 if before_idx else 0) - context_bars)
-            working = working.iloc[first_index:].reset_index(drop=True)
+            initial = aggregate_revealed(working.loc[timestamps <= pd.Timestamp(effective_reveal_at)], timeframe, session, spec.session_profile)
+            first_stamp = initial.iloc[max(0, len(initial)-1-context_bars)].timestamp
+            working = working.loc[timestamps >= first_stamp].reset_index(drop=True)
             timestamps = pd.to_datetime(working["timestamp"], utc=True)
         visible = max(1, int((timestamps <= pd.Timestamp(effective_reveal_at)).sum()))
+        cutoff = pd.Timestamp(frontier or effective_reveal_at)
+        if cutoff.tzinfo is None:
+            raise ValueError("Replay frontier must include a timezone")
+        if cutoff < pd.Timestamp(effective_reveal_at) or cutoff > pd.Timestamp(replay_end):
+            raise ValueError("Replay frontier must lie within the replay horizon")
+        revealed = working.loc[timestamps <= cutoff].copy()
+        display = aggregate_revealed(revealed, timeframe, session, spec.session_profile)
+        display["timestamp"] = display["timestamp"].astype(str)
+        revealed["timestamp"] = revealed["timestamp"].astype(str)
         working["timestamp"] = working["timestamp"].astype(str)
         replay_dates = pd.to_datetime(working["timestamp"], utc=True).dt.tz_convert(NY).dt.date
         return {
@@ -314,26 +326,31 @@ class BacktestService:
             "context_bars": context_bars if context_days is None else None, "context_days": context_days,
             "initial_visible_count": min(visible, len(working)), "count": len(working),
             "replay_session_dates": sorted({d.isoformat() for d in replay_dates if d >= replay_date}),
-            "bars": working.to_dict(orient="records"),
+            "bars": display.to_dict(orient="records"),
+            "source_bars": revealed.to_dict(orient="records"),
+            "timeline": working["timestamp"].tolist(),
+            "frontier": str(revealed["timestamp"].iloc[-1]),
+            "visible_count": len(revealed),
             "provider": getattr(provider, "key", None),
             "feed": getattr(provider, "historical_feed", None),
             "adjustment": getattr(provider, "adjustment", None),
             "instrument": spec.as_dict(),
             "effective_session": session if spec.session_profile == "us_equity" else "24h",
             "source_timeframe": "1m" if timeframe not in {"1d", "1w"} else timeframe,
-            "aggregation": aggregation,
+            "aggregation": "replay_causal_aligned_from_1m",
         }
 
     def replay_indicator(
         self, *, symbol: str, timeframe: str, session: str, replay_date: date,
         start_time: str, context_bars: int, key: str, params: dict | None = None,
         replay_end_date: date | None = None, context_days: int | None = None,
+        frontier: datetime | None = None,
     ) -> dict:
         import pandas as pd
         replay = self.replay_bars(
             symbol=symbol, timeframe=timeframe, session=session, replay_date=replay_date,
             replay_end_date=replay_end_date, start_time=start_time, context_bars=context_bars,
-            context_days=context_days,
+            context_days=context_days, frontier=frontier,
         )
         try:
             indicator = indicator_registry.create(key)

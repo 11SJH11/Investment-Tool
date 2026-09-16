@@ -116,6 +116,7 @@ def replay_bars(
     session: str = Query(default="regular", pattern="^(regular|extended|24h)$"),
     context_bars: int = Query(default=100, ge=0, le=50_000),
     context_days: int | None = Query(default=None, ge=1, le=365),
+    frontier: datetime | None = None,
     services: AppServices = Depends(get_services),
 ):
     try:
@@ -124,7 +125,7 @@ def replay_bars(
             symbol=symbol, timeframe=timeframe, session=session,
             replay_date=date.fromisoformat(replay_date),
             replay_end_date=date.fromisoformat(replay_end_date) if replay_end_date else None,
-            start_time=start_time, context_bars=context_bars, context_days=context_days,
+            start_time=start_time, context_bars=context_bars, context_days=context_days, frontier=frontier,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -146,6 +147,7 @@ def replay_indicator(
     context_bars: int = Query(default=100, ge=0, le=50_000),
     context_days: int | None = Query(default=None, ge=1, le=365),
     params_json: str = "{}",
+    frontier: datetime | None = None,
     services: AppServices = Depends(get_services),
 ):
     try:
@@ -156,7 +158,7 @@ def replay_indicator(
         return services.backtest.replay_indicator(
             symbol=symbol, timeframe=timeframe, session=session, replay_date=date.fromisoformat(replay_date),
             replay_end_date=date.fromisoformat(replay_end_date) if replay_end_date else None,
-            start_time=start_time, context_bars=context_bars, context_days=context_days, key=key, params=params,
+            start_time=start_time, context_bars=context_bars, context_days=context_days, key=key, params=params, frontier=frontier,
         )
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

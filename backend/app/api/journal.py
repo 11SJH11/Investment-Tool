@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
 from app.brokers.base import BrokerHistoryError
-from app.core.journal_analytics import journal_zone
+from app.core.journal_analytics import journal_zone, parse_dimensions, filter_options
 from app.services.container import AppServices
 
 
@@ -117,6 +117,7 @@ class TradeUpdate(ReviewFields):
 
 
 class JournalReportRequest(BaseModel):
+    dimensions_json: str = "{}"
     account: str = ""
     external_account_key: str = ""
     playbook_id: int | None = None
@@ -175,6 +176,7 @@ class PlaybookRequest(BaseModel):
 
 def resolved_filters(req, services):
     try:
+        parse_dimensions(req.model_dump())
         return services.journal_repository.filters(req.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
@@ -222,9 +224,12 @@ def list_trades(filters: JournalReportRequest = Depends(), limit: int = Query(10
 
 
 @router.get("/journal/options")
-def journal_options(services: AppServices = Depends(get_services)):
+def journal_options(timezone: str = "", services: AppServices = Depends(get_services)):
     rows = services.journal_repository.filtered_trades()
-    return {key: sorted({str(t[key]) for t in rows if t.get(key)}) for key in ("source", "account", "ticker", "setup_grade", "market_condition", "session_time", "setup")}
+    try:
+        return filter_options(rows, timezone or services.database.get_setting("journal_timezone"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/journal/trades/{trade_id}")

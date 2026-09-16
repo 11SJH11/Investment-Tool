@@ -48,7 +48,7 @@ def test_replay_uses_one_minute_as_canonical_intraday_source():
     )
     assert market.calls and set(market.calls) == {"1m"}
     assert replay["source_timeframe"] == "1m"
-    assert replay["aggregation"] == "session_aligned_from_1m"
+    assert replay["aggregation"] == "replay_causal_aligned_from_1m"
     times = pd.to_datetime([row["timestamp"] for row in replay["bars"]], utc=True)
     assert all(delta.total_seconds() == 300 for delta in times.to_series().diff().dropna())
 
@@ -71,7 +71,9 @@ def test_replay_1m_and_5m_are_derived_from_same_minute_series():
     one_by_time = {str(pd.Timestamp(row["timestamp"]).floor("min")): row for row in one["bars"]}
     target_five = next(row for row in five["bars"] if pd.Timestamp(row["timestamp"]) == pd.Timestamp("2026-06-02T14:00:00Z"))
     start = pd.Timestamp(target_five["timestamp"])
-    minute_rows = [one_by_time[str((start + pd.Timedelta(minutes=i)).floor("min"))] for i in range(5)]
+    # At 10:00 only the first canonical minute of the 10:00 bucket is revealed.
+    minute_rows = [one_by_time[str(start.floor("min"))]]
+    assert target_five["is_partial"] is True
     assert target_five["open"] == minute_rows[0]["open"]
     assert target_five["close"] == minute_rows[-1]["close"]
     assert target_five["high"] == max(row["high"] for row in minute_rows)

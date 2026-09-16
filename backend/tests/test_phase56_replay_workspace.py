@@ -36,9 +36,10 @@ def test_replay_can_continue_across_multiple_sessions():
         start_time="09:30", context_bars=5,
     )
     assert replay["replay_session_dates"] == ["2026-06-02", "2026-06-03", "2026-06-04"]
-    future = replay["bars"][replay["initial_visible_count"]:]
-    assert any(str(row["timestamp"]).startswith("2026-06-03") for row in future)
-    assert any(str(row["timestamp"]).startswith("2026-06-04") for row in future)
+    future = replay["timeline"][replay["initial_visible_count"]:]
+    assert any(stamp.startswith("2026-06-03") for stamp in future)
+    assert any(stamp.startswith("2026-06-04") for stamp in future)
+    assert all(pd.Timestamp(row["timestamp"]) <= pd.Timestamp(replay["frontier"]) for row in replay["bars"])
 
 
 def test_replay_calendar_context_can_span_prior_days():
