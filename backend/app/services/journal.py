@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 
 from app.storage.journal_repository import JournalRepository
+from app.core.journal_fields import REVIEW_FIELDS
 
 
 MANUAL_SOURCES = {"live_manual", "paper_manual"}
@@ -30,6 +32,13 @@ class JournalService:
         current = self.repository.get_trade(trade_id)
         if current is None:
             return None
+        if str(current["source"]).startswith("broker_"):
+            if set(payload) - REVIEW_FIELDS:
+                raise ValueError("Broker execution facts and source metadata are read-only")
+            self._validate_review(payload)
+            return self.repository.update_trade(trade_id, payload)
+        if str(payload.get("source") or "").startswith("broker_"):
+            raise ValueError("Use broker sync to import broker trades")
         merged = {**current, **payload}
         prepared = self._prepare_trade(merged, creating=False)
         changed = {key: prepared[key] for key in prepared if current.get(key) != prepared.get(key)}
@@ -37,6 +46,16 @@ class JournalService:
 
     def _prepare_trade(self, payload: dict, *, creating: bool) -> dict:
         data = dict(payload)
+        self._validate_review(data)
+        for key in ("opened_at", "closed_at"):
+            if data.get(key):
+                try:
+                    stamp = datetime.fromisoformat(str(data[key]).replace("Z", "+00:00"))
+                    data[key] = (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).isoformat()
+                except ValueError:
+                    raise ValueError(f"{key} must be an ISO timestamp") from None
+        if data.get("opened_at") and data.get("closed_at") and datetime.fromisoformat(data["closed_at"]) < datetime.fromisoformat(data["opened_at"]):
+            raise ValueError("Exit time cannot precede entry time")
         source = str(data.get("source") or "live_manual")
         if source not in MANUAL_SOURCES | AUTOMATED_SOURCES and not source.startswith("broker_"):
             raise ValueError("Unknown trade source")
@@ -66,7 +85,7 @@ class JournalService:
         if direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
         data["direction"] = direction
-        data["fees"] = float(data.get("fees") or 0)
+        data["fees"] = _number(data.get("fees")) or 0
         if data["fees"] < 0:
             raise ValueError("fees cannot be negative")
 
@@ -86,8 +105,10 @@ class JournalService:
             raise ValueError("quantity must be greater than zero")
         data["position_currency"] = str(data.get("position_currency") or "USD").upper()
 
-        # Objective trade maths is derived for both manual and automated sources.
-        self._compute_metrics(data)
+        # Broker adapters own their accounting; generic price-difference maths
+        # must never invent or replace broker account-currency P&L.
+        if not source.startswith("broker_"):
+            self._compute_metrics(data)
 
         closed = bool(data.get("closed_at") or data.get("exit_price") is not None)
         data["status"] = "closed" if closed else "open"
@@ -95,6 +116,32 @@ class JournalService:
             data.setdefault("name", "Trade")
             data.setdefault("account", "Main")
         return data
+
+    def _validate_review(self, data):
+        review = data.get("review_data") or {}
+        if not isinstance(review, dict):
+            raise ValueError("Review data must be an object")
+        for key in ("mistakes", "emotions", "confluences"):
+            if key in review and (not isinstance(review[key], list) or any(not isinstance(v, str) for v in review[key])):
+                raise ValueError(f"{key} must be a list of labels")
+        custom = review.get("custom", {})
+        if not isinstance(custom, dict) or any(not isinstance(v, (str, list, bool, int, float, type(None))) for v in custom.values()):
+            raise ValueError("Custom review fields must contain simple values")
+        if any(isinstance(v, list) and any(not isinstance(item, str) for item in v) for v in custom.values()):
+            raise ValueError("Custom multi-choice answers must contain labels")
+        for key in ("structure_alignment", "context_timeframe", "entry_relativity", "shift", "went_well", "went_wrong", "do_differently"):
+            if key in review and not isinstance(review[key], str):
+                raise ValueError(f"{key} must be text")
+        labels = review.get("custom_labels", {})
+        if not isinstance(labels, dict) or any(not isinstance(v, str) for v in labels.values()):
+            raise ValueError("Custom labels must be text")
+        if data.get("plan_followed") not in (None, "", "Yes", "No", "Partially"):
+            raise ValueError("Plan followed must be Yes, No or Partially")
+        if data.get("playbook_id"):
+            with self.repository.database.connect() as connection:
+                exists = connection.execute("SELECT id FROM playbook_entries WHERE id=?", (data["playbook_id"],)).fetchone()
+            if not exists:
+                raise ValueError("Playbook not found")
 
     def _compute_metrics(self, data: dict) -> None:
         entry = _number(data.get("entry_price"))
@@ -156,7 +203,10 @@ class JournalService:
 def _number(value):
     if value in (None, ""):
         return None
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Trade numbers must be finite")
+    return number
 
 
 def _planned_rr(*, entry, stop, target, direction):

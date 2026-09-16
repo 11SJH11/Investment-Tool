@@ -63,7 +63,9 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
       rightPriceScale: { borderColor: "#333333" },
       timeScale: {
         borderColor: "#333333", timeVisible: true, secondsVisible: false,
-        tickMarkFormatter: (time) => chartTime(time, timeZone, false),
+        tickMarkFormatter: (time) => timeframe === "1d" && trade.metadata?.strategy_version === "momentum_vcp_breakout_baseline_v1"
+          ? new Intl.DateTimeFormat("en-GB", { timeZone: resolvedZone(timeZone), day: "2-digit", month: "short" }).format(new Date(Number(time) * 1000))
+          : chartTime(time, timeZone, false),
       },
       localization: { timeFormatter: (time) => chartTime(time, timeZone, true) },
       crosshair: { vertLine: { color: "#737373" }, horzLine: { color: "#737373" } },
@@ -95,6 +97,8 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
         [meta.swing_level_broken, "Type 3 Swing", 1, 2],
         [meta.impulse_high, "Impulse High", 1, 3],
         [meta.impulse_low, "Impulse Low", 1, 3],
+        [meta.pivot, "Base pivot", 2, 2],
+        [meta.base_low, "Base low", 1, 3],
       ];
       const seenLevels = new Set();
       levels.forEach(([price, title, lineWidth, lineStyle]) => {
@@ -113,8 +117,13 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
     if (showMarkers) {
       const meta = trade.metadata || {};
       const markers = [];
+      for (const [stamp, label] of [[meta.base_start, "BASE START"], [meta.base_end, "BASE END"], [meta.breakout_time, "BREAKOUT"]]) {
+        if (!stamp) continue;
+        const time = nearest(seconds(stamp));
+        if (time != null) markers.push({ time, position: "aboveBar", shape: "circle", color: "#a78bfa", text: label });
+      }
       const entryTime = nearest(seconds(trade.entry_time));
-      const exitTime = nearest(seconds(trade.exit_time));
+      const exitTime = nearest(seconds(meta.exit_bar_time || trade.exit_time));
       if (entryTime != null) markers.push({
         time: entryTime, position: trade.direction === "long" ? "belowBar" : "aboveBar",
         shape: trade.direction === "long" ? "arrowUp" : "arrowDown", color: "#60a5fa", text: `ENTRY ${money(trade.entry_price)}`,

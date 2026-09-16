@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -75,7 +76,7 @@ class JsonHttpClient:
                     continue
                 break
             except httpx.HTTPError as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                last_error = type(exc).__name__
                 temporary.unlink(missing_ok=True)
                 if attempt < self.max_attempts:
                     time.sleep(0.5 * attempt)
@@ -105,7 +106,7 @@ class JsonHttpClient:
                     continue
                 break
             except httpx.HTTPError as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                last_error = type(exc).__name__
                 if attempt < self.max_attempts:
                     time.sleep(0.25 * attempt)
                     continue
@@ -166,7 +167,8 @@ def _redact_url(value: str) -> str:
             (key, "<redacted>" if key.lower() in _SENSITIVE_QUERY_KEYS else val)
             for key, val in pairs
         ]
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(safe_pairs), parts.fragment))
+        path = re.sub(r"(/accounts/)[^/]+", r"\1<redacted>", parts.path)
+        return urlunsplit((parts.scheme, parts.netloc, path, urlencode(safe_pairs), parts.fragment))
     except Exception:
         return _redact_text(value)
 
@@ -175,6 +177,8 @@ def _redact_text(value: str) -> str:
     # Best-effort fallback for provider-supplied error strings containing obvious
     # key=value credentials. Query URLs are handled more rigorously by _redact_url.
     text = str(value or "")
+    text = re.sub(r"(?i)Bearer\s+[^\s\"',;]+", "Bearer <redacted>", text)
+    text = re.sub(r'(?i)([\"\x27]?(?:access_token|api_key|apikey|token|authorization)[\"\x27]?\s*:\s*)[\"\x27]?[^\s\"\x27,;}]+', r'\1<redacted>', text)
     for key in _SENSITIVE_QUERY_KEYS:
         marker = f"{key}="
         lower = text.lower()

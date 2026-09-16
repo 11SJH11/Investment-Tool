@@ -94,6 +94,10 @@ class Settings(BaseSettings):
         return bool(self.oanda_access_token)
 
     @property
+    def oanda_journal_configured(self) -> bool:
+        return bool((self.oanda_access_token or "").strip() and (self.oanda_account_id or "").strip() and self.oanda_environment.strip().lower() in {"practice", "live"})
+
+    @property
     def autochartist_configured(self) -> bool:
         return bool(
             self.autochartist_enabled

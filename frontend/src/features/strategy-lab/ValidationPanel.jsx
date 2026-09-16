@@ -151,6 +151,7 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
   };
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+    {(strategy?.key === "momentum_vcp_breakout_baseline_v1" || savedExperiment?.runs?.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1")) && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Historical universe may contain survivorship bias. Each period needs at least 250 prior daily observations within its selected dates; short validation slices may contain only warm-up.</p>}
     {savedExperiment && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><span><strong>Opened saved validation experiment:</strong> {savedExperiment.experiment_group}. These are stored snapshots; nothing was rerun.</span><button onClick={onClearSavedExperiment} className="rounded-md border border-blue-300 bg-white px-3 py-2">Start a new experiment</button></div>}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h3 className="font-semibold">Development → validation → out-of-sample</h3><p className="mt-1 max-w-4xl text-sm text-stone-600">Run the <strong>same strategy and execution settings</strong> across three non-overlapping periods. Refine rules on development data, use validation to challenge them, and keep out-of-sample as untouched as practical.</p></div>

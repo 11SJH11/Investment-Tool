@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 
 from app.backtesting.engine import BacktestEngine
 from app.backtesting.models import BacktestConfig
+from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
+from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as MOMENTUM_KEY
 from app.backtesting.strategies import strategy_registry
 from app.indicators import indicator_registry
 from app.services.chart_data import prepare_chart_bars
@@ -82,6 +84,11 @@ class BacktestService:
             raise ValueError("session must be auto, regular, extended or 24h")
         profiles = {self._instrument(symbol).session_profile for symbol in symbols}
         session = ("regular" if profiles == {"us_equity"} else "24h") if requested_session == "auto" else requested_session
+        momentum = strategy_key == MOMENTUM_KEY
+        if momentum and (primary != "1d" or profiles != {"us_equity"}
+                         or session != "regular" or not bool(payload.get("allow_overnight", True))
+                         or payload.get("additional_timeframes")):
+            raise ValueError("Momentum baseline requires US equity daily bars, regular/auto session, overnight enabled and no extra timeframes")
 
         start_date = _as_date(payload.get("start_date"), "start_date")
         end_date = _as_date(payload.get("end_date"), "end_date")
@@ -105,6 +112,8 @@ class BacktestService:
             frames: dict = {}
             for timeframe in requested_timeframes:
                 frames[timeframe] = self._load_timeframe(symbol, timeframe, start, end, session)
+                if momentum:
+                    frames[timeframe] = completed_daily_frame(frames[timeframe], end)
             frames_by_symbol[symbol] = frames
 
         params = dict(payload.get("strategy_params") or {})
@@ -163,6 +172,9 @@ class BacktestService:
                 },
             },
         })
+        if momentum:
+            annotate_result(result, frames_by_symbol, strategies[symbols[0]].params)
+            payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
         if self.runs is not None and bool(payload.get("save_run", True)):
             saved = self.runs.create(
                 config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),

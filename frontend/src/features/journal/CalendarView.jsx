@@ -1,31 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { api } from "../../api/client";
-import { money, rValue, sourceLabels } from "./journalUtils";
-
-function monthValue() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,7); }
-
-export default function CalendarView() {
-  const [month, setMonth] = useState(monthValue());
-  const [source, setSource] = useState("");
-  const [days, setDays] = useState([]);
-  const [error, setError] = useState("");
-  useEffect(() => { api.journalCalendar(month, source).then((r) => setDays(r.days || [])).catch((e) => setError(e.message)); }, [month, source]);
-  const map = useMemo(() => Object.fromEntries(days.map((d) => [d.day, d])), [days]);
-  const [year, mon] = month.split("-").map(Number);
-  const first = new Date(year, mon - 1, 1);
-  const start = new Date(year, mon - 1, 1 - first.getDay());
-  const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
-
-  return <>
-    <div className="flex flex-wrap items-end gap-3"><label><span className="mb-1 block text-xs text-stone-500">Month</span><input type="month" className="input w-44" value={month} onChange={(e) => setMonth(e.target.value)} /></label><label><span className="mb-1 block text-xs text-stone-500">Source</span><select className="input w-52" value={source} onChange={(e) => setSource(e.target.value)}><option value="">All sources</option>{Object.entries(sourceLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></label></div>
-    {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-    <div className="mt-5 grid grid-cols-7 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-      {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => <div key={d} className="border-b border-stone-200 bg-stone-50 px-3 py-2 text-xs font-medium text-stone-500">{d}</div>)}
-      {cells.map((date) => {
-        const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-        const day = map[key]; const inMonth = date.getMonth() === mon - 1; const pnl = Number(day?.pnl_amount || 0); const r = Number(day?.r_total || 0);
-        return <div key={key} className={`min-h-28 border-b border-r border-stone-100 p-2 ${inMonth ? "" : "bg-stone-50/60 text-stone-300"}`}><div className="text-right text-xs">{date.getDate()}</div>{day && <div className={`mt-2 rounded-md p-2 text-xs ${pnl > 0 || (pnl === 0 && r > 0) ? "bg-emerald-50 text-emerald-800" : pnl < 0 || r < 0 ? "bg-red-50 text-red-800" : "bg-stone-100 text-stone-700"}`}><p className="font-semibold">{day.trades} trade{day.trades === 1 ? "" : "s"}</p><p className="mt-1">{day.wins}W · {day.losses}L · {day.breakevens} B/E</p><p className="mt-1">{rValue(day.r_total)} · {money(day.pnl_amount)}</p></div>}</div>;
-      })}
-    </div>
-  </>;
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
+import { journalToday, pnlSummary, rValue } from './journalUtils';
+export default function CalendarView({filters,timeZone,revision,onOpenDay}) {
+  const [month,setMonth]=useState(()=>journalToday(timeZone).slice(0,7)),[days,setDays]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);const query=JSON.stringify(filters);
+  useEffect(()=>{if(!month)return;let active=true;setLoading(true);setError('');api.journalCalendar(month,JSON.parse(query)).then(r=>{if(active)setDays(r.days||[]);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[month,query,revision]);
+  const [year,mon]=month.split('-').map(Number),first=new Date(Date.UTC(year,mon-1,1));
+  const cells=month?Array.from({length:42},(_,i)=>new Date(Date.UTC(year,mon-1,1-first.getUTCDay()+i))):[];
+  const map=Object.fromEntries(days.map(d=>[d.day,d]));
+  return <div className="space-y-4"><label className="text-sm">Month <input aria-label="Calendar month" type="month" className="input ml-2 inline-block w-44" value={month} onChange={e=>{if(e.target.value){setMonth(e.target.value);setSelected(null);}}}/></label><p className="text-xs text-stone-500">Each day groups trades by entry time in {timeZone}. Select a day for trades or a Daily Review; Daily Review includes all trades for its selected account.</p>{error&&<p role="alert" className="text-red-700">{error}</p>}{loading?<p className="p-8 text-center text-stone-500">Loading calendar...</p>:<div className="overflow-x-auto rounded-xl border bg-white"><div className="grid min-w-[650px] grid-cols-7">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="bg-stone-50 p-3 text-xs text-stone-500">{d}</div>)}{cells.map(date=>{const key=date.toISOString().slice(0,10),day=map[key],inMonth=key.startsWith(month);return <button key={key} aria-label={`${key}, ${day?.trades||0} trades`} onClick={()=>setSelected(key)} className={`min-h-28 border-b border-r p-2 text-left ${selected===key?'bg-blue-50':inMonth?'':'bg-stone-50 text-stone-400'}`}><p className="text-right text-xs">{date.getUTCDate()}</p>{day&&<div className="mt-2 space-y-1 text-xs"><p className="font-semibold">{day.trades} trades</p><p>{day.wins}W / {day.losses}L / {day.breakevens} BE</p><p>{rValue(day.total_r)}</p><p className="break-words">{pnlSummary(day)}</p></div>}</button>;})}</div></div>}{selected&&<div className="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4"><strong className="text-sm">{selected}</strong><button className="mini-btn" onClick={()=>onOpenDay(selected,'Trades')}>View day trades</button><button className="mini-btn" onClick={()=>onOpenDay(selected,'Daily Review')}>Open Daily Review</button></div>}</div>;
 }

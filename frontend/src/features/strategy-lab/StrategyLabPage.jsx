@@ -67,6 +67,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
       setSymbols(["XAUUSD"]);
       setEntryWindows([]);
       setForm((old) => ({ ...old, primary_timeframe: "1m", session: "auto", allow_overnight: "true", force_close_time: "" }));
+    } else if (strategy.key === "momentum_vcp_breakout_baseline_v1") {
+      setEntryWindows([]);
+      setForm((old) => ({ ...old, primary_timeframe: "1d", session: "auto", allow_overnight: "true", force_close_time: "" }));
     } else if (strategy.timeframes?.[0]) {
       setForm((old) => ({ ...old, primary_timeframe: strategy.timeframes[0] }));
     }
@@ -241,6 +244,8 @@ function BacktestResults({ result }) {
   }, [trades]);
 
   return <>
+    {(result.data?.warnings || []).map((warning) => <p key={warning} className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">{warning}</p>)}
+    {result.data?.portfolio_scope && <p className="mt-3 text-xs text-stone-600">{result.data.portfolio_scope}</p>}
     {result.saved_run && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">Saved as run <strong>#{result.saved_run.id}</strong>{result.saved_run.name ? ` · ${result.saved_run.name}` : ""} · {String(result.saved_run.test_role || "development").replaceAll("_", " ")}. Open the <strong>Runs</strong> tab later without re-running it.</div>}
     <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
       <Stat label="Starting balance" value={money(m.starting_balance)} /><Stat label="Ending balance" value={money(m.ending_balance)} /><Stat label="Net P&L" value={money(m.net_pnl)} /><Stat label="Return" value={pct(m.return_pct)} /><Stat label="Trades" value={m.trades ?? "—"} />{result.setup_metrics && <><Stat label="Setups" value={result.setup_metrics.setups ?? "—"} /><Stat label="Entry fill rate" value={pct(result.setup_metrics.entry_fill_rate_pct)} /></>}<Stat label="Win rate" value={pct(m.win_rate_pct)} /><Stat label="Expectancy" value={r(m.expectancy_r)} /><Stat label="Total R" value={r(m.total_r)} /><Stat label="Avg planned R:R" value={m.average_planned_rr == null ? "—" : `${number(m.average_planned_rr)}:1`} /><Stat label="Profit factor (R)" value={number(m.profit_factor_r)} /><Stat label="Max drawdown" value={pct(m.max_drawdown_pct)} /><Stat label="Longest losing streak" value={m.longest_losing_streak ?? "—"} />
@@ -255,6 +260,15 @@ function BacktestResults({ result }) {
 
     {expandedChart && <div className="fixed inset-3 z-40 overflow-auto rounded-xl border border-stone-300 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{expandedChart === "drawdown" ? "Drawdown" : performanceMode === "equity" ? "Equity" : performanceMode === "return" ? "Return" : "Cumulative R"}</h3><p className="mt-1 text-xs text-stone-500">{TIMEZONE_OPTIONS.find((item) => item.value === chartZone)?.label || chartZone}</p></div><button onClick={() => setExpandedChart(null)} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Close expanded chart</button></div><PerformanceChart points={result.equity_curve || []} startingBalance={m.starting_balance} mode={expandedChart === "drawdown" ? "drawdown" : performanceMode} timeZone={chartZone} expanded onTradeSelect={openEventTrade} /></div>}
 
+    {result.strategy?.key === "momentum_vcp_breakout_baseline_v1" && <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5">
+      <h3 className="font-semibold">Detected breakout setups</h3>
+      <p className="mt-1 text-xs text-stone-500">All qualifying breakouts, including entries rejected at the next open. Setup counts are separate from portfolio performance.</p>
+      {!(result.setups || []).length && <p className="mt-3 text-sm">No qualifying setups in the completed data after warm-up.</p>}
+      {(result.setups || []).map((setup, index) => <details key={`${setup.symbol}-${setup.detected_at}-${index}`} className="mt-3 rounded-lg border border-stone-200 p-3">
+        <summary className="cursor-pointer text-sm"><strong>{setup.symbol}</strong> · {setup.metadata?.breakout_date} · {setup.status.replaceAll("_", " ")}{setup.resolution_reason ? ` · ${setup.resolution_reason.replaceAll("_", " ")}` : ""}</summary>
+        <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">{Object.entries({ ...setup.metadata, ...setup.outcome }).filter(([, value]) => typeof value !== "object" || value === null).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-stone-500">{key.replaceAll("_", " ")}</dt><dd className="break-words">{value == null ? "—" : typeof value === "number" ? number(value) : String(value)}</dd></div>)}</dl>
+      </details>)}
+    </section>}
     <AnalysisPanel analysis={result.analysis || {}} />
     {auditTrade && <TradeAuditChart trade={auditTrade} timeframe={result.primary_timeframe} session={result.session} onClose={() => setAuditTrade(null)} />}
 
@@ -283,6 +297,7 @@ function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment })
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
     <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Runs, validation suites and sensitivity experiments are separated so validation cards do not permanently consume the Runs screen.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
+    {runs.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1") && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Momentum stock runs: Historical universe may contain survivorship bias.</p>}
     <div className="mt-4 flex gap-2">{[["all","All runs"],["validation","Validation suites"],["sensitivity","Sensitivity"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
     {compared.length === 2 && view !== "validation" && <RunComparison a={compared[0]} b={compared[1]} />}
     {view === "validation" && <div className="mt-5">

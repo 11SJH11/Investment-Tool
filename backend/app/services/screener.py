@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import zipfile
 from collections import defaultdict
 
@@ -46,7 +47,6 @@ class ScreenerService:
     def refresh_price_snapshots(self, *, chunk_size: int = 200, limit: int | None = None) -> dict:
         if self.alpaca is None:
             raise RuntimeError("Alpaca provider is not configured")
-        symbols = [item["ticker"] for item in self.symbols.search(limit=500, offset=0)]
         # SymbolRepository intentionally caps search at 500, so read the complete list directly.
         with self.symbols.database.connect() as connection:
             query = "SELECT ticker FROM securities WHERE tradable=1 ORDER BY ticker"
@@ -58,14 +58,23 @@ class ScreenerService:
 
         stored = 0
         failures = 0
-        for start in range(0, len(symbols), max(1, chunk_size)):
+        diagnostics = []
+        chunk_size = max(1, chunk_size)
+        for start in range(0, len(symbols), chunk_size):
             chunk = symbols[start:start + chunk_size]
             try:
                 snapshots = self.alpaca.get_latest_bars(chunk)
                 stored += self.repository.upsert_snapshots(snapshots, f"alpaca-{self.alpaca.live_feed}")
-            except Exception:
+                missing = sorted(set(chunk) - {item["ticker"] for item in snapshots})
+                if missing:
+                    failures += len(missing)
+                    diagnostics.append({"batch": start // chunk_size + 1, "symbols": missing, "reason": "No usable bar returned"})
+            except Exception as exc:
                 failures += len(chunk)
-        return {"requested": len(symbols), "stored": stored, "failed": failures, "feed": self.alpaca.live_feed}
+                reason = type(exc).__name__
+                diagnostics.append({"batch": start // chunk_size + 1, "symbols": chunk, "reason": reason})
+                logging.getLogger(__name__).warning("Alpaca price batch %s failed (%s), %s symbols", start // chunk_size + 1, reason, len(chunk))
+        return {"requested": len(symbols), "stored": stored, "failed": failures, "feed": self.alpaca.live_feed, "diagnostics": diagnostics}
 
     def refresh_bulk_fundamentals(self, *, max_companies: int | None = None) -> dict:
         if self.sec is None:

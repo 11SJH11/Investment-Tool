@@ -130,6 +130,8 @@ class BacktestEngine:
                 if symbol in pending_entries and symbol not in positions:
                     pending = pending_entries[symbol]
                     signal: EntrySignal = pending["signal"]
+                    if "available_at" in bar and timestamp_dt <= pending["decision_time"]:
+                        continue
                     raw_fill = _entry_fill_price(signal, bar)
                     if raw_fill is None:
                         pending["age"] = int(pending.get("age", 0)) + 1
@@ -145,6 +147,14 @@ class BacktestEngine:
                         timestamp_dt, symbol, entries_by_day, day_results, cooldown_until
                     )
                     record = setup_records[pending["record_index"]]
+                    if signal.target_r is not None:
+                        record["next_open"] = float(bar["open"])
+                        candidate_entry = _apply_market_costs(float(raw_fill), signal.direction, entering=True,
+                            slippage_bps=self.config.slippage_bps, spread_bps=self.config.spread_bps)
+                        record["candidate_entry"] = candidate_entry
+                        if signal.stop_loss is not None:
+                            record["risk_per_share"] = abs(candidate_entry - signal.stop_loss)
+                            record["stop_distance_pct"] = 100 * record["risk_per_share"] / candidate_entry
                     if not allowed:
                         rejected_signals.append(_rejected(symbol, timestamp_dt, reason))
                         record.update({"status": "filtered", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": reason})
@@ -166,6 +176,8 @@ class BacktestEngine:
                             balance -= outcome.entry_commission
                             entries_by_day[timestamp_dt.astimezone(self._tz).date()] += 1
                             record.update({"status": "filled", "entry_time": timestamp_dt.isoformat(), "fill_price": float(outcome.entry_price)})
+                            if signal.target_r is not None:
+                                record["take_profit"] = outcome.take_profit
                         else:
                             rejected_signals.append(_rejected(symbol, timestamp_dt, outcome))
                             record.update({"status": "rejected", "resolution_time": timestamp_dt.isoformat(), "resolution_reason": outcome})
@@ -197,7 +209,11 @@ class BacktestEngine:
 
             # The timestamp stored on a bar is its start. The decision time is its
             # close, clamped to the selected session end for partial 1h/4h bars.
-            decision_time = self._bar_close_time(timestamp_dt, primary_timeframe)
+            close_times = {self._bar_close_time(timestamp_dt, primary_timeframe,
+                           primary_rows[symbol][timestamp]) for symbol in symbols_now}
+            if len(close_times) != 1:
+                raise ValueError("Bars sharing an open must share their availability time")
+            decision_time = close_times.pop()
 
             # 4) Optional intraday flattening. This occurs at the bar close, after
             # stops/targets have had the opportunity to execute during that bar.
@@ -243,6 +259,18 @@ class BacktestEngine:
                 )
                 decision = strategy.on_bar(ctx)
                 if isinstance(decision, EntrySignal):
+                    if decision.rejection_reason:
+                        setup_records.append({
+                            "symbol": symbol, "direction": decision.direction,
+                            "detected_at": decision_time.isoformat(), "order_type": decision.order_type,
+                            "entry_price": decision.entry_price, "stop_loss": decision.stop_loss,
+                            "take_profit": decision.take_profit, "status": "rejected",
+                            "reason": decision.reason, "metadata": dict(decision.metadata),
+                            "resolution_time": decision_time.isoformat(),
+                            "resolution_reason": decision.rejection_reason,
+                        })
+                        rejected_signals.append(_rejected(symbol, decision_time, decision.rejection_reason))
+                        continue
                     if symbol in force_boundary_symbols:
                         rejected_signals.append(_rejected(symbol, decision_time, "session_boundary"))
                         continue
@@ -264,8 +292,10 @@ class BacktestEngine:
                         allowed, reason = self._entry_allowed(
                             decision_time, symbol, entries_by_day, day_results, cooldown_until
                         )
+                        if decision.fill_time_filters_only:
+                            allowed, reason = True, ""
                         if allowed:
-                            pending_entries[symbol] = {"signal": decision, "age": 0, "record_index": record_index}
+                            pending_entries[symbol] = {"signal": decision, "age": 0, "record_index": record_index, "decision_time": decision_time}
                         else:
                             rejected_signals.append(_rejected(symbol, decision_time, reason))
                             setup_record.update({"status": "filtered", "resolution_time": decision_time.isoformat(), "resolution_reason": reason})
@@ -294,7 +324,7 @@ class BacktestEngine:
             if bar is None:
                 continue
             bar_start = _to_datetime(pd.Timestamp(bar["timestamp"]))
-            exit_time = self._bar_close_time(bar_start, primary_timeframe)
+            exit_time = self._bar_close_time(bar_start, primary_timeframe, bar)
             trade, balance = self._close_position(
                 position, exit_time, float(bar["close"]), "end_of_data", balance,
                 market_fill=True,
@@ -378,7 +408,11 @@ class BacktestEngine:
         if self.config.cooldown_minutes < 0:
             raise ValueError("cooldown_minutes cannot be negative")
 
-    def _bar_close_time(self, timestamp: datetime, primary_timeframe: str) -> datetime:
+    def _bar_close_time(self, timestamp: datetime, primary_timeframe: str, bar=None) -> datetime:
+        available_at = (bar.get("available_at") if isinstance(bar, pd.Series)
+                        else getattr(bar, "available_at", None))
+        if available_at is not None:
+            return _to_datetime(pd.Timestamp(available_at))
         candidate = timestamp + timeframe_delta(primary_timeframe)
         if primary_timeframe.endswith("d") or primary_timeframe.endswith("w"):
             return candidate
@@ -440,6 +474,12 @@ class BacktestEngine:
         balance: float,
         current_exposure: float,
     ) -> Position | str:
+        if signal.min_open_exclusive is not None and raw_open <= signal.min_open_exclusive:
+            return "open_not_above_pivot"
+        if signal.max_open_inclusive is not None and raw_open > signal.max_open_inclusive:
+            return "entry_too_extended"
+        if signal.stop_loss is None:
+            return "missing_structural_stop"
         entry = _apply_market_costs(
             raw_open, signal.direction, entering=True,
             slippage_bps=self.config.slippage_bps, spread_bps=self.config.spread_bps,
@@ -460,6 +500,12 @@ class BacktestEngine:
         risk_per_share = abs(entry - stop)
         if risk_per_share <= 0:
             return "zero_stop_distance"
+        if signal.max_stop_distance_pct is not None and 100 * risk_per_share / entry > signal.max_stop_distance_pct:
+            return "stop_distance_exceeded"
+        if signal.target_r is not None:
+            if not math.isfinite(signal.target_r) or signal.target_r <= 0:
+                return "invalid_target_r"
+            target = entry + (1 if signal.direction == "long" else -1) * signal.target_r * risk_per_share
         quantity = self._quantity(balance, entry, risk_per_share, current_exposure)
         if quantity <= 0 or not math.isfinite(quantity):
             return "position_size_zero"

@@ -1,6 +1,10 @@
 export const sourceLabels = { live_manual: "Live · manual", paper_manual: "Paper · manual", replay: "Replay · automatic", backtest: "Backtest · automatic" };
+sourceLabels.broker_oanda = "OANDA · imported";
+export function sourceLabel(source) { return sourceLabels[source] || String(source || "Unknown source").replace(/^broker_/, "Broker · ").replaceAll("_", " "); }
+export function pnlSummary(summary) { const rows = summary?.pnl_by_currency || []; return rows.length ? rows.map(r => moneyCurrency(r.total_pnl, r.currency)).join(" · ") : "—"; }
+export function journalToday(zone) { const parts = new Intl.DateTimeFormat("en-CA", {timeZone:zone, year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()); const value=k=>parts.find(p=>p.type===k).value; return `${value("year")}-${value("month")}-${value("day")}`; }
 export function money(v) { return moneyCurrency(v, "USD"); }
-export function moneyCurrency(v, currency = "USD") { return v == null || v === "" ? "—" : Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(v)); }
+export function moneyCurrency(v, currency = "USD") { if(v==null||v==="")return "\u2014";try{return Intl.NumberFormat("en-GB",{style:"currency",currency,maximumFractionDigits:2}).format(Number(v));}catch{return `${currency} ${Number(v).toFixed(2)}`;} }
 export function pct(v) { return v == null || v === "" ? "—" : `${Number(v).toFixed(2)}%`; }
 export function rValue(v) { return v == null || v === "" ? "—" : `${Number(v).toFixed(2)}R`; }
 export function rrValue(v) { return v == null || v === "" ? "—" : `${Number(v).toFixed(2)}:1`; }

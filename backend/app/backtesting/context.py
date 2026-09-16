@@ -92,5 +92,7 @@ def _completed_bars(frame: pd.DataFrame, timeframe: str, decision_time: datetime
         cutoff = cutoff.tz_convert("UTC")
     # Timestamps represent bar starts. Only expose a bar after its nominal duration
     # has elapsed. Session-filtered 1h/4h bars follow the same contract.
-    completed = timestamps + timeframe_delta(timeframe) <= cutoff
+    available_at = (pd.to_datetime(working["available_at"], utc=True)
+                    if "available_at" in working else timestamps + timeframe_delta(timeframe))
+    completed = available_at <= cutoff
     return working.loc[completed].reset_index(drop=True)

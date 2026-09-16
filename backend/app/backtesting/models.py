@@ -10,7 +10,7 @@ Direction = Literal["long", "short"]
 @dataclass(frozen=True)
 class EntrySignal:
     direction: Direction
-    stop_loss: float
+    stop_loss: float | None
     take_profit: float | None = None
     reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -19,6 +19,13 @@ class EntrySignal:
     order_type: Literal["market", "limit"] = "market"
     entry_price: float | None = None
     max_wait_bars: int | None = None
+    # Optional next-open constraints. Existing strategies retain their contract.
+    min_open_exclusive: float | None = None
+    max_open_inclusive: float | None = None
+    max_stop_distance_pct: float | None = None
+    target_r: float | None = None
+    rejection_reason: str | None = None
+    fill_time_filters_only: bool = False
 
 
 @dataclass(frozen=True)

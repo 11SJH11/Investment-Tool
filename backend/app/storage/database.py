@@ -392,9 +392,18 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
             )
         """)
         target = [row[1] for row in connection.execute("PRAGMA table_info(journal_trades_v63)").fetchall()]
+        if set(columns) - set(target):
+            raise RuntimeError("Journal migration stopped: unrecognised columns must be preserved before upgrading")
+        custom_objects = connection.execute("SELECT name FROM sqlite_master WHERE tbl_name='journal_trades' AND (type='trigger' OR (type='index' AND sql IS NOT NULL AND name NOT IN ('idx_journal_trades_ticker','idx_journal_trades_source','idx_journal_trades_opened','idx_journal_trades_setup','idx_journal_trades_external')))").fetchall()
+        if custom_objects:
+            raise RuntimeError("Journal migration stopped: custom indexes or triggers require a preserving migration")
         shared = [column for column in target if column in columns]
         names = ",".join(shared)
         connection.execute(f"INSERT INTO journal_trades_v63({names}) SELECT {names} FROM journal_trades")
+        old_count = connection.execute("SELECT COUNT(*) FROM journal_trades").fetchone()[0]
+        new_count = connection.execute("SELECT COUNT(*) FROM journal_trades_v63").fetchone()[0]
+        if old_count != new_count or connection.execute(f"SELECT {names} FROM journal_trades EXCEPT SELECT {names} FROM journal_trades_v63").fetchone():
+            raise RuntimeError("Journal migration stopped: copied data did not match existing records")
         connection.execute("DROP TABLE journal_trades")
         connection.execute("ALTER TABLE journal_trades_v63 RENAME TO journal_trades")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_journal_trades_ticker ON journal_trades(ticker)")
@@ -414,6 +423,32 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
     if "tags" not in run_columns:
         connection.execute("ALTER TABLE backtest_runs ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_backtest_runs_experiment ON backtest_runs(experiment_group)")
+
+    # Journal V2: all additions follow the legacy source-constraint migration.
+    additions = {
+        "journal_trades": {
+            "playbook_id": "INTEGER REFERENCES playbook_entries(id) ON DELETE SET NULL",
+            "setup_grade": "TEXT NOT NULL DEFAULT ''", "plan_followed": "TEXT NOT NULL DEFAULT ''",
+            "review_data": "TEXT NOT NULL DEFAULT '{}'",
+            "external_account_key": "TEXT NOT NULL DEFAULT ''", "account_currency": "TEXT",
+            "broker_realized_pnl": "REAL", "financing": "REAL", "commission": "REAL",
+            "guaranteed_execution_fee": "REAL", "dividend_adjustment": "REAL",
+            "initial_risk_amount": "REAL", "risk_source": "TEXT", "costs_complete": "INTEGER",
+        },
+        "playbook_entries": {"sections": "TEXT NOT NULL DEFAULT '{}'", "review_fields": "TEXT NOT NULL DEFAULT '[]'"},
+    }
+    for table, fields in additions.items():
+        existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        for column, ddl in fields.items():
+            if column not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_journal_playbook ON journal_trades(playbook_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_journal_account ON journal_trades(external_account_key)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS broker_sync_state (
+        provider TEXT NOT NULL, account_key TEXT NOT NULL, environment TEXT NOT NULL,
+        cursor TEXT, last_success_at TEXT, status TEXT NOT NULL DEFAULT 'never_synced',
+        error TEXT, PRIMARY KEY(provider, account_key)
+    )""")
 
 
 class Database:
@@ -447,7 +482,7 @@ class Database:
                     ELSE NULL
                 END
             """)
-            for version in range(1, 16):
+            for version in range(1, 17):
                 connection.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (version,))
 
     def set_setting(self, key: str, value: str) -> None:

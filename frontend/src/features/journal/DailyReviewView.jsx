@@ -1,127 +1,20 @@
-import { useEffect, useState } from "react";
-import { api } from "../../api/client";
-import { today } from "./journalUtils";
-
-function newReview() {
-  return {
-    review_date: today(), account: "Main", focus_goal: "", market_condition: "",
-    emotional_state: "", process: "", pair: "", session: "", setups: "",
-    learnings: "", psychology: "", mistakes: "", did_well: "", improve: "",
-    actionable_steps: "", thoughts: "",
-  };
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
+import { Choice, TextNote } from './ReviewFields';
+import { Summary, Attachments, useUnsaved } from './JournalShared';
+import { journalToday } from './journalUtils';
+export default function DailyReviewView({initialDay,timeZone,options,onDirtyChange}) {
+  const [key,setKey]=useState(()=>({date:initialDay?.date||journalToday(timeZone),account:initialDay?.account||'Main'}));
+  const [picker,setPicker]=useState(key),[form,setForm]=useState(null),[baseline,setBaseline]=useState(null),[summary,setSummary]=useState({}),[recent,setRecent]=useState([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
+  const dirty=JSON.stringify(form)!==JSON.stringify(baseline);useUnsaved(dirty,onDirtyChange);
+  useEffect(()=>{let active=true;setLoading(true);setError('');setMessage('');setForm(null);setBaseline(null);Promise.all([api.dailySummary(key.date,key.account,timeZone),api.dailyReviews()]).then(([r,list])=>{if(active){const next=r.review||{review_date:key.date,account:key.account};setForm(next);setBaseline(next);setSummary(r.summary);setRecent(list.items||[]);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[key,timeZone]);
+  const choose=next=>{if(!next.date||!next.account.trim()){setError('Choose a date and account.');return;}if(!dirty||confirm('Discard unsaved Daily Review changes?')){setPicker(next);setKey({...next,account:next.account.trim()});}};
+  const save=async e=>{e.preventDefault();setSaving(true);setError('');try{const saved=await api.saveDailyReview(form);const next={...saved,attachments:form.attachments||[]};setForm(next);setBaseline(next);setMessage(`Saved ${saved.review_date} · ${saved.account}`);const list=await api.dailyReviews();setRecent(list.items||[]);}catch(e){setError(e.message);}finally{setSaving(false);}};
+  const update=(k,v)=>setForm({...form,[k]:v});
+  const images=async()=>{const r=await api.dailySummary(key.date,key.account,timeZone);const attachments=r.review?.attachments||[];setForm(v=>({...v,attachments}));setBaseline(v=>({...v,attachments}));};
+  return <div className="space-y-5"><div className="flex flex-wrap items-end gap-3"><label className="text-xs text-stone-500">Journal date<input aria-label="Journal date" type="date" className="input mt-1" value={picker.date} onChange={e=>setPicker({...picker,date:e.target.value})}/></label><Choice label="Account" value={picker.account} options={[...new Set(['Main',...(options.account||[]),...recent.map(r=>r.account)])]} onChange={v=>setPicker({...picker,account:v})}/><button className="mini-btn" disabled={saving} onClick={()=>choose(picker)}>Load day</button></div>{error&&<p role="alert" className="text-red-700">{error}</p>}{message&&<p role="status" className="text-emerald-700">{message}</p>}
+    {loading?<p className="p-8 text-center text-stone-500">Loading this day...</p>:form&&<><section><h3 className="mb-3 font-semibold">{key.date} · {key.account} · automatic facts</h3><Summary data={summary}/><div className="mt-4 grid gap-3 md:grid-cols-3"><Distribution label="Instruments" value={summary.instruments?.join(', ')||'None'}/>{['sessions','setups','playbooks','grades','plan_adherence','mistakes'].map(k=><Distribution key={k} label={k.replaceAll('_',' ')} value={Object.entries(summary[k]||{}).map(([v,n])=>`${v} (${n})`).join(', ')||'None recorded'}/>)}</div></section>
+    <form onSubmit={save} className="rounded-xl border bg-white p-5"><h3 className="text-lg font-semibold">Your reflection</h3><fieldset disabled={saving} className="mt-4"><div className="grid gap-4 md:grid-cols-3"><Choice label="Market condition" value={form.market_condition} options={['Trending','Ranging']} onChange={v=>update('market_condition',v)}/><Choice label="Emotional state" value={form.emotional_state} options={['Calm','Confident','Anxious','Frustrated']} onChange={v=>update('emotional_state',v)}/><Choice label="Process rating" value={form.process} options={['Great','Good','Alright','Sub-par']} onChange={v=>update('process',v)}/></div><div className="mt-5 grid gap-4 md:grid-cols-2">{[['focus_goal','Focus / goal'],['learnings','Learnings'],['mistakes','Mistakes'],['did_well','What I did well'],['improve','What needs improvement'],['actionable_steps','Actionable next steps'],['thoughts','Thoughts'],['psychology','Psychology / how I felt after']].map(([k,label])=><TextNote key={k} label={label} value={form[k]} onChange={v=>update(k,v)}/>)}</div><details className="mt-4"><summary className="cursor-pointer text-sm text-stone-500">Earlier instrument / session / setup notes</summary><div className="mt-3 grid gap-3 md:grid-cols-3">{['pair','session','setups'].map(k=><TextNote key={k} label={k} value={form[k]} onChange={v=>update(k,v)}/>)}</div></details><button className="mt-5 rounded-md bg-stone-900 px-5 py-2 text-white">{saving?'Saving...':'Save Daily Review'}</button></fieldset>{form.id&&<Attachments ownerType="daily_review" ownerId={form.id} items={form.attachments} onChanged={images} onError={setError}/>}</form></>}
+    <section><h3 className="font-semibold">Recent reviews</h3><div className="mt-3 flex flex-wrap gap-2">{recent.map(r=><button key={r.id} className="mini-btn" disabled={saving} onClick={()=>choose({date:r.review_date,account:r.account})}>{r.review_date} · {r.account}</button>)}</div>{!recent.length&&!loading&&<p className="mt-2 text-sm text-stone-500">No saved reviews yet.</p>}</section></div>;
 }
-
-export default function DailyReviewView() {
-  const [items, setItems] = useState([]);
-  const [form, setForm] = useState(() => newReview());
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  async function load() {
-    setError("");
-    try {
-      const response = await api.dailyReviews();
-      setItems(Array.isArray(response?.items) ? response.items : []);
-    } catch (err) {
-      setError(err.message || "Could not load daily reviews.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
-
-  async function save(event) {
-    event.preventDefault();
-    setSaving(true); setError(""); setMessage("");
-    try {
-      const saved = await api.saveDailyReview(form);
-      setForm((current) => ({ ...current, ...saved }));
-      setMessage(`Saved review for ${saved.review_date}.`);
-      await load();
-    } catch (err) {
-      setError(err.message || "Could not save daily review.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function choose(item) {
-    setForm({ ...newReview(), ...item });
-    setMessage(""); setError("");
-  }
-
-  function reset() {
-    setForm(newReview());
-    setMessage(""); setError("");
-  }
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <form onSubmit={save} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="text-xl font-semibold">Daily review</h3>
-            <p className="mt-1 text-sm text-stone-500">Review the session, process, psychology and what you want to improve next time.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input type="date" className="input w-40" value={form.review_date || ""} onChange={(e) => setForm({ ...form, review_date: e.target.value })} />
-            <input className="input w-36" value={form.account || ""} onChange={(e) => setForm({ ...form, account: e.target.value })} placeholder="Account" />
-            <button type="button" onClick={reset} className="rounded-md border border-stone-300 px-3 py-2 text-sm">New</button>
-          </div>
-        </div>
-
-        {message && <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
-        {error && <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Field label="Today's focus and goal"><textarea rows="3" className="input resize-y" value={form.focus_goal || ""} onChange={(e) => setForm({ ...form, focus_goal: e.target.value })} /></Field>
-          <Field label="Market condition"><input className="input" value={form.market_condition || ""} onChange={(e) => setForm({ ...form, market_condition: e.target.value })} placeholder="Trending / ranging / countertrend…" /></Field>
-          <Field label="Emotional state"><input className="input" value={form.emotional_state || ""} onChange={(e) => setForm({ ...form, emotional_state: e.target.value })} /></Field>
-          <Field label="Process"><input className="input" value={form.process || ""} onChange={(e) => setForm({ ...form, process: e.target.value })} placeholder="Did I follow the plan?" /></Field>
-          <Field label="Pair(s)"><input className="input" value={form.pair || ""} onChange={(e) => setForm({ ...form, pair: e.target.value })} /></Field>
-          <Field label="Session"><input className="input" value={form.session || ""} onChange={(e) => setForm({ ...form, session: e.target.value })} /></Field>
-          <Field label="Setups"><input className="input" value={form.setups || ""} onChange={(e) => setForm({ ...form, setups: e.target.value })} /></Field>
-          <Field label="Learnings"><textarea rows="3" className="input resize-y" value={form.learnings || ""} onChange={(e) => setForm({ ...form, learnings: e.target.value })} /></Field>
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Long label="Psychology / how I felt after" field="psychology" form={form} setForm={setForm} />
-          <Long label="Mistakes" field="mistakes" form={form} setForm={setForm} />
-          <Long label="What I did well" field="did_well" form={form} setForm={setForm} />
-          <Long label="What I need to improve" field="improve" form={form} setForm={setForm} />
-          <Long label="Actionable steps" field="actionable_steps" form={form} setForm={setForm} />
-          <Long label="Thoughts" field="thoughts" form={form} setForm={setForm} />
-        </div>
-
-        <div className="mt-5 flex justify-end">
-          <button disabled={saving} className="rounded-md bg-stone-900 px-5 py-2 text-sm text-white disabled:opacity-50">{saving ? "Saving…" : "Save daily review"}</button>
-        </div>
-      </form>
-
-      <aside className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-        <h3 className="font-semibold">Recent reviews</h3>
-        {loading && <p className="mt-3 text-sm text-stone-500">Loading reviews…</p>}
-        {!loading && !items.length && <p className="mt-3 text-sm text-stone-500">No daily reviews yet. The form on the left is ready for your first one.</p>}
-        <div className="mt-3 space-y-2">
-          {items.map((item) => (
-            <button type="button" key={item.id} onClick={() => choose(item)} className="block w-full rounded-md border border-stone-100 p-3 text-left hover:bg-stone-50">
-              <p className="font-medium">{item.review_date}</p>
-              <p className="mt-1 text-xs text-stone-500">{item.market_condition || "No market condition"} · {item.session || "No session"}</p>
-              <p className="mt-2 line-clamp-2 text-xs text-stone-600">{item.learnings || item.thoughts || "No notes"}</p>
-            </button>
-          ))}
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return <label className="block"><span className="mb-1 block text-xs font-medium text-stone-500">{label}</span>{children}</label>;
-}
-function Long({ label, field, form, setForm }) {
-  return <Field label={label}><textarea rows="4" className="input resize-y" value={form[field] || ""} onChange={(e) => setForm({ ...form, [field]: e.target.value })} /></Field>;
-}
+function Distribution({label,value}) {return <div className="rounded-lg border bg-white p-3"><p className="text-xs capitalize text-stone-500">{label}</p><p className="mt-1 text-sm">{value}</p></div>;}

@@ -20,6 +20,7 @@ from app.services.portfolio import PortfolioService
 from app.services.execution_price import ExecutionPriceService
 from app.services.fx import FxRateService
 from app.services.journal import JournalService
+from app.services.broker_sync import BrokerSyncService
 from app.services.research import ResearchService
 from app.services.screener import ScreenerService
 from app.services.symbols import SymbolUniverseService
@@ -55,6 +56,7 @@ class AppServices:
     backtest: BacktestService
     backtest_runs: BacktestRunRepository
     http: JsonHttpClient
+    broker_sync: BrokerSyncService
 
     def close(self) -> None:
         self.http.close()
@@ -80,6 +82,8 @@ class AppServices:
                 "purpose": "OANDA spot/CFD-style market data (Phase 6.2: XAUUSD)",
                 "environment": self.settings.oanda_environment,
                 "account_id_required_for_candles": False,
+                "journal_configured": self.settings.oanda_journal_configured,
+                "journal_read_only": True,
             },
             "autochartist": {
                 "configured": self.autochartist.configured,
@@ -219,4 +223,5 @@ def build_services(settings: Settings) -> AppServices:
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
+        broker_sync=BrokerSyncService(settings, database),
     )
