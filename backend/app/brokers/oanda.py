@@ -59,6 +59,13 @@ class OandaHistory:
     def close(self):
         self._client.close()
 
+    def capability_report(self):
+        return {"provider": self.provider, "destination": "journal", "read_only": True,
+                "closed_trades": True, "execution": False, "supported": True}
+
+    def accounts(self):
+        return [{"account_key": self.account_key, "label": self.account_label, "environment": self.environment}]
+
     def _get(self, suffix, params=None):
         # Construct paths locally: never forward authentication to a pagination URL.
         try:

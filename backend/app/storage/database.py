@@ -449,6 +449,18 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
         cursor TEXT, last_success_at TEXT, status TEXT NOT NULL DEFAULT 'never_synced',
         error TEXT, PRIMARY KEY(provider, account_key)
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS portfolio_broker_accounts (
+        provider TEXT NOT NULL, account_key TEXT NOT NULL, environment TEXT NOT NULL,
+        label TEXT NOT NULL, summary TEXT NOT NULL, synced_at TEXT NOT NULL,
+        PRIMARY KEY(provider, account_key)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS portfolio_broker_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, account_key TEXT NOT NULL,
+        kind TEXT NOT NULL, external_id TEXT NOT NULL, facts TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1, note TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+        UNIQUE(provider, account_key, kind, external_id),
+        FOREIGN KEY(provider, account_key) REFERENCES portfolio_broker_accounts(provider, account_key)
+    )""")
 
 
 class Database:

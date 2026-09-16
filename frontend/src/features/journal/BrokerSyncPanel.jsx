@@ -1,8 +1,2 @@
-import { useEffect, useState } from 'react';
-import { api } from '../../api/client';
-export default function BrokerSyncPanel({onSynced}) {
-  const [status,setStatus]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
-  useEffect(()=>{let active=true;api.brokerStatus().then(s=>{if(active)setStatus(s);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[]);
-  const sync=async()=>{setBusy(true);setError('');setMessage('');try{const r=await api.syncBrokerTrades();setMessage(`Imported ${r.created??0}; refreshed ${r.updated??0} closed trades.`);onSynced?.();}catch(e){setError(e.message);}finally{try{setStatus(await api.brokerStatus());}catch(e){setError(e.message);}setBusy(false);}};
-  return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">OANDA Journal Sync · read only</h3><p className="mt-1 text-xs text-stone-500">{!status?'Loading status…':!status.configured?'Not configured · requires an access token and account ID on the backend.':`${status.account} · ${status.environment} · ${status.status?.replaceAll('_',' ')||'Ready'}`}</p>{status?.last_success_at&&<p className="mt-1 text-xs text-stone-500">Last successful sync: {new Date(status.last_success_at).toLocaleString()}</p>}</div><button className="mini-btn" disabled={busy||!status?.configured} onClick={sync}>{busy?'Syncing history…':'Sync broker trades'}</button></div><p className="mt-2 text-xs text-stone-500">Closed trades only. Sync runs when you request it; your review notes and screenshots are preserved.</p>{(error||status?.error)&&<p role="alert" className="mt-2 text-sm text-red-700">{error||status.error}</p>}{message&&<p role="status" className="mt-2 text-sm text-emerald-700">{message}</p>}</section>;
-}
+import BrokerProfilesPanel from '../brokers/BrokerProfilesPanel';
+export default function BrokerSyncPanel({onSynced}) { return <BrokerProfilesPanel destination="journal" onSynced={onSynced}/>; }

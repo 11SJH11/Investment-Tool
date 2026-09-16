@@ -21,6 +21,7 @@ from app.services.execution_price import ExecutionPriceService
 from app.services.fx import FxRateService
 from app.services.journal import JournalService
 from app.services.broker_sync import BrokerSyncService
+from app.services.broker_connections import BrokerConnections
 from app.services.research import ResearchService
 from app.services.screener import ScreenerService
 from app.services.symbols import SymbolUniverseService
@@ -57,6 +58,7 @@ class AppServices:
     backtest_runs: BacktestRunRepository
     http: JsonHttpClient
     broker_sync: BrokerSyncService
+    broker_connections: BrokerConnections
 
     def close(self) -> None:
         self.http.close()
@@ -217,11 +219,13 @@ def build_services(settings: Settings) -> AppServices:
     backtest_runs = BacktestRunRepository(database)
     backtest = BacktestService(market_data, backtest_runs)
 
+    broker_sync = BrokerSyncService(settings, database)
     return AppServices(
         settings=settings, database=database, providers=providers, symbols=symbols,
         symbol_universe=symbol_universe, market_data=market_data,
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
-        broker_sync=BrokerSyncService(settings, database),
+        broker_sync=broker_sync,
+        broker_connections=BrokerConnections(settings, database, legacy_oanda=broker_sync),
     )

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import BrokerPortfolioPanel from "./BrokerPortfolioPanel";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS, nowInZoneInput, zonedInputToIso } from "../../utils/timezones";
 
@@ -70,6 +71,7 @@ export default function PortfolioPage({ onOpenTicker }) {
         </div>
       </div>
 
+      <BrokerPortfolioPanel/>
       {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {showForm && <form onSubmit={submit} className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">

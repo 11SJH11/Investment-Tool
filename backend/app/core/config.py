@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     oanda_practice_base_url: str = Field(default="https://api-fxpractice.oanda.com", validation_alias="OANDA_PRACTICE_BASE_URL")
     oanda_live_base_url: str = Field(default="https://api-fxtrade.oanda.com", validation_alias="OANDA_LIVE_BASE_URL")
 
+    trading212_enabled: bool = Field(default=False, validation_alias="TRADING212_ENABLED")
+    trading212_api_key: str = Field(default="", validation_alias="TRADING212_API_KEY", repr=False)
+    trading212_api_secret: str = Field(default="", validation_alias="TRADING212_API_SECRET", repr=False)
+    trading212_environment: str = Field(default="demo", validation_alias="TRADING212_ENVIRONMENT")
+    broker_profiles_json: str = Field(default="[]", validation_alias="BROKER_PROFILES_JSON", repr=False)
+    tradovate_enabled: bool = Field(default=False, validation_alias="TRADOVATE_ENABLED")
+    tradovate_client_id: str = Field(default="", validation_alias="TRADOVATE_CLIENT_ID", repr=False)
+    tradovate_client_secret: str = Field(default="", validation_alias="TRADOVATE_CLIENT_SECRET", repr=False)
+    tradovate_account_id: str = Field(default="", validation_alias="TRADOVATE_ACCOUNT_ID", repr=False)
+    tradovate_environment: str = Field(default="demo", validation_alias="TRADOVATE_ENVIRONMENT")
+
 
     # Autochartist research integration scaffold. OANDA portal entitlement does
     # not imply developer API credentials, so Ledger never scrapes the portal or

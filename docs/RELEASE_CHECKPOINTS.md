@@ -51,7 +51,7 @@ frozen. No new schema is expected for strategy diagnostics/comparison snapshots.
 ## Checkpoint order and verification
 
 1. Replay + Journal UX — complete; verified and committed separately.
-2. Trading 212 + broker abstraction (including multiple profiles and Tradovate scaffold).
+2. Trading 212 + broker abstraction — complete, including multiple profiles and Tradovate scaffold.
 3. Futures foundation.
 4. Strategy Workspace.
 5. ORB + VWAP.
@@ -66,6 +66,30 @@ preferences. Run full backend, Node utility tests, production build and diff
 checks before checkpoint commit. Browser smoke uses an isolated local dataset.
 At a capacity boundary, finish and commit the checkpoint, record exact results
 and remaining work here, and stop for a later continuation.
+
+## Checkpoint 2 handoff
+
+Completed after checkpoint 1 commit `884de9f`. See [BROKER_CONNECTIONS.md](BROKER_CONNECTIONS.md)
+for configuration, official API references, schema, limitations and acceptance checks.
+Full backend **260 passed**; frontend utilities **7 passed**; production build passed
+(65 modules). Isolated browser sync/re-sync, notes preservation, separate fills and
+1024px layout passed. No real credentials or user data were used. Checkpoints 3–7 remain.
+
+Modified files: backend/.env.example; backend/app/api/router.py;
+backend/app/brokers/base.py; backend/app/brokers/oanda.py; backend/app/core/config.py;
+backend/app/services/container.py; backend/app/storage/database.py;
+backend/tests/conftest.py; frontend/src/api/client.js;
+frontend/src/features/journal/BrokerSyncPanel.jsx;
+frontend/src/features/portfolio/PortfolioPage.jsx;
+frontend/src/features/settings/SettingsPage.jsx; docs/RELEASE_CHECKPOINTS.md.
+
+New files: backend/app/api/brokers.py; backend/app/brokers/profiles.py;
+backend/app/brokers/trading212.py; backend/app/brokers/tradovate.py;
+backend/app/services/broker_connections.py;
+backend/app/storage/portfolio_broker_repository.py;
+backend/tests/test_broker_connections.py; docs/BROKER_CONNECTIONS.md;
+frontend/src/features/brokers/BrokerProfilesPanel.jsx;
+frontend/src/features/portfolio/BrokerPortfolioPanel.jsx.
 
 
 ## Checkpoint 1 final handoff
