@@ -91,6 +91,34 @@ backend/tests/test_broker_connections.py; docs/BROKER_CONNECTIONS.md;
 frontend/src/features/brokers/BrokerProfilesPanel.jsx;
 frontend/src/features/portfolio/BrokerPortfolioPanel.jsx.
 
+### Checkpoint 3 preliminary inspection (not implemented)
+
+Checkpoint 2 commit is `b39daeb`. The next-turn entry point is futures foundation.
+Read the original release brief and verify official CME/Massive specifications.
+No futures implementation files were changed during this preliminary inspection.
+
+- `backend/app/data/instruments.py` advertises only NQ1! and XAUUSD; its futures
+  regex excludes digit-containing roots such as M2K. Add the reusable family
+  model with verified economics and provider mappings before advertising aliases.
+- `backend/app/backtesting/engine.py` and `models.py` currently assume unit point
+  value in sizing, notional exposure, initial risk, partial exits, final P&L and
+  unrealized P&L. Any generic extension must default to existing equity/Gold
+  behavior and cover all those paths, integer contract sizing and tick handling.
+- `backend/app/services/backtest.py` constructs the common engine configuration;
+  it must convey verified per-symbol economics, reject unsupported economics,
+  and preserve existing strategy rules and market-data routing.
+- `backend/app/data/providers/massive_futures.py` uses calendar-front selection
+  from provider first/last trade dates and retains source_contract. Its optional
+  backward adjustment uses later roll gaps, so research causality and cache
+  namespace/provenance require explicit handling. Do not treat continuous roll
+  gaps as trading profit or claim a volume/OI schedule without provider evidence.
+- Trace `market_store.py`, `market_data.py`, `chart_data.py` and Replay/Journal
+  contract accounting before changing metadata; ensure provenance survives the
+  actual cache/aggregation path. No change has yet been made to these areas.
+
+Pause here at the user's requested checkpoint boundary. Resume checkpoint 3,
+then 4 Strategy Workspace, 5 ORB/VWAP, 6 Gold variants/comparison, 7 full report.
+
 
 ## Checkpoint 1 final handoff
 
