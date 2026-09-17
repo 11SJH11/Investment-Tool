@@ -7,6 +7,7 @@ import TradeAuditChart from "./TradeAuditChart";
 import ValidationPanel from "./ValidationPanel";
 import ReplayPanel from "./ReplayPanel";
 import StrategyWorkspace from "./StrategyWorkspace";
+import RunComparison from "./RunComparison.jsx";
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
@@ -64,7 +65,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   useEffect(() => {
     if (!strategy) return;
     setParams({ ...(strategy.defaults || {}) });
-    if (strategy.key === "xau_liquidity_type3_baseline_v1") {
+    if ((strategy.key === "xau_liquidity_type3_baseline_v1" || strategy.key.startsWith("xau_type3_experiment_"))) {
       setSymbols(["XAUUSD"]);
       setEntryWindows([]);
       setForm((old) => ({ ...old, primary_timeframe: "1m", session: "auto", allow_overnight: "true", force_close_time: "" }));
@@ -291,7 +292,7 @@ function BacktestResults({ result }) {
 function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment }) {
   const [selected, setSelected] = useState([]);
   const [view, setView] = useState("all");
-  const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 2 ? [old[1], id] : [...old, id]);
+  const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 12 ? old : [...old, id]);
   const compared = selected.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
   const experimentGroups = Object.entries(runs.reduce((groups, run) => {
     if (!run.experiment_group || (run.tags || []).includes("sensitivity")) return groups;
@@ -306,7 +307,7 @@ function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment })
     <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Runs, validation suites and sensitivity experiments are separated so validation cards do not permanently consume the Runs screen.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
     {runs.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1") && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Momentum stock runs: Historical universe may contain survivorship bias.</p>}
     <div className="mt-4 flex gap-2">{[["all","All runs"],["validation","Validation suites"],["sensitivity","Sensitivity"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
-    {compared.length === 2 && view !== "validation" && <RunComparison a={compared[0]} b={compared[1]} />}
+    {compared.length >= 2 && view !== "validation" && <RunComparison ids={compared.map(run => run.id)} />}
     {view === "validation" && <div className="mt-5">
       {!experimentGroups.length && <p className="rounded-lg bg-stone-50 p-6 text-center text-sm text-stone-500">No saved validation suites yet.</p>}
       <div className="grid gap-3 xl:grid-cols-2">{experimentGroups.map(([group, items]) => <ExperimentSummary key={group} group={group} items={items} onOpen={onOpen} onOpenExperiment={onOpenExperiment} />)}</div>
@@ -323,15 +324,6 @@ function RoleBadge({ role }) {
 function ExperimentSummary({ group, items, onOpen, onOpenExperiment }) {
   const ordered = ["development", "validation", "out_of_sample"].map((role) => items.find((item) => item.test_role === role)).filter(Boolean);
   return <div className="rounded-lg border border-stone-200 bg-stone-50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">Experiment</p><p className="mt-1 max-w-[420px] truncate text-sm font-semibold" title={group}>{group}</p></div><span className="text-xs text-stone-500">{items.length} runs</span></div><button onClick={() => onOpenExperiment(group)} className="mt-3 w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white">Open full validation experiment</button><div className="mt-3 space-y-2">{ordered.map((run) => <button key={run.id} onClick={() => onOpen(run.id)} className="grid w-full grid-cols-[120px_1fr_80px_80px] items-center gap-2 rounded-md bg-white px-3 py-2 text-left text-xs hover:bg-stone-100"><RoleBadge role={run.test_role} /><span>{run.start_date} → {run.end_date}</span><span className="text-right">{r(run.expectancy_r)}</span><span className="text-right">{pct(run.max_drawdown_pct)}</span></button>)}</div></div>;
-}
-
-function RunComparison({ a, b }) {
-  const rows = [
-    ["Trades", a.trades, b.trades, "raw"], ["Expectancy", a.expectancy_r, b.expectancy_r, "r"], ["Total R", a.total_r, b.total_r, "r"],
-    ["Net P&L", a.net_pnl, b.net_pnl, "money"], ["Return", a.return_pct, b.return_pct, "pct"], ["Max drawdown", a.max_drawdown_pct, b.max_drawdown_pct, "pct"],
-  ];
-  const fmt = (value, kind) => kind === "r" ? r(value) : kind === "money" ? money(value) : kind === "pct" ? pct(value) : value;
-  return <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><h4 className="text-sm font-semibold">Compare selected runs</h4><div className="mt-3 overflow-x-auto"><table className="min-w-[700px] text-sm"><thead><tr><th className="px-3 py-2 text-left">Metric</th><th className="px-3 py-2 text-right">#{a.id} {a.name}</th><th className="px-3 py-2 text-right">#{b.id} {b.name}</th></tr></thead><tbody>{rows.map(([label,av,bv,kind]) => <tr key={label} className="border-t border-stone-200"><td className="px-3 py-2 font-medium">{label}</td><td className="px-3 py-2 text-right">{fmt(av,kind)}</td><td className="px-3 py-2 text-right">{fmt(bv,kind)}</td></tr>)}</tbody></table></div><p className="mt-2 text-xs text-stone-500">Comparison is descriptive. Check that the periods/configurations differ only in the variable you intended to test before drawing conclusions.</p></div>;
 }
 
 function AnalysisPanel({ analysis }) {

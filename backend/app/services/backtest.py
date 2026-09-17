@@ -11,6 +11,8 @@ from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as 
 from app.backtesting.strategies import strategy_registry
 from app.backtesting.strategies.intraday_baselines import KEYS as INTRADAY_KEYS, validate_market
 from app.backtesting.intraday_reporting import annotate_intraday
+from app.backtesting.strategies.gold_experiments import KEYS as GOLD_EXPERIMENT_KEYS
+from app.backtesting.gold_reporting import annotate_gold
 from app.indicators import indicator_registry
 from app.services.chart_data import prepare_chart_bars
 from app.services.replay_snapshot import aggregate_revealed
@@ -92,6 +94,8 @@ class BacktestService:
         profiles = {self._instrument(symbol).session_profile for symbol in symbols}
         session = ("regular" if profiles == {"us_equity"} else "24h") if requested_session == "auto" else requested_session
         momentum = strategy_key == MOMENTUM_KEY
+        if strategy_key in GOLD_EXPERIMENT_KEYS and (symbols != ["XAUUSD"] or primary != "1m"):
+            raise ValueError("Gold experiments require XAUUSD only and primary 1m")
         if strategy_key in INTRADAY_KEYS:
             for symbol in symbols:
                 validate_market(symbol, primary)
@@ -188,6 +192,9 @@ class BacktestService:
         if strategy_key in INTRADAY_KEYS:
             annotate_intraday(result, frames_by_symbol)
             result["strategy"]["params"] = dict(strategies[symbols[0]].params)
+            payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
+        if strategy_key in GOLD_EXPERIMENT_KEYS or strategy_key == "xau_liquidity_type3_baseline_v1":
+            annotate_gold(result, frames_by_symbol, config, strategies[symbols[0]].params)
             payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
         if self.runs is not None and bool(payload.get("save_run", True)):
             saved = self.runs.create(

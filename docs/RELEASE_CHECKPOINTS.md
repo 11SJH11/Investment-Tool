@@ -55,8 +55,9 @@ frozen. No new schema is expected for strategy diagnostics/comparison snapshots.
 3. Futures foundation - complete; dated-contract execution and continuous chart provenance. See `FUTURES_FOUNDATION.md`.
 4. Strategy Workspace - complete; trusted explicit subprocess execution. See `STRATEGY_WORKSPACE.md`.
 5. ORB + VWAP - complete; see `ORB_VWAP_BASELINES.md`.
-6. Gold variants + comparison.
-7. Full regression + final release report.
+6. Gold variants + comparison - implemented and verified; DXY-dependent identities explicitly unavailable without a verified DXY feed. See `GOLD_EXPERIMENTS.md`.
+7. Release-wide regression/browser checks and current-documentation cleanup - pending.
+8. Newly authorized continuous futures/NQ1! execution, Massive reference cache, Portfolio usability and broker extension audit - pending.
 
 Use synthetic/offline fixtures and temporary DB/uploads. Checkpoint 1 tests cover
 partial 5m/15m OHLCV, exact boundaries, rewind/timeframe round trips, causal
@@ -130,8 +131,13 @@ Checkpoint 5 is complete: 366 full backend tests, 46 focused strategy cases,
 ORB/research/VWAP runs, saved snapshots, both Trade Audit views, indicator
 discovery and 1024px layout. Formulas, exact files, commands and limitations:
 `ORB_VWAP_BASELINES.md`. No migration or user-data changes.
-Resume at checkpoint 6 Gold variants/comparison, then 7 full release report.
-Do not redo checkpoints 1-5. Checkpoint 6 has not been started.
+Checkpoint 6: 408 backend tests, 42 focused Gold cases, 17 frontend utility
+tests and production build pass. Synthetic Chrome verified 12-run comparison,
+reference selection, retention, DXY-unavailable diagnostics and 1024px layout.
+See `GOLD_EXPERIMENTS.md`. Resume at checkpoint 7 verification/documentation,
+then the explicitly authorized checkpoint 8 from the 2026-09-17 continuation
+brief. Do not redo checkpoints 1-6. Do not claim TradingView parity or NQ1!
+execution support before checkpoint 8 is actually implemented and verified.
 
 
 ## Checkpoint 1 final handoff
