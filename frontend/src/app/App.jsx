@@ -13,7 +13,8 @@ import { applyPreferences, loadPreferences, savePreferences } from "./preference
 export default function App(){
  const [active,setActive]=useState("Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
  const [journalDirty,setJournalDirty]=useState(false);
- const selectPage=next=>{if(active!=="Journal"||next==="Journal"||!journalDirty||confirm("Discard unsaved Journal changes?"))setActive(next);};
+ const [workspaceDirty,setWorkspaceDirty]=useState(false);
+ const selectPage=next=>{if(active==="Backtest"&&next!==active&&workspaceDirty&&!confirm("Discard unsaved Strategy Workspace changes?"))return;if(active!=="Journal"||next==="Journal"||!journalDirty||confirm("Discard unsaved Journal changes?"))setActive(next);};
  useEffect(()=>{applyPreferences(prefs)},[]);
  const updatePrefs=(next)=>{setPrefs(next);savePreferences(next)};
  const order=(prefs.navOrder||sections).filter(x=>sections.includes(x)); const missing=sections.filter(x=>!order.includes(x)); const nav=[...order,...missing];
@@ -25,7 +26,7 @@ export default function App(){
   {active==="Charts"&&<ChartsPage selectedTicker={selectedTicker} onTickerChange={setSelectedTicker}/>} 
   {active==="Replay"&&<StrategyLabPage initialTab="Replay" standaloneTab="Replay"/>}
   {active==="Journal"&&<JournalPage onDirtyChange={setJournalDirty}/>}
-  {active==="Backtest"&&<StrategyLabPage initialTab="Backtest" standaloneTab="Backtest"/>}
+  {active==="Backtest"&&<StrategyLabPage initialTab="Backtest" standaloneTab="Backtest" onWorkspaceDirty={setWorkspaceDirty}/>}
   {active==="Investment Portfolio"&&<PortfolioPage onOpenTicker={openCharts}/>} 
   {active==="Settings"&&<SettingsPage preferences={prefs} onChange={updatePrefs}/>} 
  </main></div>

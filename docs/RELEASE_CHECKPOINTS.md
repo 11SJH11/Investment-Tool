@@ -53,7 +53,7 @@ frozen. No new schema is expected for strategy diagnostics/comparison snapshots.
 1. Replay + Journal UX — complete; verified and committed separately.
 2. Trading 212 + broker abstraction — complete, including multiple profiles and Tradovate scaffold.
 3. Futures foundation - complete; dated-contract execution and continuous chart provenance. See `FUTURES_FOUNDATION.md`.
-4. Strategy Workspace.
+4. Strategy Workspace - complete; trusted explicit subprocess execution. See `STRATEGY_WORKSPACE.md`.
 5. ORB + VWAP.
 6. Gold variants + comparison.
 7. Full regression + final release report.
@@ -120,8 +120,13 @@ Checkpoint 3 is now implemented and verified: 293 backend tests, 10 frontend
 utility tests and production build pass. Isolated Chrome verified dated NQ
 Replay-to-Journal accounting, continuous order rejection and 1024px layout.
 Exact files, formulas, limitations and acceptance checks: `FUTURES_FOUNDATION.md`.
-Resume at checkpoint 4 Strategy Workspace, then 5 ORB/VWAP, 6 Gold
-variants/comparison and 7 full release report. Do not redo checkpoints 1-3.
+Checkpoint 4 is also complete: 320 full backend tests, 27 focused workspace
+cases, 12 frontend utility tests and production build pass. Isolated Chrome
+verified static editing/save, explicit execution, saved backtest, built-in
+protection, tab persistence, unsaved-navigation guard and 1024px layout.
+See `STRATEGY_WORKSPACE.md` for exact files, security boundaries and acceptance.
+Resume at checkpoint 5 ORB/VWAP, then 6 Gold variants/comparison and 7 full
+release report. Do not redo checkpoints 1-4.
 
 
 ## Checkpoint 1 final handoff

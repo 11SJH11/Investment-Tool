@@ -27,6 +27,11 @@ function queryString(params) {
 }
 
 export const api = {
+  workspaceFiles: () => request("/strategy-workspace/files"),
+  workspaceRead: filename => request(`/strategy-workspace/files/${encodeURIComponent(filename)}`),
+  workspaceSave: payload => request("/strategy-workspace/files", {method:"PUT", body:JSON.stringify(payload)}),
+  workspaceSyntax: payload => request("/strategy-workspace/syntax", {method:"POST", body:JSON.stringify(payload)}),
+  workspaceExecute: payload => request("/strategy-workspace/execute", {method:"POST", body:JSON.stringify(payload)}),
   health: () => request("/health"),
   dataStatus: () => request("/data/status"),
   autochartistCapabilities: () => request("/data/providers/autochartist/capabilities"),

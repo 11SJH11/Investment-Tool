@@ -6,6 +6,7 @@ import PerformanceChart from "./PerformanceChart";
 import TradeAuditChart from "./TradeAuditChart";
 import ValidationPanel from "./ValidationPanel";
 import ReplayPanel from "./ReplayPanel";
+import StrategyWorkspace from "./StrategyWorkspace";
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
@@ -21,7 +22,7 @@ function money(value) { return value == null ? "—" : Intl.NumberFormat("en-GB"
 function r(value) { return value == null ? "—" : `${Number(value) >= 0 ? "+" : ""}${number(value, 2)}R`; }
 function formatDate(value) { if (!value) return "—"; return new Intl.DateTimeFormat("en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "America/New_York" }).format(new Date(value)); }
 
-export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab = null }) {
+export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab = null, onWorkspaceDirty }) {
   const [tab, setTab] = useState(initialTab);
   const [strategies, setStrategies] = useState([]);
   const [indicators, setIndicators] = useState([]);
@@ -137,6 +138,11 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     try {
       const saved = await api.strategyLabRun(runId);
       const config = saved.config || {};
+      if (config.workspace) {
+        setTab("Strategy Workspace");
+        setError(`This is a workspace run. Load ${config.workspace.filename} and rerun it from Strategy Workspace. Saved source SHA-256: ${config.workspace.source_sha256}.`);
+        return;
+      }
       setStrategyKey(config.strategy_key || saved.strategy_key);
       setSymbols(config.symbols || saved.symbols || []);
       setForm((old) => ({
@@ -162,8 +168,8 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
   return <div className={standaloneTab === "Replay" ? "w-full max-w-none" : "max-w-[1600px]"}>
     <div><p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">{standaloneTab === "Replay" ? "Replay" : standaloneTab === "Backtest" ? "Backtest" : "Strategy Lab"}</h2><p className="mt-2 max-w-5xl text-sm text-stone-600">{standaloneTab === "Replay" ? "Practise historical markets candle-by-candle without revealing the future; Replay trades feed directly into Journal." : "Backtest coded strategy plugins with explicit execution rules, saved reproducible runs, validation and diagnostic analysis."}</p></div>
-    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Validation","Runs","Strategies","Indicators","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
-    {standaloneTab === "Backtest" && <div className="mt-5 flex flex-wrap gap-2">{["Backtest","Validation","Runs","Strategies","Indicators"].map(item=><button key={item} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
+    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Validation","Runs","Strategies","Indicators","Strategy Workspace","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
+    {standaloneTab === "Backtest" && <div className="mt-5 flex flex-wrap gap-2">{["Backtest","Validation","Runs","Strategies","Indicators","Strategy Workspace"].map(item=><button key={item} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
     {tab === "Backtest" && <>
@@ -219,6 +225,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
     {tab === "Strategies" && <section className="mt-5 grid gap-4 lg:grid-cols-2">{strategies.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">{item.category}</p><h3 className="mt-1 font-semibold">{item.name}</h3></div><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.description}</p><p className="mt-3 text-xs text-stone-500">Default timeframe: {(item.timeframes || []).join(", ")}</p><p className="mt-2 text-xs text-stone-500">Strategy code owns entry, initial stop/target and next-bar position management (including breakeven, trailing rules and partial exits). The run screen owns account sizing, execution costs, schedule and account guardrails.</p>{item.risk_management && Object.keys(item.risk_management).length > 0 && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{Object.entries(item.risk_management).map(([label,value]) => <div key={label} className="mt-1"><strong>{label}:</strong> {value}</div>)}</div>}{(item.research_parameters || []).length > 0 && <p className="mt-3 text-xs text-stone-500"><strong>Research-only sensitivity:</strong> {(item.research_parameters || []).map((p) => p.label).join(", ")}. These do not appear on ordinary runs.</p>}</div>)}</section>}
     {tab === "Indicators" && <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{indicators.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-semibold">{item.name}</h3><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.overlay ? "Price-chart overlay" : "Separate/pane indicator"}</p><p className="mt-2 text-xs text-stone-500">Defaults: {Object.entries(item.defaults || {}).map(([k,v]) => `${k}=${v}`).join(", ") || "None"}</p></div>)}</section>}
+    {standaloneTab !== "Replay" && <div hidden={tab !== "Strategy Workspace"}><StrategyWorkspace onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();}} /></div>}
     {tab === "Replay" && <ReplayPanel indicators={indicators} onError={setError} />}
   </div>;
 }

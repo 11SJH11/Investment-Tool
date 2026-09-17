@@ -8,6 +8,7 @@ from app.api.research import router as research_router
 from app.api.screener import router as screener_router
 from app.api.strategy_lab import router as strategy_lab_router
 from app.api.brokers import router as brokers_router
+from app.api.strategy_workspace import router as strategy_workspace_router
 
 
 api_router = APIRouter()
@@ -19,3 +20,4 @@ api_router.include_router(portfolio_router)
 api_router.include_router(journal_router)
 api_router.include_router(strategy_lab_router)
 api_router.include_router(brokers_router)
+api_router.include_router(strategy_workspace_router)
