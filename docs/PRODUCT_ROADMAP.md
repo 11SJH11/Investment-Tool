@@ -1,44 +1,41 @@
-# Ledger product roadmap after Phase 6.1
+# Ledger current product roadmap
 
-## Main navigation
-- Dashboard: temporary product/TODO dashboard; later becomes polished app overview.
-- Screener: local stock scanner plus watchlist/favourites.
-- Charts: 1/2/4-chart analysis workspace, indicators and shared drawing tools.
-- Replay: candle-by-candle practice with future data hidden, orders, indicators and the shared drawing tools.
-- Journal: manual live/paper logs, automatic replay logs, analysis, calendar, daily review and playbook.
-- Backtest: coded strategies, validation, saved runs, sensitivity and trade audit.
-- Investment Portfolio: long-term investment ledger.
-- Settings: appearance, chart/drawing defaults, navigation order and data/provider maintenance.
+## Implemented through checkpoint 6
 
-## Next trading work
-1. Define First Pullback v1 objectively and implement as a strategy plugin.
-2. Audit recognised setups before optimising parameters.
-3. Development -> validation -> out-of-sample testing.
-4. Practise the same strategy in Replay and compare with backtest results.
-5. Define AMN objectively and repeat.
+- Charts and Replay share provider routing: US equities via Alpaca, XAUUSD via
+  OANDA, futures via Massive. Continuous aliases have chart support with provenance;
+  dated futures have multiplier/tick-aware Backtest and Replay execution.
+- Replay reveals canonical one-minute bars before aggregation, preserves timeframes
+  and integrity state, and idempotently journals closed trades.
+- One Journal supports manual/Replay/broker sources, Playbook custom fields,
+  Daily Review, attachments, filters, Analysis/Calendar and currency-separated totals.
+- OANDA Journal history and Trading 212 Portfolio imports are read-only, with
+  multiple profiles and account/environment identity. Tradovate is unsupported.
+- Backtest has saved immutable snapshots, validation roles, sensitivity, Trade Audit,
+  trusted local Strategy Workspace, frozen Gold/Momentum, ORB/VWAP, and Gold filter
+  variants/comparison. DXY-dependent variants cannot validate performance yet.
 
-## Chart roadmap
-Phase 6.1 adds the common market-coordinate drawing layer, 1/2/4 chart sizing, per-chart indicators, maximise/restore, object management, Fib retracement, long/short position tools and drawing persistence.
+## Required remaining release work
 
-Still later:
-- proper lower panes for Volume/RSI/MACD/ATR
-- Pitchfork/Gann/advanced Fib families
-- saved indicator templates and complete chart layouts
-- synced crosshair/time range/drawings across multi-chart layouts
-- drawing groups/templates and advanced layer management
-- right-click chart actions and drawing-based alerts
-- Futures data provider (NQ/MNQ/ES) with futures-specific sessions
+7. Release-wide checks and current-documentation cleanup.
+8. TradingView-methodology research; versioned continuous roll schedules; NQ1!
+   Backtest/Replay backed by raw dated-contract fills; cross-roll protection;
+   durable Massive reference caching/rate-limit handling; targeted Trading 212
+   investor metrics and universal broker-adapter extension audit.
 
-## Watchlist
-Phase 6.1 adds a browser-local favourite-symbol watchlist. It is available before Screener filters, on Charts and Replay, and in symbol search results. Initial convenience symbols are AAPL, MSFT, AMD, NVDA, SPY and QQQ. NQ1! remains unavailable until a futures-capable data provider is added.
+Do not claim NQ1! execution or verified TradingView parity before that work passes.
+No live orders, broker automation, fabricated roll data, silent currency mixing,
+frozen-strategy tuning, user-data replacement or broad visual redesign.
 
-## Journal roadmap
-Phase 6 adds filtered analysis by symbol, setup, entry hour, weekday, timeframe, direction, market condition and source. Later additions: broker imports, execution/fill model, MAE/MFE as first-class columns, exit analysis, risk adherence, liquidity reports where data supports them, tags, report presets, and richer comparison charts.
+## Later research and UX
 
-### Futures / metals provider phase
-- Massive Futures provider for CME/CBOT/NYMEX/COMEX contract bars/reference/schedules.
-- Dated NQ/GC contract lookup and symbol search.
-- Ledger continuous aliases (`NQ1!`, `GC1!`, later micros) with explicit roll metadata.
-- TradingView-style volume-derived roll schedule and optional back-adjustment.
-- Futures sessions, tick size, point value and contract multiplier in backtest/replay execution math.
-- Optional OANDA provider for `XAU_USD`/FX when the strategy specifically uses that feed rather than COMEX futures.
+Use development, validation and out-of-sample periods; change one hypothesis at a
+time. First Pullback/AMN require agreed numerical definitions. Point-in-time DXY,
+fundamentals/universes and explicit portfolio selection/capital rules are separate
+work. Walk-forward and sensitivity tests must not automatically select a winner.
+
+Advanced drawing tools, indicator panes/layouts, synchronized chart interactions
+and reporting presets remain optional later work, not release blockers.
+
+Checkpoint-specific documents are historical records. RELEASE_CHECKPOINTS.md is
+the continuation index; detailed contracts are linked from ARCHITECTURE.md.

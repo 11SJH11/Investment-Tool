@@ -1,4 +1,4 @@
-# Ledger v2 data sources — Phase 6.2
+# Ledger current data sources
 
 ## Shared routing
 
@@ -16,7 +16,7 @@ The canonical bar columns remain:
 timestamp, open, high, low, close, volume
 ```
 
-Continuous futures may additionally carry `source_contract`. `MarketStore` now preserves that provenance field.
+Futures bars retain source_contract, roll_method, roll_schedule_version, roll_effective_at, adjustment_method and adjustment_offset through cache/aggregation. Provider routing and cache namespaces remain explicit.
 
 ## Alpaca
 
@@ -48,11 +48,26 @@ Intraday Replay aggregation uses an 18:00 America/New_York futures-session ancho
 
 Unchanged from earlier phases: SEC remains the filing/fundamentals source and FRED remains the macro source.
 
-## Next data work
+## Current execution scope and remaining work
 
-- futures product metadata: tick size, point value, contract multiplier, expiry;
-- CME RTH/ETH session profiles in the UI and backtest engine;
-- volume-derived continuous-contract roll schedules;
-- provider-history capability metadata so the UI can communicate plan/history limits;
-- cursor/range-based historical pagination for Charts instead of growing a whole lookback window;
-- optional GC1!/MNQ1!/MGC1! aliases once the NQ1! path has been validated.
+Twelve verified contract families already carry tick size, point value, multiplier
+and whole-contract sizing: NQ/MNQ, ES/MES, YM/MYM, RTY/M2K, GC/MGC and CL/MCL.
+All have continuous chart aliases. Dated contracts support Backtest and Replay;
+continuous execution is blocked pending the explicitly authorized checkpoint 8.
+Full-notional limits are used, not a broker futures margin model. Back-adjusted
+history is chart-only and must never become an execution fill.
+
+Checkpoint 8 must add verified/versioned roll schedules, durable contract-reference
+caching and rate-limit handling, raw dated execution behind continuous aliases,
+and roll-boundary diagnostics. No TradingView equivalence is currently claimed.
+Provider entitlement/history coverage still requires real-market acceptance.
+
+## Broker histories and unsupported data
+
+OANDA closed-history imports feed the common Journal, read-only and idempotent.
+Trading 212 account/position snapshots and history feed Portfolio separately from
+manual transaction accounting. Both support provider/account/environment profiles.
+Tradovate remains unsupported; Autochartist remains scaffold-only with no network.
+No verified DXY feed or point-in-time historical equity universe is available.
+Historical universe may contain survivorship bias. Equity price/volume baselines
+must not be represented as point-in-time fundamental or portfolio research.

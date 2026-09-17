@@ -1,4 +1,4 @@
-# Ledger v2 architecture — Phase 5.3
+# Ledger current architecture
 
 ## Product areas
 
@@ -29,7 +29,7 @@ Routers remain thin and React never calls Alpaca/SEC/FRED directly.
 
 ## Portfolio model
 
-Portfolio holdings are derived from BUY/SELL events rather than a second mutable holdings table. Historical market price / FX can resolve an amount-based transaction into shares, while an exact broker fill remains overridable.
+Manual Portfolio holdings derive from BUY/SELL events. Trading 212 account snapshots and history use separate broker-owned facts plus editable notes/tags; snapshots are not counted again as manual buys. Provider/account/environment identities and atomic sync cursors prevent duplicate import. See BROKER_CONNECTIONS.md.
 
 ## Journal source invariant
 
@@ -40,11 +40,16 @@ live_manual
 paper_manual
 replay
 backtest
+broker_oanda (and registered future broker adapters)
 ```
 
-Source describes **where the execution facts came from**, not who performs the arithmetic. Whenever entry/exit/size/fees/stop are available, Ledger derives objective result, P&L and realised R consistently. Manual/broker records may use an explicit P&L override when FX, partial fills or broker charges make the simple calculation incomplete.
-
-Backtest results are not automatically inserted into the manual Journal. Replay/broker sync can later create canonical journal records deliberately, preserving source separation for analytics.
+Source identifies the origin of execution facts. Manual and Replay facts use the
+common execution calculations; broker-imported facts and provider P&L are read-only.
+Discretionary review remains editable, and resync preserves it. Replay closed
+trades automatically enter this same Journal using deterministic external IDs.
+Backtests remain immutable saved research snapshots, not automatic Journal rows.
+Playbook custom fields, Daily Review, notes and attachments share stable IDs.
+Broker profiles support separate accounts/environments; Tradovate is unsupported.
 
 ## Strategy Lab invariant
 
@@ -84,13 +89,13 @@ The exported Notion Journal informed the Journal model:
 ## Shared market-data path
 
 ```text
-Research / Strategy Lab / future Replay
+Charts / Strategy Lab / Replay
                  ↓
           MarketDataService
                  ↓
         Parquet + DuckDB cache
                  ↓
-              Alpaca
+    Alpaca / OANDA / Massive
 ```
 
 Research session handling and Strategy Lab both use New York session boundaries. This avoids maintaining two unrelated candle pipelines.
@@ -102,3 +107,20 @@ Research session handling and Strategy Lab both use New York session boundaries.
 - Strategy plugins own setup and trade-management intent. `ManagePositionSignal` can tighten/change protective levels and take a partial market-like exit at the next primary-bar open.
 - Account sizing, leverage, entry windows, session guardrails, spread/slippage and commissions remain engine concerns.
 - Partial exits do not create extra logical trades. Final P&L/R includes all partial fills and all commissions, while planned R:R remains based on the original stop/target.
+
+## Current release capabilities
+
+- Journal V2: multi-select filters, cards/table, custom Playbook review fields,
+  Daily Review, Analysis/Calendar, timezone handling and currency-separated totals.
+- Replay clips canonical 1m bars before aggregation and indicators. Partial bars
+  contain revealed data only; timeline navigation never exposes future OHLCV.
+- Dated futures use tick size, point value, multiplier and whole contracts in
+  Backtest/Replay. Continuous aliases remain chart-only until checkpoint 8.
+- Strategy Workspace saves without execution, protects built-ins and runs
+  explicitly trusted Python in a separate process. It is not a security sandbox.
+- Frozen Gold and Momentum baselines; ORB/VWAP baselines; separate Gold filter
+  experiments with immutable input/configuration fingerprints and saved comparison.
+  DXY-dependent experiments explicitly report unavailable data, not a proxy.
+
+Current contracts: FUTURES_FOUNDATION.md, STRATEGY_WORKSPACE.md,
+ORB_VWAP_BASELINES.md, GOLD_EXPERIMENTS.md and BROKER_CONNECTIONS.md.

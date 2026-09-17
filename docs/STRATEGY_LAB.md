@@ -1,4 +1,4 @@
-# Ledger Strategy Lab — Phase 5.4.2 contract
+# Ledger Strategy Lab current contract
 
 Ledger deliberately separates **strategy-owned trade logic/risk management** from **account/execution controls**.
 
@@ -7,7 +7,7 @@ A strategy plugin decides whether a setup exists and owns the trade-specific rul
 ## Execution contract
 
 - A strategy sees completed bars only.
-- A signal generated from a completed bar fills at the **next primary-timeframe bar open**.
+- A market signal generated from a completed bar fills at the next primary-bar open. A limit signal waits for a subsequent bar to touch its original price, subject to configured expiry. Optional absolute entry deadlines are exclusive.
 - Stops and targets are active after that fill, including the rest of the entry bar.
 - A gap through a stop fills at the available opening price, not the stale stop price.
 - A gap through a target fills at the available opening price.
@@ -138,7 +138,7 @@ The engine decides the actual next-bar fill and computes execution/accounting. S
 
 ## Indicators
 
-Indicators live in `backend/app/indicators/` and are discovered automatically. Current built-ins are SMA, EMA, RSI, ATR and session VWAP.
+Indicators live in `backend/app/indicators/` and are discovered automatically. Built-ins include SMA, EMA, RSI, ATR, session VWAP and RTH volume-weighted population bands (rth_vwap_bands).
 
 The same backend indicator implementations are used by Research overlays and Strategy Lab so formulas do not drift between frontend and backtester implementations.
 
@@ -154,7 +154,7 @@ After the Phase 5.4 validation/management foundation, the next highest-value add
 2. walk-forward testing;
 3. Monte Carlo sequencing/risk analysis;
 4. richer scale-in handling and multiple independent exits;
-5. Replay on the same execution/journal contracts;
+5. Further Replay acceptance on the existing shared execution/Journal contracts;
 6. shared persisted drawing tools and richer indicator chart UI.
 
 ## Phase 5.3 run/audit architecture
@@ -249,3 +249,18 @@ Replay now treats 1-minute US-equity SIP bars as the canonical intraday source. 
 Changing Replay timeframe preserves the historical timestamp/reveal frontier and reloads the correct series atomically. It must never leave the UI labelled `1m` while still rendering 5m candles. Follow mode defaults off; the user can opt into auto-follow or make a one-off jump to the current candle.
 
 Volume is registered in the shared indicator registry and participates in Replay's show/hide/remove UI. A dedicated pane system (including volume MA, RSI/MACD panes and pane sizing) remains part of the later shared chart layer.
+
+## Current strategy release contracts
+
+Frozen Gold v1.1 and Momentum/VCP rules remain unchanged. ORB/VWAP definitions
+and limitations: ORB_VWAP_BASELINES.md. Gold filter experiments and all numerical
+thresholds: GOLD_EXPERIMENTS.md. DXY-dependent variants explicitly reject missing
+data and are not performance evidence. Runs comparison accepts up to 12 immutable
+snapshots, reports sample sizes and missing values, and never ranks a winner.
+Matched setup retention requires identical saved data/configuration fingerprints.
+Older runs without those fingerprints remain readable; retention is unavailable.
+
+Strategy Workspace: STRATEGY_WORKSPACE.md. Saving/editing performs no execution;
+explicit trusted-code actions run in a separate process. Built-ins remain protected.
+Dated futures economics and current continuous-execution restrictions:
+FUTURES_FOUNDATION.md. Continuous aliases remain chart-only until checkpoint 8.
