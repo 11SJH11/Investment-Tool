@@ -76,6 +76,10 @@ class MarketDataService:
             raise ValueError("start must be before end")
 
         provider = self.provider_for(ticker)
+        # Backward adjustment depends on later rolls in the requested range.
+        # Never merge independently adjusted segments into a shared cache.
+        if instrument_spec(ticker).security_type == "continuous_future" and getattr(provider, "back_adjust", False):
+            return provider.get_bars(ticker, timeframe, start, end)
         namespace = provider.cache_namespace
         if force_refresh:
             self._fetch_and_store(provider, ticker, timeframe, start, end)

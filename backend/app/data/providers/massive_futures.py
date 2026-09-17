@@ -55,7 +55,8 @@ class MassiveFuturesProvider(MarketDataProvider):
         adjustment = "back-adjusted" if self.back_adjust else "unadjusted"
         # Calendar roll is intentionally named in the namespace so a later
         # volume-derived roll policy cannot accidentally reuse incompatible cache.
-        self.cache_namespace = f"massive-futures-calendar-front-{adjustment}-v1"
+        self.cache_namespace = f"massive-futures-calendar-front-{adjustment}-provenance-v2"
+        self.adjustment = adjustment
 
     def get_quote(self, ticker: str) -> Quote:
         now = datetime.now(timezone.utc)
@@ -142,8 +143,8 @@ class MassiveFuturesProvider(MarketDataProvider):
 
         # Calendar-front v1: the active front contract is the nearest dated
         # contract whose last-trade date has not passed. This is deterministic and
-        # gets NQ1! working now. A later phase will replace this with the planned
-        # volume-crossover roll schedule used to more closely match TradingView.
+        # Uses UTC date boundaries, not exchange expiry instants. No volume/OI
+        # crossover or TradingView equivalence is asserted.
         segments: list[pd.DataFrame] = []
         cursor = start
         for contract in eligible:
@@ -156,6 +157,13 @@ class MassiveFuturesProvider(MarketDataProvider):
                 continue
             frame = self._contract_bars(contract.ticker, resolution, segment_start, segment_end, source_contract=contract.ticker)
             if not frame.empty:
+                prior = [c for c in contracts if c.last_trade_date < contract.last_trade_date]
+                effective = max(datetime.combine(contract.first_trade_date, time.min, tzinfo=timezone.utc),
+                    datetime.combine(prior[-1].last_trade_date + timedelta(days=1), time.min, tzinfo=timezone.utc)) if prior else datetime.combine(contract.first_trade_date, time.min, tzinfo=timezone.utc)
+                frame["roll_method"] = "calendar-front"
+                frame["roll_schedule_version"] = "calendar-front-v1"
+                frame["contract_last_trade_date"] = contract.last_trade_date.isoformat()
+                frame["roll_effective_at"] = effective.isoformat()
                 segments.append(frame)
             cursor = max(cursor, contract_end)
 
@@ -208,6 +216,12 @@ class MassiveFuturesProvider(MarketDataProvider):
             }
         )
         frame["timestamp"] = pd.to_datetime(pd.to_numeric(frame["timestamp"], errors="coerce"), unit="ns", utc=True)
+        frame["roll_method"] = "dated-contract"
+        frame["roll_schedule_version"] = "none"
+        frame["contract_last_trade_date"] = ""
+        frame["roll_effective_at"] = ""
+        frame["adjustment_method"] = "none"
+        frame["price_adjustment"] = 0.0
         for column in ("open", "high", "low", "close", "volume"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
         return (
@@ -234,6 +248,8 @@ def _back_adjust(frame: pd.DataFrame) -> pd.DataFrame:
         adjustments.loc[: idx - 1] = cumulative
     for column in ("open", "high", "low", "close"):
         output[column] = pd.to_numeric(output[column], errors="coerce") + adjustments
+    output["adjustment_method"] = "backward-additive-observed-gap-v1"
+    output["price_adjustment"] = adjustments
     return output
 
 

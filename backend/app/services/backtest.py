@@ -14,6 +14,7 @@ from app.services.chart_data import prepare_chart_bars
 from app.services.replay_snapshot import aggregate_revealed
 from app.services.market_data import MarketDataService
 from app.data.instruments import instrument_spec
+from app.data.futures import execution_economics
 from app.storage.backtest_run_repository import BacktestRunRepository
 
 NY = ZoneInfo("America/New_York")
@@ -76,6 +77,9 @@ class BacktestService:
             raise ValueError("At least one symbol is required")
         if len(symbols) > 20:
             raise ValueError("Phase 5 limits one run to 20 symbols; split larger research runs into batches")
+
+        for symbol in symbols:
+            execution_economics(symbol)
 
         primary = str(payload.get("primary_timeframe") or strategy_spec.timeframes[0])
         if primary not in SUPPORTED_TIMEFRAMES:
@@ -260,6 +264,8 @@ class BacktestService:
             requested_end = datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=NY).astimezone(timezone.utc)
 
         spec = self._instrument(symbol)
+        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
+            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         provider = self._provider(symbol)
         delay = self._delay(symbol)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
@@ -497,12 +503,16 @@ class BacktestService:
         default replay horizon/context instead of changing this invariant.
         """
         spec = self._instrument(symbol)
+        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
+            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         source_timeframe = timeframe if timeframe in {"1d", "1w"} else "1m"
         frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
         return prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
 
     def _load_timeframe(self, symbol: str, timeframe: str, start: datetime, end: datetime, session: str):
         spec = self._instrument(symbol)
+        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
+            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         source_timeframe = "30m" if spec.session_profile == "us_equity" and timeframe in {"1h", "4h"} else timeframe
         frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
         prepared, _ = prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)

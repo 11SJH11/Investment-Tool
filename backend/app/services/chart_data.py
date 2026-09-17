@@ -71,7 +71,11 @@ def prepare_chart_bars(
 
 
 def _aggregate(working: pd.DataFrame) -> pd.DataFrame:
-    grouped = working.sort_values("timestamp").groupby(["_session_date", "_slot"], sort=True)
+    from app.data.futures import PROVENANCE_COLUMNS
+    keys = ["_session_date", "_slot"]
+    if "source_contract" in working:
+        keys.append("source_contract")
+    grouped = working.sort_values("timestamp").groupby(keys, sort=True, dropna=False)
     aggregations = {
         "timestamp": ("timestamp", "first"),
         "open": ("open", "first"),
@@ -80,9 +84,10 @@ def _aggregate(working: pd.DataFrame) -> pd.DataFrame:
         "close": ("close", "last"),
         "volume": ("volume", "sum"),
     }
-    if "source_contract" in working.columns:
-        aggregations["source_contract"] = ("source_contract", "last")
-    return grouped.agg(**aggregations).reset_index(drop=True)
+    for column in PROVENANCE_COLUMNS:
+        if column in working.columns:
+            aggregations[column] = (column, "first")
+    return grouped.agg(**aggregations).reset_index(drop=True).sort_values("timestamp").reset_index(drop=True)
 
 
 def _infer_source_minutes(frame: pd.DataFrame) -> int:

@@ -1,3 +1,4 @@
+import { replayEconomics } from "./futures-utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
@@ -60,7 +61,7 @@ function plannedMetrics(position) {
   const target = position.take_profit == null ? null : Number(position.take_profit);
   const perShareRisk = stop == null ? null : Math.abs(entry - stop);
   return {
-    risk: perShareRisk == null ? null : perShareRisk * qty,
+    risk: perShareRisk == null ? null : perShareRisk * qty * (position.contract_multiplier || 1),
     rr: perShareRisk && target != null ? Math.abs(target - entry) / perShareRisk : null,
   };
 }
@@ -92,6 +93,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const [indicatorDefaultsInitialised, setIndicatorDefaultsInitialised] = useState(false);
   const [indicatorData, setIndicatorData] = useState({});
   const [editingIndicatorId, setEditingIndicatorId] = useState(null);
+  const [contracts, setContracts] = useState("1");
   const [positionAmount, setPositionAmount] = useState("1000");
   const [orderType, setOrderType] = useState("market");
   const [entryPrice, setEntryPrice] = useState("");
@@ -245,7 +247,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     if (!pos) return;
     const {symbol, replayDate, replayEndDate, startTime, timeframe, session} = dataset.config;
     const mult = pos.direction === "long" ? 1 : -1;
-    const gross = (Number(exitPriceValue) - pos.entry_price) * mult * pos.quantity;
+    const gross = (Number(exitPriceValue) - pos.entry_price) * mult * pos.quantity * (pos.contract_multiplier || 1);
     const trade = { ...pos, exit_price: Number(exitPriceValue), exit_time: exitTime, exit_reason: reason, net_pnl: gross };
     setClosedTrade(trade); setPosition(null); setPendingClose(false);
     try {
@@ -257,11 +259,12 @@ export default function ReplayPanel({ indicators = [], onError }) {
         source: "replay", name: `Replay · ${symbol}`, account: "Replay", ticker: symbol,
         direction: trade.direction, opened_at: trade.entry_time, closed_at: trade.exit_time,
         entry_price: trade.entry_price, exit_price: trade.exit_price, quantity: trade.quantity,
-        position_amount: Number(trade.position_amount || positionAmount || 0) || null, position_currency: "USD",
+        position_amount: dataset?.instrument?.asset_type === "future" ? null : Number(trade.position_amount || positionAmount || 0) || null, position_currency: "USD",
         stop_loss: trade.stop_loss, take_profit: trade.take_profit, fees: 0,
         trade_type: "replay", setup: trade.setup || setup, entry_timeframe: timeframe,
         external_provider: "ledger_replay", external_id: externalId,
         source_metadata: {
+          contract_multiplier: trade.contract_multiplier || 1, source_contract: trade.source_contract || null,
           replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime,
           timeframe, session, integrity: integrityCompromised ? "review_rewound" : "clean",
           exit_reason: reason, mfe_per_share: Number(trade.mfe_per_share || 0), mae_per_share: Number(trade.mae_per_share || 0),
@@ -312,6 +315,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const revealedSource = response.source_bars;
     if (cursor < furthestVisibleCount) cursor = Math.min(targetCursor, furthestVisibleCount);
     const remaining = targetCursor - cursor;
+    if (dataset.instrument?.asset_type === "future" && position && !position.contract_multiplier) throw new Error("This legacy futures Replay position predates contract accounting. Start a new Replay session.");
     let active = position;
     let order = pendingOrder;
     let closeQueued = pendingClose;
@@ -320,9 +324,10 @@ export default function ReplayPanel({ indicators = [], onError }) {
       if (order && !active) {
         const fill = orderFill(bar, order);
         if (fill != null) {
-          const amount = Number(order.position_amount || 0); const quantity = amount > 0 ? amount / fill : 1;
+          const amount = Number(order.position_amount || 0);
+          const economics = replayEconomics(dataset.instrument, amount, fill, [order.stop_loss, order.take_profit]);
           const candidate = {
-            direction: order.direction, entry_price: fill, entry_time: bar.timestamp, quantity,
+            direction: order.direction, entry_price: fill, entry_time: bar.timestamp, ...economics, source_contract: bar.source_contract,
             stop_loss: order.stop_loss, take_profit: order.take_profit, order_type: order.order_type,
             position_amount: amount || null, setup: order.setup || "", mfe_per_share: 0, mae_per_share: 0,
           };
@@ -370,7 +375,12 @@ export default function ReplayPanel({ indicators = [], onError }) {
     if (busy.current || !dataset || !nextBar || !atFrontier) { onError?.("Return to the newest revealed candle before placing a replay order."); return; }
     const explicitEntry = orderType === "market" ? null : Number(entryPrice);
     if (orderType !== "market" && (!Number.isFinite(explicitEntry) || explicitEntry <= 0)) { onError?.("Enter a valid order price for limit/stop entry."); return; }
-    const amount = Number(positionAmount || 0);
+    const isFuture = dataset.instrument?.asset_type === "future";
+    const amount = Number((isFuture ? contracts : positionAmount) || 0);
+    if (isFuture) {
+      try { replayEconomics(dataset.instrument, amount, explicitEntry ?? Number(currentBar.close), [stop === "" ? null : Number(stop), target === "" ? null : Number(target)]); }
+      catch (error) { onError?.(error.message); return; }
+    }
     if (!(amount > 0)) { onError?.("Position value must be greater than zero."); return; }
     setPendingOrder({
       direction, order_type: orderType, entry_price: explicitEntry,
@@ -473,11 +483,12 @@ export default function ReplayPanel({ indicators = [], onError }) {
           </div>
 
           <div className="rounded-lg border border-stone-200 p-4"><h4 className="text-sm font-semibold">Order ticket</h4><p className="mt-1 text-[11px] text-stone-500">Risk, planned R:R and realised R are calculated from the actual fill, stop, target and exit; they are not manual inputs.</p>
-            <div className="mt-3 grid grid-cols-2 gap-3"><Field label="Order type"><select className="input" value={orderType} onChange={(e) => setOrderType(e.target.value)}><option value="market">Market · next bar open</option><option value="limit">Limit · at price</option><option value="stop">Stop entry · at price</option></select></Field><Field label="Position value · USD"><input type="number" className="input" value={positionAmount} onChange={(e) => setPositionAmount(e.target.value)} /></Field>
+            <div className="mt-3 grid grid-cols-2 gap-3"><Field label="Order type"><select className="input" value={orderType} onChange={(e) => setOrderType(e.target.value)}><option value="market">Market · next bar open</option><option value="limit">Limit · at price</option><option value="stop">Stop entry · at price</option></select></Field><Field label={dataset?.instrument?.asset_type === "future" ? "Contracts" : "Position value · USD"}><input type="number" className="input" value={dataset?.instrument?.asset_type === "future" ? contracts : positionAmount} onChange={(e) => dataset?.instrument?.asset_type === "future" ? setContracts(e.target.value) : setPositionAmount(e.target.value)} /></Field>
               {orderType !== "market" && <Field label="Entry price"><input type="number" step="any" className="input" value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="Price" /></Field>}
               <Field label="Stop loss"><input type="number" step="any" className="input" value={stop} onChange={(e) => setStop(e.target.value)} /></Field><Field label="Take profit"><input type="number" step="any" className="input" value={target} onChange={(e) => setTarget(e.target.value)} /></Field><Field label="Setup"><input className="input" value={setup} onChange={(e) => setSetup(e.target.value)} placeholder="Optional" /></Field></div>
             {!position && !pendingOrder && <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("long")} className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">BUY / LONG</button><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("short")} className="rounded-md bg-red-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">SELL / SHORT</button></div>}
             {pendingOrder && <div className="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-900"><strong>{pendingOrder.direction.toUpperCase()} {pendingOrder.order_type.toUpperCase()}</strong>{pendingOrder.entry_price != null ? ` @ ${money(pendingOrder.entry_price)}` : " · next bar open"}. Stop {money(pendingOrder.stop_loss)} · target {money(pendingOrder.take_profit)}. <button onClick={() => setPendingOrder(null)} className="ml-2 underline">Cancel order</button></div>}
+            {dataset?.instrument?.asset_type === "future" && <p className="mt-2 text-xs text-amber-700">{dataset.instrument.execution_supported ? `USD ${dataset.instrument.point_value} per point per contract; tick ${dataset.instrument.tick_size}.` : "Continuous alias: chart-only. Select a dated contract for trading; cross-roll execution is not modelled."}</p>}
             {position && <div className="mt-3 rounded bg-blue-50 p-3 text-xs text-blue-900"><div><strong>{position.direction.toUpperCase()}</strong> · entry {money(position.entry_price)} · qty {position.quantity.toFixed(4)}</div><div className="mt-1">Stop {money(position.stop_loss)} · target {money(position.take_profit)}</div><div className="mt-1">Initial risk <strong>{money(metrics.risk)}</strong> · Planned R:R <strong>{metrics.rr == null ? "—" : `${metrics.rr.toFixed(2)}:1`}</strong> · MFE/share {money(position.mfe_per_share)} · MAE/share {money(position.mae_per_share)}</div><button disabled={!nextBar} onClick={() => setPendingClose(true)} className="mt-2 underline">{pendingClose ? "Manual close queued for next bar open" : "Close manually on next bar open"}</button></div>}
             {closedTrade && <div className={`mt-3 rounded p-3 text-xs ${closedTrade.net_pnl >= 0 ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}><strong>Closed:</strong> {closedTrade.exit_reason} · {money(closedTrade.exit_price)} · P&L {money(closedTrade.net_pnl)}</div>}
             {journalStatus && <p className="mt-2 text-xs text-stone-600">{journalStatus}</p>}

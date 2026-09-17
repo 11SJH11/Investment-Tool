@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from app.data.futures import execution_economics, adverse_tick, on_tick
+
 from app.backtesting.context import StrategyContext, timeframe_delta
 from app.backtesting.models import BacktestConfig, BacktestTrade, EntrySignal, ExitSignal, ManagePositionSignal, Position
 from app.backtesting.strategies.base import Strategy
@@ -53,6 +55,13 @@ class BacktestEngine:
         primary_rows: dict[str, dict[pd.Timestamp, Any]] = {}
         daily_last_bar: dict[str, dict[object, pd.Timestamp]] = {}
         for symbol, frames in symbol_frames.items():
+            economics = execution_economics(symbol)
+            if economics[1] is not None:
+                for frame in frames.values():
+                    if "adjustment_method" in frame and (frame["adjustment_method"] != "none").any():
+                        raise ValueError("Futures execution requires unadjusted dated-contract prices")
+                    if "source_contract" in frame and (frame["source_contract"].astype(str) != symbol).any():
+                        raise ValueError("Futures execution cannot cross source contracts")
             prepared[symbol] = {timeframe: _prepare_frame(frame) for timeframe, frame in frames.items()}
             primary = prepared[symbol].get(primary_timeframe)
             if primary is None or primary.empty:
@@ -484,6 +493,8 @@ class BacktestEngine:
             raw_open, signal.direction, entering=True,
             slippage_bps=self.config.slippage_bps, spread_bps=self.config.spread_bps,
         )
+        point_value, tick, step = execution_economics(symbol)
+        entry = adverse_tick(entry, tick, signal.direction, entering=True)
         stop = float(signal.stop_loss)
         target = float(signal.take_profit) if signal.take_profit is not None else None
         if signal.direction == "long":
@@ -506,10 +517,14 @@ class BacktestEngine:
             if not math.isfinite(signal.target_r) or signal.target_r <= 0:
                 return "invalid_target_r"
             target = entry + (1 if signal.direction == "long" else -1) * signal.target_r * risk_per_share
-        quantity = self._quantity(balance, entry, risk_per_share, current_exposure)
+        if not on_tick(stop, tick) or (target is not None and not on_tick(target, tick)) or (signal.entry_price is not None and not on_tick(signal.entry_price, tick)):
+            return "off_tick_order_price"
+        quantity = self._quantity(balance, entry * point_value, risk_per_share * point_value, current_exposure)
+        if step:
+            quantity = math.floor(quantity / step + 1e-10) * step
         if quantity <= 0 or not math.isfinite(quantity):
             return "position_size_zero"
-        initial_risk = risk_per_share * quantity
+        initial_risk = risk_per_share * quantity * point_value
         commission = max(0.0, float(self.config.commission_per_order))
         return Position(
             symbol=symbol,
@@ -523,7 +538,8 @@ class BacktestEngine:
             initial_risk_amount=initial_risk,
             entry_commission=commission,
             signal_reason=signal.reason,
-            metadata=dict(signal.metadata),
+            metadata={**dict(signal.metadata), **({"contract_multiplier": point_value, "tick_size": tick, "quantity_unit": "contracts", "currency": "USD"} if tick else {})},
+            contract_multiplier=point_value, tick_size=tick, quantity_step=step,
         )
 
     def _quantity(self, balance: float, entry: float, risk_per_share: float, current_exposure: float) -> float:
@@ -565,11 +581,15 @@ class BacktestEngine:
             new_stop = float(signal.new_stop_loss)
             if not math.isfinite(new_stop):
                 raise ValueError("Managed stop must be finite")
+            if not on_tick(new_stop, position.tick_size):
+                raise ValueError("Managed stop must respect tick size")
             position.stop_loss = new_stop
         if signal.new_take_profit is not None:
             new_target = float(signal.new_take_profit)
             if not math.isfinite(new_target):
                 raise ValueError("Managed target must be finite")
+            if not on_tick(new_target, position.tick_size):
+                raise ValueError("Managed target must respect tick size")
             position.take_profit = new_target
 
         fraction = signal.reduce_fraction
@@ -578,13 +598,16 @@ class BacktestEngine:
             if not 0 < fraction < 1:
                 raise ValueError("reduce_fraction must be greater than 0 and less than 1; use ExitSignal for a full exit")
             quantity = position.quantity * fraction
+            if position.quantity_step:
+                quantity = math.floor(quantity / position.quantity_step + 1e-10) * position.quantity_step
             if quantity > 1e-12:
                 exit_price = _apply_market_costs(
                     raw_open, position.direction, entering=False,
                     slippage_bps=self.config.slippage_bps, spread_bps=self.config.spread_bps,
                 )
+                exit_price = adverse_tick(exit_price, position.tick_size, position.direction, entering=False)
                 multiplier = 1.0 if position.direction == "long" else -1.0
-                gross = (exit_price - position.entry_price) * quantity * multiplier
+                gross = (exit_price - position.entry_price) * quantity * multiplier * position.contract_multiplier
                 commission = max(0.0, float(self.config.commission_per_order))
                 balance += gross - commission
                 position.realized_gross += gross
@@ -654,8 +677,10 @@ class BacktestEngine:
             if market_fill else float(raw_price)
         )
         multiplier = 1.0 if position.direction == "long" else -1.0
+        if market_fill:
+            exit_price = adverse_tick(exit_price, position.tick_size, position.direction, entering=False)
         remaining_quantity = float(position.quantity)
-        final_gross = (exit_price - position.entry_price) * remaining_quantity * multiplier
+        final_gross = (exit_price - position.entry_price) * remaining_quantity * multiplier * position.contract_multiplier
         exit_commission = max(0.0, float(self.config.commission_per_order))
         gross = position.realized_gross + final_gross
         fees = position.entry_commission + position.exit_commissions + exit_commission
@@ -939,7 +964,7 @@ def _unrealized_total(positions: dict[str, Position], prices: dict[str, float]) 
         if price is None:
             continue
         multiplier = 1.0 if position.direction == "long" else -1.0
-        total += (price - position.entry_price) * position.quantity * multiplier
+        total += (price - position.entry_price) * position.quantity * multiplier * position.contract_multiplier
     return total
 
 

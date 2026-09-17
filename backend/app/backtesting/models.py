@@ -63,6 +63,9 @@ class Position:
     entry_commission: float = 0.0
     signal_reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    contract_multiplier: float = 1.0
+    tick_size: float | None = None
+    quantity_step: float | None = None
     initial_quantity: float | None = None
     realized_gross: float = 0.0
     exit_commissions: float = 0.0
@@ -83,11 +86,11 @@ class Position:
     @property
     def notional(self) -> float:
         """Current open notional used for leverage/exposure checks."""
-        return abs(self.entry_price * self.quantity)
+        return abs(self.entry_price * self.quantity * self.contract_multiplier)
 
     @property
     def initial_notional(self) -> float:
-        return abs(self.entry_price * float(self.initial_quantity or 0.0))
+        return abs(self.entry_price * float(self.initial_quantity or 0.0) * self.contract_multiplier)
 
 
 @dataclass

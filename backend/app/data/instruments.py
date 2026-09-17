@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import re
 
+from app.data.futures import FAMILIES
+
 
 @dataclass(frozen=True)
 class InstrumentSpec:
@@ -18,7 +20,15 @@ class InstrumentSpec:
     continuous_rank: int | None = None
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        family = FAMILIES.get(self.root)
+        if family:
+            data.update(family.as_dict())
+            data["exchange"] = family.exchange
+        if self.asset_type == "future":
+            data["execution_supported"] = bool(family and self.security_type == "future_contract")
+            data["data_availability"] = "Subject to Massive contract coverage and account entitlement; live coverage not verified"
+        return data
 
 
 # Keep this list deliberately small: these are aliases Ledger explicitly promises
@@ -49,10 +59,15 @@ _VIRTUAL: dict[str, InstrumentSpec] = {
     ),
 }
 
-_CONTINUOUS_RE = re.compile(r"^(?P<root>[A-Z]{1,5})(?P<rank>[1-9])!$")
+for _root, _family in FAMILIES.items():
+    _alias = f"{_root}1!"
+    _VIRTUAL[_alias] = InstrumentSpec(_alias, f"{_family.description} Continuous Front Contract",
+        "future", "continuous_future", "massive", _alias, "futures_24h", _family.exchange, _root, 1)
+
+_CONTINUOUS_RE = re.compile(r"^(?P<root>[A-Z][A-Z0-9]{0,4})(?P<rank>[1-9])!$")
 # Standard futures month codes + one/two digit year suffix. This intentionally
 # routes only symbols that actually look like dated futures contracts.
-_DATED_FUTURE_RE = re.compile(r"^(?P<root>[A-Z]{1,5})(?P<month>[FGHJKMNQUVXZ])(?P<year>\d{1,2})$")
+_DATED_FUTURE_RE = re.compile(r"^(?P<root>[A-Z][A-Z0-9]{0,4})(?P<month>[FGHJKMNQUVXZ])(?P<year>\d{1,2})$")
 
 
 def normalize_symbol(ticker: str) -> str:
@@ -79,7 +94,7 @@ def instrument_spec(ticker: str) -> InstrumentSpec:
             provider_key="massive",
             provider_symbol=symbol,
             session_profile="futures_24h",
-            exchange=None,
+            exchange=FAMILIES[root].exchange if root in FAMILIES else None,
             root=root,
             continuous_rank=rank,
         )
@@ -95,7 +110,7 @@ def instrument_spec(ticker: str) -> InstrumentSpec:
             provider_key="massive",
             provider_symbol=symbol,
             session_profile="futures_24h",
-            exchange=None,
+            exchange=FAMILIES[root].exchange if root in FAMILIES else None,
             root=root,
         )
 

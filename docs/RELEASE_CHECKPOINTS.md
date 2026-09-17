@@ -52,7 +52,7 @@ frozen. No new schema is expected for strategy diagnostics/comparison snapshots.
 
 1. Replay + Journal UX — complete; verified and committed separately.
 2. Trading 212 + broker abstraction — complete, including multiple profiles and Tradovate scaffold.
-3. Futures foundation.
+3. Futures foundation - complete; dated-contract execution and continuous chart provenance. See `FUTURES_FOUNDATION.md`.
 4. Strategy Workspace.
 5. ORB + VWAP.
 6. Gold variants + comparison.
@@ -91,7 +91,7 @@ backend/tests/test_broker_connections.py; docs/BROKER_CONNECTIONS.md;
 frontend/src/features/brokers/BrokerProfilesPanel.jsx;
 frontend/src/features/portfolio/BrokerPortfolioPanel.jsx.
 
-### Checkpoint 3 preliminary inspection (not implemented)
+### Checkpoint 3 preliminary inspection (historical audit, superseded by implementation)
 
 Checkpoint 2 commit is `b39daeb`. The next-turn entry point is futures foundation.
 Read the original release brief and verify official CME/Massive specifications.
@@ -116,8 +116,12 @@ No futures implementation files were changed during this preliminary inspection.
   contract accounting before changing metadata; ensure provenance survives the
   actual cache/aggregation path. No change has yet been made to these areas.
 
-Pause here at the user's requested checkpoint boundary. Resume checkpoint 3,
-then 4 Strategy Workspace, 5 ORB/VWAP, 6 Gold variants/comparison, 7 full report.
+Checkpoint 3 is now implemented and verified: 293 backend tests, 10 frontend
+utility tests and production build pass. Isolated Chrome verified dated NQ
+Replay-to-Journal accounting, continuous order rejection and 1024px layout.
+Exact files, formulas, limitations and acceptance checks: `FUTURES_FOUNDATION.md`.
+Resume at checkpoint 4 Strategy Workspace, then 5 ORB/VWAP, 6 Gold
+variants/comparison and 7 full release report. Do not redo checkpoints 1-3.
 
 
 ## Checkpoint 1 final handoff

@@ -2,10 +2,11 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from app.data.futures import PROVENANCE_COLUMNS
 
 
 _REQUIRED_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
-_OPTIONAL_COLUMNS = ["source_contract"]
+_OPTIONAL_COLUMNS = PROVENANCE_COLUMNS
 
 
 class MarketStore:

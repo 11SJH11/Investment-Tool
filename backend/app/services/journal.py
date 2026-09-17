@@ -5,6 +5,8 @@ import math
 
 from app.storage.journal_repository import JournalRepository
 from app.core.journal_fields import REVIEW_FIELDS
+from app.data.futures import execution_economics
+from app.data.instruments import instrument_spec
 
 
 MANUAL_SOURCES = {"live_manual", "paper_manual"}
@@ -39,6 +41,9 @@ class JournalService:
             return self.repository.update_trade(trade_id, payload)
         if str(payload.get("source") or "").startswith("broker_"):
             raise ValueError("Use broker sync to import broker trades")
+        if set(payload) <= REVIEW_FIELDS:
+            self._validate_review(payload)
+            return self.repository.update_trade(trade_id, payload)
         merged = {**current, **payload}
         prepared = self._prepare_trade(merged, creating=False)
         changed = {key: prepared[key] for key in prepared if current.get(key) != prepared.get(key)}
@@ -93,6 +98,14 @@ class JournalService:
         # be entered as money/notional; quantity is then derived for the maths. The
         # stored quantity is still retained because later broker imports/backtests
         # will naturally supply exact fills/quantities.
+        point_value = 1.0
+        futures = instrument_spec(ticker).asset_type == "future" and not source.startswith("broker_")
+        if futures:
+            point_value, _, _ = execution_economics(ticker)
+            if str(data.get("position_currency") or "USD").upper() != "USD":
+                raise ValueError("Futures accounting is USD only; currency conversion is not implemented")
+            data["source_metadata"] = {**source_metadata, "contract_multiplier": point_value,
+                "quantity_unit": "contracts", "economics_version": "cme-economics-v1"}
         entry = _number(data.get("entry_price"))
         position_amount = _number(data.get("position_amount"))
         quantity = _number(data.get("quantity"))
@@ -100,9 +113,13 @@ class JournalService:
             if position_amount <= 0:
                 raise ValueError("position amount must be greater than zero")
             if entry is not None and entry > 0:
-                data["quantity"] = position_amount / entry
+                data["quantity"] = position_amount / (entry * point_value)
+                if futures:
+                    data["quantity"] = math.floor(data["quantity"] + 1e-10)
         elif quantity is not None and quantity <= 0:
             raise ValueError("quantity must be greater than zero")
+        if futures and (_number(data.get("quantity")) is None or float(data["quantity"]) <= 0 or not float(data["quantity"]).is_integer()):
+            raise ValueError("Futures quantity must be a positive whole number of contracts")
         data["position_currency"] = str(data.get("position_currency") or "USD").upper()
 
         # Broker adapters own their accounting; generic price-difference maths
@@ -170,7 +187,8 @@ class JournalService:
 
         mult = 1.0 if data.get("direction") == "long" else -1.0
         move_per_unit = (exit_price - entry) * mult
-        gross_pnl = move_per_unit * quantity if quantity is not None else None
+        point_value = execution_economics(data["ticker"])[0]
+        gross_pnl = move_per_unit * point_value * quantity if quantity is not None else None
         calculated_pnl = gross_pnl - fees if gross_pnl is not None else None
         final_pnl = override if override is not None else calculated_pnl
 
@@ -178,7 +196,7 @@ class JournalService:
         data["pnl_source"] = "manual_override" if override is not None else ("computed" if calculated_pnl is not None else None)
 
         if quantity is not None and entry * quantity != 0 and calculated_pnl is not None:
-            data["pnl_pct"] = calculated_pnl / (entry * quantity) * 100
+            data["pnl_pct"] = calculated_pnl / (entry * quantity * point_value) * 100
         else:
             data["pnl_pct"] = move_per_unit / entry * 100 if entry else None
 
@@ -186,7 +204,7 @@ class JournalService:
             risk_per_unit = abs(entry - stop)
             if risk_per_unit > 1e-12:
                 if final_pnl is not None and quantity is not None and quantity > 0:
-                    data["r_multiple"] = final_pnl / (risk_per_unit * quantity)
+                    data["r_multiple"] = final_pnl / (risk_per_unit * quantity * point_value)
                 else:
                     data["r_multiple"] = move_per_unit / risk_per_unit
             else:
