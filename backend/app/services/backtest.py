@@ -9,6 +9,8 @@ from app.backtesting.models import BacktestConfig
 from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
 from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as MOMENTUM_KEY
 from app.backtesting.strategies import strategy_registry
+from app.backtesting.strategies.intraday_baselines import KEYS as INTRADAY_KEYS, validate_market
+from app.backtesting.intraday_reporting import annotate_intraday
 from app.indicators import indicator_registry
 from app.services.chart_data import prepare_chart_bars
 from app.services.replay_snapshot import aggregate_revealed
@@ -90,6 +92,9 @@ class BacktestService:
         profiles = {self._instrument(symbol).session_profile for symbol in symbols}
         session = ("regular" if profiles == {"us_equity"} else "24h") if requested_session == "auto" else requested_session
         momentum = strategy_key == MOMENTUM_KEY
+        if strategy_key in INTRADAY_KEYS:
+            for symbol in symbols:
+                validate_market(symbol, primary)
         if momentum and (primary != "1d" or profiles != {"us_equity"}
                          or session != "regular" or not bool(payload.get("allow_overnight", True))
                          or payload.get("additional_timeframes")):
@@ -179,6 +184,10 @@ class BacktestService:
         })
         if momentum:
             annotate_result(result, frames_by_symbol, strategies[symbols[0]].params)
+            payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
+        if strategy_key in INTRADAY_KEYS:
+            annotate_intraday(result, frames_by_symbol)
+            result["strategy"]["params"] = dict(strategies[symbols[0]].params)
             payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
         if self.runs is not None and bool(payload.get("save_run", True)):
             saved = self.runs.create(

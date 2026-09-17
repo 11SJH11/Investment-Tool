@@ -139,6 +139,12 @@ class BacktestEngine:
                 if symbol in pending_entries and symbol not in positions:
                     pending = pending_entries[symbol]
                     signal: EntrySignal = pending["signal"]
+                    if signal.expires_at is not None and timestamp_dt >= signal.expires_at:
+                        pending_entries.pop(symbol)
+                        setup_records[pending["record_index"]].update({
+                            "status": "not_filled", "resolution_time": timestamp_dt.isoformat(),
+                            "resolution_reason": "entry_expired"})
+                        continue
                     if "available_at" in bar and timestamp_dt <= pending["decision_time"]:
                         continue
                     raw_fill = _entry_fill_price(signal, bar)
@@ -281,6 +287,17 @@ class BacktestEngine:
                         rejected_signals.append(_rejected(symbol, decision_time, decision.rejection_reason))
                         continue
                     if symbol in force_boundary_symbols:
+                        # Deadline-aware strategies retain their detected setup
+                        # even when configured flattening prevents any fill.
+                        if decision.expires_at is not None:
+                            setup_records.append({
+                                "symbol": symbol, "direction": decision.direction,
+                                "detected_at": decision_time.isoformat(), "order_type": decision.order_type,
+                                "entry_price": decision.entry_price, "stop_loss": decision.stop_loss,
+                                "take_profit": decision.take_profit, "status": "filtered",
+                                "reason": decision.reason, "metadata": dict(decision.metadata),
+                                "resolution_time": decision_time.isoformat(), "resolution_reason": "session_boundary",
+                            })
                         rejected_signals.append(_rejected(symbol, decision_time, "session_boundary"))
                         continue
                     if symbol not in positions and symbol not in pending_entries:

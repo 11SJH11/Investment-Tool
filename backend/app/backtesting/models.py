@@ -26,6 +26,8 @@ class EntrySignal:
     target_r: float | None = None
     rejection_reason: str | None = None
     fill_time_filters_only: bool = False
+    # Exclusive absolute deadline; None preserves existing pending-order behavior.
+    expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)

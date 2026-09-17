@@ -54,7 +54,7 @@ frozen. No new schema is expected for strategy diagnostics/comparison snapshots.
 2. Trading 212 + broker abstraction — complete, including multiple profiles and Tradovate scaffold.
 3. Futures foundation - complete; dated-contract execution and continuous chart provenance. See `FUTURES_FOUNDATION.md`.
 4. Strategy Workspace - complete; trusted explicit subprocess execution. See `STRATEGY_WORKSPACE.md`.
-5. ORB + VWAP.
+5. ORB + VWAP - complete; see `ORB_VWAP_BASELINES.md`.
 6. Gold variants + comparison.
 7. Full regression + final release report.
 
@@ -125,8 +125,13 @@ cases, 12 frontend utility tests and production build pass. Isolated Chrome
 verified static editing/save, explicit execution, saved backtest, built-in
 protection, tab persistence, unsaved-navigation guard and 1024px layout.
 See `STRATEGY_WORKSPACE.md` for exact files, security boundaries and acceptance.
-Resume at checkpoint 5 ORB/VWAP, then 6 Gold variants/comparison and 7 full
-release report. Do not redo checkpoints 1-4.
+Checkpoint 5 is complete: 366 full backend tests, 46 focused strategy cases,
+12 frontend utility tests and production build pass. Isolated Chrome verified
+ORB/research/VWAP runs, saved snapshots, both Trade Audit views, indicator
+discovery and 1024px layout. Formulas, exact files, commands and limitations:
+`ORB_VWAP_BASELINES.md`. No migration or user-data changes.
+Resume at checkpoint 6 Gold variants/comparison, then 7 full release report.
+Do not redo checkpoints 1-5. Checkpoint 6 has not been started.
 
 
 ## Checkpoint 1 final handoff

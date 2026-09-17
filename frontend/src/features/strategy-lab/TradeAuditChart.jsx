@@ -99,6 +99,11 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
         [meta.impulse_low, "Impulse Low", 1, 3],
         [meta.pivot, "Base pivot", 2, 2],
         [meta.base_low, "Base low", 1, 3],
+        [meta.or_high, "Opening range high", 1, 2],
+        [meta.or_low, "Opening range low", 1, 2],
+        [meta.vwap, "Confirmation VWAP", 2, 2],
+        [meta.upper_band, "Confirmation +2 SD", 1, 3],
+        [meta.lower_band, "Confirmation -2 SD", 1, 3],
       ];
       const seenLevels = new Set();
       levels.forEach(([price, title, lineWidth, lineStyle]) => {
@@ -117,7 +122,7 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
     if (showMarkers) {
       const meta = trade.metadata || {};
       const markers = [];
-      for (const [stamp, label] of [[meta.base_start, "BASE START"], [meta.base_end, "BASE END"], [meta.breakout_time, "BREAKOUT"]]) {
+      for (const [stamp, label] of [[meta.base_start, "BASE START"], [meta.base_end, "BASE END"], [meta.breakout_time, "BREAKOUT"], [meta.range_start, "RANGE START"], [meta.range_end, "RANGE END"], [meta.excursion_start, "EXCURSION"], [meta.excursion_start && meta.confirmation_bar_time, "VWAP REENTRY"]]) {
         if (!stamp) continue;
         const time = nearest(seconds(stamp));
         if (time != null) markers.push({ time, position: "aboveBar", shape: "circle", color: "#a78bfa", text: label });
