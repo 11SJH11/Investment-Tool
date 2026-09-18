@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -11,7 +12,10 @@ import httpx
 
 
 class ProviderHttpError(RuntimeError):
-    pass
+    def __init__(self, message, *, status_code=None, retry_after=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 _SENSITIVE_QUERY_KEYS = {
@@ -86,14 +90,20 @@ class JsonHttpClient:
 
     def _get(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout_seconds: float | None = None) -> httpx.Response:
         last_error: str | None = None
+        status_code = retry_after = None
         for attempt in range(1, self.max_attempts + 1):
             try:
                 kwargs = {"params": params, "headers": headers}
                 if timeout_seconds is not None:
                     kwargs["timeout"] = timeout_seconds
                 response = self._client.get(url, **kwargs)
+                status_code = response.status_code
+                retry_after = _retry_delay(response, attempt) if status_code == 429 else None
                 if _is_retryable_status(response.status_code) and attempt < self.max_attempts:
-                    time.sleep(_retry_delay(response, attempt))
+                    delay = _retry_delay(response, attempt)
+                    if delay > 30:
+                        raise ProviderHttpError(f"Provider HTTP {status_code}; retry after cooldown", status_code=status_code, retry_after=delay)
+                    time.sleep(delay)
                     continue
                 response.raise_for_status()
                 return response
@@ -111,7 +121,7 @@ class JsonHttpClient:
                     time.sleep(0.25 * attempt)
                     continue
                 break
-        raise ProviderHttpError(f"GET {_redact_url(url)} failed: {last_error}")
+        raise ProviderHttpError(f"GET {_redact_url(url)} failed: {last_error}", status_code=status_code, retry_after=retry_after)
 
 
 def _is_retryable_status(status_code: int) -> bool:
@@ -122,9 +132,19 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
     retry_after = response.headers.get("Retry-After")
     if retry_after:
         try:
-            return max(float(retry_after), 0.0)
+            seconds = float(retry_after)
+            if math.isfinite(seconds):
+                return max(seconds, 0.0)
         except ValueError:
-            pass
+            from email.utils import parsedate_to_datetime
+            from datetime import datetime, timezone
+            try:
+                stamp = parsedate_to_datetime(retry_after)
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                return max(0.0, (stamp-datetime.now(timezone.utc)).total_seconds())
+            except (ValueError, TypeError, OverflowError):
+                pass
     return 0.25 * attempt
 
 

@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import pandas as pd
 
 from app.data.http import JsonHttpClient
+from app.data.contract_reference_cache import ContractReferenceCache
 from app.data.instruments import instrument_spec, normalize_symbol
 from app.data.providers.base import MarketDataProvider, Quote, Timeframe
 
@@ -45,6 +46,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         base_url: str = "https://api.massive.com",
         back_adjust: bool = False,
         http: JsonHttpClient | None = None,
+        reference_cache_path=None,
     ):
         if not api_key:
             raise ValueError("Massive API key is required")
@@ -52,6 +54,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         self.base_url = base_url.rstrip("/")
         self.back_adjust = bool(back_adjust)
         self.http = http or JsonHttpClient()
+        self.reference_cache = ContractReferenceCache(reference_cache_path)
         adjustment = "back-adjusted" if self.back_adjust else "unadjusted"
         # Calendar roll is intentionally named in the namespace so a later
         # volume-derived roll policy cannot accidentally reuse incompatible cache.
@@ -85,7 +88,19 @@ class MassiveFuturesProvider(MarketDataProvider):
             return _back_adjust(frame) if self.back_adjust else frame
         return self._contract_bars(symbol, resolution, start, end, source_contract=symbol)
 
-    def list_contracts(self, product_code: str) -> list[FutureContract]:
+    def list_contracts(self, product_code: str, *, refresh: bool = False) -> list[FutureContract]:
+        root = str(product_code or "").strip().upper()
+        if not root.isalnum() or len(root) > 8:
+            raise ValueError("Futures product code is invalid")
+        def load():
+            return [dict(ticker=c.ticker, product_code=c.product_code,
+                         first_trade_date=c.first_trade_date.isoformat(), last_trade_date=c.last_trade_date.isoformat())
+                    for c in self._fetch_contracts(root)]
+        rows = self.reference_cache.get(self.base_url + ":contracts-v1:" + root, load, refresh=refresh)
+        return [FutureContract(c["ticker"], c["product_code"], date.fromisoformat(c["first_trade_date"]),
+                               date.fromisoformat(c["last_trade_date"])) for c in rows]
+
+    def _fetch_contracts(self, product_code: str) -> list[FutureContract]:
         root = str(product_code or "").strip().upper()
         if not root:
             raise ValueError("Futures product code is required")
@@ -100,8 +115,18 @@ class MassiveFuturesProvider(MarketDataProvider):
         }
         headers = self._auth_headers()
         rows: list[dict] = []
+        visited = set()
         while url:
+            parts = urlsplit(url)
+            base = urlsplit(self.base_url)
+            if (parts.scheme, parts.netloc, parts.path) != (base.scheme, base.netloc, "/futures/v1/contracts") or parts.fragment or parts.username or parts.password:
+                raise ValueError("Massive contract pagination left the allowed endpoint")
+            if url in visited or len(visited) >= 100:
+                raise ValueError("Massive contract pagination did not advance or exceeded 100 pages")
+            visited.add(url)
             payload = self.http.get_json(url, params=params, headers=headers)
+            if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+                raise ValueError("Massive contract metadata response is incomplete")
             rows.extend(payload.get("results") or [])
             next_url = payload.get("next_url")
             url = urljoin(self.base_url + "/", next_url) if next_url else ""

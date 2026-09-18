@@ -77,6 +77,9 @@ class MarketDataService:
 
         provider = self.provider_for(ticker)
         # Backward adjustment depends on later rolls in the requested range.
+        spec = instrument_spec(ticker)
+        if force_refresh and spec.security_type == "continuous_future" and hasattr(provider, "list_contracts"):
+            provider.list_contracts(spec.root, refresh=True)
         # Never merge independently adjusted segments into a shared cache.
         if instrument_spec(ticker).security_type == "continuous_future" and getattr(provider, "back_adjust", False):
             return provider.get_bars(ticker, timeframe, start, end)

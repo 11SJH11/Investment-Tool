@@ -59,6 +59,7 @@ export default function PortfolioPage({ onOpenTicker }) {
 
   const base = data.base_currency || "GBP";
   const useBase = data.base_currency_complete && data.base_market_value != null;
+  const hasManualRecords = data.transactions.length > 0 || data.holdings.length > 0;
 
   return (
     <div className="max-w-[1450px]">
@@ -97,7 +98,7 @@ export default function PortfolioPage({ onOpenTicker }) {
 
       {!useBase && (data.transactions || []).length > 0 && <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Some older transactions do not contain historical FX/base-currency data, so Ledger cannot present a fully consistent GBP portfolio total for them. New amount-based transactions store this automatically.</div>}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      {hasManualRecords && <><h3 className="mt-6 font-semibold">Manual Portfolio</h3><div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <Stat label={`Market value (${useBase ? base : "USD"})`} value={money(useBase ? data.base_market_value : data.market_value, useBase ? base : "USD")} />
         <Stat label={`Open cost basis (${useBase ? base : "USD"})`} value={money(useBase ? data.base_open_cost_basis : data.open_cost_basis, useBase ? base : "USD")} />
         <Stat label="Unrealised P&L" value={money(useBase ? data.base_unrealized_pnl : data.unrealized_pnl, useBase ? base : "USD")} tone={Number(useBase ? data.base_unrealized_pnl : data.unrealized_pnl) >= 0 ? "good" : "bad"} />
@@ -117,6 +118,7 @@ export default function PortfolioPage({ onOpenTicker }) {
         <div className="border-b border-stone-100 px-5 py-4"><h3 className="font-semibold">Transaction history</h3></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Date","Account","Ticker","Action","Amount / input","Shares bought / sold","Transaction share price","Price source","Fees","Note",""] .map((x, i) => <th key={`${x}-${i}`} className="px-4 py-3 text-left">{x}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{(data.transactions || []).map((t) => <tr key={t.id}><td className="px-4 py-3 whitespace-nowrap">{new Date(t.occurred_at).toLocaleString("en-GB")}</td><td className="px-4 py-3">{t.account}</td><td className="px-4 py-3 font-mono">{t.ticker}</td><td className={`px-4 py-3 font-medium ${t.action === "BUY" ? "text-emerald-700" : "text-red-700"}`}>{t.action}</td><td className="px-4 py-3">{t.input_mode === "amount" && t.input_amount != null ? money(t.input_amount, t.base_currency || "GBP") : "Entered as shares"}</td><td className="px-4 py-3">{Number(t.quantity).toFixed(8)}</td><td className="px-4 py-3">{money(t.price, t.asset_currency || "USD")}</td><td className="px-4 py-3 text-xs text-stone-500">{t.price_overridden ? "Manual fill" : (t.price_source || "Legacy")}</td><td className="px-4 py-3">{money(t.fees, t.fees_currency || t.base_currency || "GBP")}</td><td className="px-4 py-3 max-w-xs truncate">{t.note || "—"}</td><td className="px-4 py-3"><button onClick={() => remove(t.id)} className="text-xs text-stone-400 hover:text-red-700">Delete</button></td></tr>)}</tbody></table></div>
       </section>
+      </>}
     </div>
   );
 }

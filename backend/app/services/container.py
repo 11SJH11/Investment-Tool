@@ -159,6 +159,7 @@ def build_services(settings: Settings) -> AppServices:
             settings.massive_api_key or "",
             base_url=settings.massive_futures_base_url,
             back_adjust=settings.futures_back_adjust,
+            reference_cache_path=settings.market_data_dir / "contract-reference.sqlite",
             http=http,
         )
         providers.register("market_data_futures", massive_provider)

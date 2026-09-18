@@ -40,7 +40,7 @@ Massive supplies dated futures contracts and OHLCV aggregates. Phase 6.2 accepts
 
 `FUTURES_BACK_ADJUST=false` is the default. When enabled, Ledger applies backward additive gap adjustment across contract switches.
 
-This first rule is intentionally not labelled TradingView-equivalent. The next futures-data refinement should calculate and persist volume-crossover roll dates, then version/cache that roll schedule.
+This first rule is intentionally not labelled TradingView-equivalent. The next futures-data refinement must use an explicit versioned schedule. TradingView documents per-symbol rules informed by historical volume patterns, not a universal immediate volume-crossover rule; see CONTINUOUS_FUTURES_RESEARCH.md.
 
 Intraday Replay aggregation uses an 18:00 America/New_York futures-session anchor and does not discard overnight data through the US-equity session filter.
 
@@ -57,9 +57,10 @@ continuous execution is blocked pending the explicitly authorized checkpoint 8.
 Full-notional limits are used, not a broker futures margin model. Back-adjusted
 history is chart-only and must never become an execution fill.
 
-Checkpoint 8 must add verified/versioned roll schedules, durable contract-reference
-caching and rate-limit handling, raw dated execution behind continuous aliases,
-and roll-boundary diagnostics. No TradingView equivalence is currently claimed.
+Checkpoint 8's first save point adds durable contract-reference caching (24-hour
+TTL, bounded 429 stale fallback/cooldown, process-wide single flight). Verified/
+versioned roll schedules, raw dated execution behind continuous aliases and roll-
+boundary diagnostics remain outstanding. No TradingView equivalence is claimed.
 Provider entitlement/history coverage still requires real-market acceptance.
 
 ## Broker histories and unsupported data
