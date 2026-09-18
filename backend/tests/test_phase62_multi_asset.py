@@ -60,7 +60,7 @@ def test_massive_continuous_front_stitches_dated_contracts_and_keeps_provenance(
             return {"results": [{"window_start": 1789948800000000000, "open": 25050, "high": 25070, "low": 25040, "close": 25060, "volume": 120}]}
         raise AssertionError(url)
 
-    provider = MassiveFuturesProvider("key", http=FakeJsonHttpClient(handler))
+    provider = MassiveFuturesProvider("key", http=FakeJsonHttpClient(handler),roll_policy='calendar-front-v1')
     frame = provider.get_bars(
         "NQ1!", "1d",
         datetime(2026, 9, 18, tzinfo=timezone.utc),

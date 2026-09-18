@@ -1,8 +1,8 @@
 # Checkpoint 8.1: continuous futures research
 
 Reviewed official documentation on 2026-09-18. Research findings, not a claim of
-implemented TradingView parity. Ledger's current calendar-front-v1 selection and
-observed-gap adjustment remain unchanged at this save point.
+implemented TradingView parity. This research preceded implementation; current
+Ledger selection/adjustment is documented in RELEASE_CHECKPOINT_8.md.
 
 ## TradingView methodology
 
@@ -34,7 +34,7 @@ Massive describes exchange-session dates separately from timestamps; use its
 contract specifications and session data, not fabricated expiry/session bars.
 [Official futures overview](https://massive.com/docs/rest/futures/overview)
 
-## Required implementation still outstanding
+## Implementation requirements recorded before coding
 
 1. Establish a deterministic, versioned schedule for each supported family. Keep
    authoritative observed roll dates/rule evidence separate from an explicitly
@@ -66,6 +66,13 @@ adjusted; preserve missing timestamps as missing. Inspect roll boundary separate
 from price/volume differences. Record maximum absolute OHLC differences, volume
 differences, missing bars, contract mismatches and reasons supported by evidence.
 Never shift prices, timestamps or roll dates just to make comparisons pass.
+
+The offline implementation is `backend/tools/compare_continuous.py`; run from
+backend with `.venv/Scripts/python.exe tools/compare_continuous.py ledger.csv reference.csv`.
+CSV headers: timestamp, open, high, low, close, volume; optional source_contract.
+Timestamps must include UTC offsets. Export/rename headers explicitly; the tool
+does not guess units, align prices or fill missing bars. It reports timestamp
+coverage, maximum OHLCV differences, optional contract mismatches and roll lists.
 
 No licensed TradingView export or actual roll-period comparison was supplied or
 performed. Provider trade coverage, settlement-vs-trade close, session definitions,

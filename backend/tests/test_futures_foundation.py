@@ -36,7 +36,8 @@ def test_family_economics_and_aliases(root, tick, point, value):
     assert data['currency'] == 'USD' and data['execution_supported']
     assert '18:00-17:00' in data['session']
     assert instrument_spec(root+'1!').root == root
-    assert not instrument_spec(root+'1!').as_dict()['execution_supported']
+    assert instrument_spec(root+'1!').as_dict()['execution_supported']
+    assert instrument_spec(root+'1!').as_dict()['execution_requires_source_contract']
     assert root+'1!' in {x['ticker'] for x in virtual_symbols()}
 
 
@@ -138,7 +139,7 @@ def test_calendar_roll_provenance_cache_and_adjustment(tmp_path):
         price = 100 if url.endswith('NQU6') else 110
         return {'results':[{'window_start':pd.Timestamp(stamp).value,'open':price,'high':price,
                             'low':price,'close':price,'volume':1}]}
-    provider=MassiveFuturesProvider('test-only',http=FakeJsonHttpClient(handler))
+    provider=MassiveFuturesProvider('test-only',http=FakeJsonHttpClient(handler),roll_policy='calendar-front-v1')
     frame=provider.get_bars('NQ1!','1m',datetime(2026,9,18,tzinfo=timezone.utc),datetime(2026,9,22,tzinfo=timezone.utc))
     assert frame.source_contract.tolist() == ['NQU6','NQZ6']
     assert frame.roll_method.tolist() == ['calendar-front']*2

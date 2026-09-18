@@ -8,7 +8,7 @@ import pandas as pd
 from app.backtesting.models import EntrySignal
 from app.backtesting.strategies.base import ParameterSpec, Strategy, StrategySpec
 from app.backtesting.strategies.registry import strategy_registry
-from app.data.futures import execution_economics
+from app.data.futures import execution_economics, validate_execution_symbol, execution_contract
 from app.data.instruments import instrument_spec
 from app.indicators.rth_vwap import session_moments
 
@@ -25,7 +25,7 @@ ORB_DEFAULTS = dict(range_minutes=15, target_r=2.0, confirmation="close",
 def validate_market(symbol, timeframe):
     if timeframe != "1m" or instrument_spec(symbol).asset_type not in {"equity", "future"}:
         raise ValueError("ORB/VWAP require one-minute US equities or supported dated futures with traded volume")
-    execution_economics(symbol)
+    validate_execution_symbol(symbol)
 
 
 def session_bars(ctx):
@@ -33,6 +33,7 @@ def session_bars(ctx):
     bars = ctx.bars(count=1440)
     if bars.empty:
         return bars
+    execution_contract(ctx.symbol,bars.iloc[-1])
     stamps = pd.to_datetime(bars.timestamp, utc=True).dt.tz_convert(NY)
     last = stamps.iloc[-1]
     minutes = stamps.dt.hour * 60 + stamps.dt.minute
@@ -202,7 +203,7 @@ class VwapMeanReversion(Strategy):
                 direction = armed["direction"]
                 stop = armed["low"] if direction == "long" else armed["high"]
                 target = float(values.vwap)
-                _, tick, _ = execution_economics(ctx.symbol)
+                _, tick, _ = execution_economics(execution_contract(ctx.symbol,ctx.current_bar))
                 if tick:
                     target = (floor(target/tick) if direction == "long" else ceil(target/tick))*tick
                 meta.update(vwap=float(values.vwap), standard_deviation=float(values.sd),

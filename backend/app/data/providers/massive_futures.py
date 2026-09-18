@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.data.http import JsonHttpClient
 from app.data.contract_reference_cache import ContractReferenceCache
+from app.data.continuous_schedule import VERSION, choose_roll, adjust_continuous
 from app.data.instruments import instrument_spec, normalize_symbol
 from app.data.providers.base import MarketDataProvider, Quote, Timeframe
 
@@ -47,6 +48,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         back_adjust: bool = False,
         http: JsonHttpClient | None = None,
         reference_cache_path=None,
+        roll_policy=VERSION,
     ):
         if not api_key:
             raise ValueError("Massive API key is required")
@@ -55,11 +57,22 @@ class MassiveFuturesProvider(MarketDataProvider):
         self.back_adjust = bool(back_adjust)
         self.http = http or JsonHttpClient()
         self.reference_cache = ContractReferenceCache(reference_cache_path)
+        if roll_policy not in {VERSION, 'calendar-front-v1'}:
+            raise ValueError('Unknown futures roll schedule version')
+        self.roll_policy = roll_policy
         adjustment = "back-adjusted" if self.back_adjust else "unadjusted"
         # Calendar roll is intentionally named in the namespace so a later
         # volume-derived roll policy cannot accidentally reuse incompatible cache.
-        self.cache_namespace = f"massive-futures-calendar-front-{adjustment}-provenance-v2"
+        self.cache_namespace = f"massive-futures-{roll_policy}-{adjustment}-provenance-v3"
         self.adjustment = adjustment
+
+    def raw_execution_provider(self):
+        from copy import copy
+        provider = copy(self)
+        provider.back_adjust = False
+        provider.adjustment = 'unadjusted'
+        provider.cache_namespace = self.cache_namespace.replace('back-adjusted', 'unadjusted')
+        return provider
 
     def get_quote(self, ticker: str) -> Quote:
         now = datetime.now(timezone.utc)
@@ -84,8 +97,16 @@ class MassiveFuturesProvider(MarketDataProvider):
         if spec.security_type == "continuous_future":
             if spec.continuous_rank != 1:
                 raise ValueError("Phase 6.2 currently supports only front-contract continuous aliases such as NQ1!")
-            frame = self._continuous_front(spec.root or "", resolution, start, end)
-            return _back_adjust(frame) if self.back_adjust else frame
+            if self.roll_policy == 'calendar-front-v1':
+                frame = self._continuous_front(spec.root or "", resolution, start, end)
+                frame = _back_adjust(frame) if self.back_adjust else frame
+            else:
+                frame, rolls = self._scheduled_front(spec.root, resolution, start, end)
+                frame = adjust_continuous(frame, rolls) if self.back_adjust else frame
+            frame['continuous_alias'] = symbol
+            frame['provider'] = self.key
+            frame['adjustment_mode'] = 'back_adjusted' if self.back_adjust else 'raw'
+            return frame
         return self._contract_bars(symbol, resolution, start, end, source_contract=symbol)
 
     def list_contracts(self, product_code: str, *, refresh: bool = False) -> list[FutureContract]:
@@ -155,6 +176,60 @@ class MassiveFuturesProvider(MarketDataProvider):
         # tracebacks, access logs and copied URLs cannot expose the credential.
         return {"Authorization": f"Bearer {self.api_key}"}
 
+    def _segment_bars(self, ticker, resolution, start, end):
+        if hasattr(self,'contract_loader'):
+            timeframe = next(k for k,v in _RESOLUTION_MAP.items() if v == resolution)
+            return self.contract_loader(ticker,timeframe,start,end).copy()
+        return self._contract_bars(ticker,resolution,start,end,source_contract=ticker)
+
+    def _scheduled_front(self, root, resolution, start, end):
+        contracts = self.list_contracts(root)
+        if not contracts:
+            raise ValueError(f'No dated contracts available for {root}')
+        now = datetime.now(timezone.utc)
+        rolls = []
+        boundaries = {}
+        for old, new in zip(contracts, contracts[1:]):
+            if old.last_trade_date < start.date()-timedelta(days=60) or old.last_trade_date > end.date()+timedelta(days=45):
+                continue
+            begin = datetime.combine(max(old.first_trade_date, new.first_trade_date,
+                old.last_trade_date-timedelta(days=46)), time.min, timezone.utc)
+            finish = min(now, datetime.combine(old.last_trade_date+timedelta(days=2),time.min,timezone.utc))
+            def load(old=old,new=new,begin=begin,finish=finish):
+                if begin >= finish:
+                    return choose_roll(old,new,_empty(),_empty())
+                a = self._contract_bars(old.ticker,'1session',begin,finish,source_contract=old.ticker)
+                b = self._contract_bars(new.ticker,'1session',begin,finish,source_contract=new.ticker)
+                return choose_roll(old,new,a,b)
+            # Fixed pair/date key, shared across all chart resolutions and ranges.
+            horizon = 'final' if old.last_trade_date < now.date()-timedelta(days=2) else now.strftime('%Y-%m-%d-%H')
+            key = f'{self.base_url}:roll:{VERSION}:{old}:{new}:{horizon}'
+            roll = self.reference_cache.get(key,load,refresh=getattr(self,'refresh_schedule',False))
+            boundaries[old.ticker] = roll
+            rolls.append(roll)
+        if any(pd.Timestamp(a['effective_at']) >= pd.Timestamp(b['effective_at']) for a,b in zip(rolls,rolls[1:])):
+            raise ValueError('Continuous roll evidence is not chronological; refusing overlapping source contracts')
+        segments = []
+        for i, contract in enumerate(contracts):
+            prior = contracts[i-1] if i else None
+            prior_roll = boundaries.get(prior.ticker) if prior else None
+            effective = (pd.Timestamp(prior_roll['effective_at']) if prior_roll else
+                pd.Timestamp(datetime.combine(prior.last_trade_date+timedelta(days=1) if prior else contract.first_trade_date,time.min,timezone.utc)))
+            ending = boundaries.get(contract.ticker)
+            until = pd.Timestamp(ending['effective_at']) if ending else pd.Timestamp(datetime.combine(contract.last_trade_date+timedelta(days=1),time.min,timezone.utc))
+            lo, hi = max(pd.Timestamp(start),effective,pd.Timestamp(datetime.combine(contract.first_trade_date,time.min,timezone.utc))),min(pd.Timestamp(end),until)
+            if lo >= hi:
+                continue
+            frame = self._segment_bars(contract.ticker,resolution,lo.to_pydatetime(),hi.to_pydatetime())
+            frame['roll_method'] = prior_roll['method'] if prior_roll else 'initial-contract'
+            frame['roll_schedule_version'] = VERSION
+            frame['roll_effective_at'] = effective.isoformat()
+            frame['contract_last_trade_date'] = contract.last_trade_date.isoformat()
+            segments.append(frame)
+        if not segments:
+            return _empty(include_contract=True),rolls
+        return pd.concat(segments,ignore_index=True).sort_values('timestamp').reset_index(drop=True),rolls
+
     def _continuous_front(self, root: str, resolution: str, start: datetime, end: datetime) -> pd.DataFrame:
         contracts = self.list_contracts(root)
         if not contracts:
@@ -180,7 +255,7 @@ class MassiveFuturesProvider(MarketDataProvider):
             segment_end = min(end, contract_end)
             if segment_start >= segment_end:
                 continue
-            frame = self._contract_bars(contract.ticker, resolution, segment_start, segment_end, source_contract=contract.ticker)
+            frame = self._segment_bars(contract.ticker, resolution, segment_start, segment_end)
             if not frame.empty:
                 prior = [c for c in contracts if c.last_trade_date < contract.last_trade_date]
                 effective = max(datetime.combine(contract.first_trade_date, time.min, tzinfo=timezone.utc),
@@ -220,7 +295,14 @@ class MassiveFuturesProvider(MarketDataProvider):
         }
         headers = self._auth_headers()
         rows: list[dict] = []
+        visited = set()
         while url:
+            parts, base = urlsplit(url), urlsplit(self.base_url)
+            if (parts.scheme,parts.netloc,parts.path) != (base.scheme,base.netloc,f'/futures/v1/aggs/{ticker}') or parts.fragment or parts.username or parts.password:
+                raise ValueError('Massive aggregate pagination left the allowed endpoint')
+            if url in visited or len(visited) >= 1000:
+                raise ValueError('Massive aggregate pagination did not advance or exceeded its bound')
+            visited.add(url)
             payload = self.http.get_json(url, params=params, headers=headers)
             rows.extend(payload.get("results") or [])
             next_url = payload.get("next_url")
@@ -238,6 +320,7 @@ class MassiveFuturesProvider(MarketDataProvider):
                 "close": [item.get("close") for item in rows],
                 "volume": [item.get("volume", 0) for item in rows],
                 "source_contract": [source_contract] * len(rows),
+                "session_end_date": [item.get('session_end_date') for item in rows],
             }
         )
         frame["timestamp"] = pd.to_datetime(pd.to_numeric(frame["timestamp"], errors="coerce"), unit="ns", utc=True)
@@ -247,6 +330,10 @@ class MassiveFuturesProvider(MarketDataProvider):
         frame["roll_effective_at"] = ""
         frame["adjustment_method"] = "none"
         frame["price_adjustment"] = 0.0
+        frame['provider'] = self.key
+        frame['adjustment_mode'] = 'raw'
+        frame['continuous_alias'] = ''
+        frame = frame.loc[(frame.timestamp >= pd.Timestamp(start)) & (frame.timestamp < pd.Timestamp(end))]
         for column in ("open", "high", "low", "close", "volume"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
         return (

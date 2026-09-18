@@ -5,7 +5,7 @@ import math
 
 from app.storage.journal_repository import JournalRepository
 from app.core.journal_fields import REVIEW_FIELDS
-from app.data.futures import execution_economics
+from app.data.futures import execution_economics, execution_contract
 from app.data.instruments import instrument_spec
 
 
@@ -101,10 +101,13 @@ class JournalService:
         point_value = 1.0
         futures = instrument_spec(ticker).asset_type == "future" and not source.startswith("broker_")
         if futures:
-            point_value, _, _ = execution_economics(ticker)
+            contract = execution_contract(ticker,source_metadata)
+            if source_metadata.get('executed_contract',contract) != contract:
+                raise ValueError('Executed contract does not match source provenance')
+            point_value, _, _ = execution_economics(contract)
             if str(data.get("position_currency") or "USD").upper() != "USD":
                 raise ValueError("Futures accounting is USD only; currency conversion is not implemented")
-            data["source_metadata"] = {**source_metadata, "contract_multiplier": point_value,
+            data["source_metadata"] = {**source_metadata, 'displayed_symbol':ticker,'executed_contract':contract, "contract_multiplier": point_value,
                 "quantity_unit": "contracts", "economics_version": "cme-economics-v1"}
         entry = _number(data.get("entry_price"))
         position_amount = _number(data.get("position_amount"))
@@ -187,7 +190,7 @@ class JournalService:
 
         mult = 1.0 if data.get("direction") == "long" else -1.0
         move_per_unit = (exit_price - entry) * mult
-        point_value = execution_economics(data["ticker"])[0]
+        point_value = execution_economics(execution_contract(data['ticker'],data.get('source_metadata') or {}))[0]
         gross_pnl = move_per_unit * point_value * quantity if quantity is not None else None
         calculated_pnl = gross_pnl - fees if gross_pnl is not None else None
         final_pnl = override if override is not None else calculated_pnl

@@ -1,9 +1,10 @@
-import { replayEconomics } from "./futures-utils";
+import { replayEconomics, replaySource, replayRollAction } from "./futures-utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS, resolvedZone } from "../../utils/timezones";
 import ReplayChart from "./ReplayChart";
+import FuturesProvenance from '../../components/FuturesProvenance';
 import WatchlistBar from "../../components/WatchlistBar";
 import ChartDrawingToolbar from "../../components/chart/ChartDrawingToolbar";
 import DrawingObjectPanel from "../../components/chart/DrawingObjectPanel";
@@ -265,6 +266,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
         external_provider: "ledger_replay", external_id: externalId,
         source_metadata: {
           contract_multiplier: trade.contract_multiplier || 1, source_contract: trade.source_contract || null,
+          displayed_symbol: symbol, executed_contract: trade.source_contract || null,
+          continuous_alias: trade.continuous_alias || '', provider: trade.provider,
+          roll_schedule_version: trade.roll_schedule_version, adjustment_mode: 'raw', adjustment_method: 'none', price_adjustment: 0,
           replay_date: replayDate, replay_end_date: replayEndDate, start_time: startTime,
           timeframe, session, integrity: integrityCompromised ? "review_rewound" : "clean",
           exit_reason: reason, mfe_per_share: Number(trade.mfe_per_share || 0), mae_per_share: Number(trade.mae_per_share || 0),
@@ -321,13 +325,27 @@ export default function ReplayPanel({ indicators = [], onError }) {
     let closeQueued = pendingClose;
     for (let i = 0; i < remaining && cursor < bars.length; i += 1) {
       const bar = revealedSource[cursor];
+      let rollAction;
+      try { rollAction = replayRollAction(dataset.instrument,bar,active,order); }
+      catch (error) {
+        // Keep the last processed frontier; never display later prices from the
+        // larger advance response after terminating on a roll.
+        if (cursor > visibleCount) {
+          const partial = await api.strategyLabReplayBars(symbol,replayDate,replayEndDate,startTime,timeframe,session,context.contextBars,context.contextDays,bars[cursor-1].timestamp);
+          setDataset({...partial,config:dataset.config});setVisibleCount(cursor);setFurthestVisibleCount(old=>Math.max(old,cursor));
+        }
+        setIntegrityCompromised(true);setPendingOrder(null);setPendingClose(false);
+        throw error;
+      }
+      if (rollAction === 'cancel_order') { order=null;setPendingOrder(null);onError?.('Pending order cancelled at contract roll; place a new order for the active contract.'); }
       if (order && !active) {
         const fill = orderFill(bar, order);
         if (fill != null) {
           const amount = Number(order.position_amount || 0);
-          const economics = replayEconomics(dataset.instrument, amount, fill, [order.stop_loss, order.take_profit]);
+          const economics = replayEconomics(dataset.instrument, amount, fill, [order.stop_loss, order.take_profit],bar);
           const candidate = {
             direction: order.direction, entry_price: fill, entry_time: bar.timestamp, ...economics, source_contract: bar.source_contract,
+            continuous_alias: bar.continuous_alias, provider: bar.provider, roll_schedule_version: bar.roll_schedule_version,
             stop_loss: order.stop_loss, take_profit: order.take_profit, order_type: order.order_type,
             position_amount: amount || null, setup: order.setup || "", mfe_per_share: 0, mae_per_share: 0,
           };
@@ -378,7 +396,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const isFuture = dataset.instrument?.asset_type === "future";
     const amount = Number((isFuture ? contracts : positionAmount) || 0);
     if (isFuture) {
-      try { replayEconomics(dataset.instrument, amount, explicitEntry ?? Number(currentBar.close), [stop === "" ? null : Number(stop), target === "" ? null : Number(target)]); }
+      try { replayEconomics(dataset.instrument, amount, explicitEntry ?? Number(currentBar.close), [stop === "" ? null : Number(stop), target === "" ? null : Number(target)],currentBar); }
       catch (error) { onError?.(error.message); return; }
     }
     if (!(amount > 0)) { onError?.("Position value must be greater than zero."); return; }
@@ -386,6 +404,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
       direction, order_type: orderType, entry_price: explicitEntry,
       stop_loss: stop === "" ? null : Number(stop), take_profit: target === "" ? null : Number(target),
       position_amount: amount, setup,
+      source_contract: replaySource(dataset.instrument,currentBar),
     });
     setClosedTrade(null); setJournalStatus("");
   };
@@ -459,6 +478,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
       </div>
       <div className={`mt-3 rounded-md px-3 py-2 text-xs ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
         Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.provider ? `${dataset.provider} · ` : ""}{dataset.source_timeframe || timeframe}{String(dataset.aggregation||"").includes("aligned_from_1m") ? ` → ${timeframe}` : ""}{dataset.effective_session==="24h" ? " · 24h market" : ""}.</span>
+        <FuturesProvenance bars={dataset.source_bars}/>
       </div>
       <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
@@ -488,7 +508,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
               <Field label="Stop loss"><input type="number" step="any" className="input" value={stop} onChange={(e) => setStop(e.target.value)} /></Field><Field label="Take profit"><input type="number" step="any" className="input" value={target} onChange={(e) => setTarget(e.target.value)} /></Field><Field label="Setup"><input className="input" value={setup} onChange={(e) => setSetup(e.target.value)} placeholder="Optional" /></Field></div>
             {!position && !pendingOrder && <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("long")} className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">BUY / LONG</button><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("short")} className="rounded-md bg-red-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">SELL / SHORT</button></div>}
             {pendingOrder && <div className="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-900"><strong>{pendingOrder.direction.toUpperCase()} {pendingOrder.order_type.toUpperCase()}</strong>{pendingOrder.entry_price != null ? ` @ ${money(pendingOrder.entry_price)}` : " · next bar open"}. Stop {money(pendingOrder.stop_loss)} · target {money(pendingOrder.take_profit)}. <button onClick={() => setPendingOrder(null)} className="ml-2 underline">Cancel order</button></div>}
-            {dataset?.instrument?.asset_type === "future" && <p className="mt-2 text-xs text-amber-700">{dataset.instrument.execution_supported ? `USD ${dataset.instrument.point_value} per point per contract; tick ${dataset.instrument.tick_size}.` : "Continuous alias: chart-only. Select a dated contract for trading; cross-roll execution is not modelled."}</p>}
+            {dataset?.instrument?.asset_type === "future" && <p className="mt-2 text-xs text-amber-700">Raw execution: {currentBar?.source_contract || 'unavailable'} · USD {dataset.instrument.point_value} per point per contract; tick {dataset.instrument.tick_size}. {currentBar?.roll_schedule_version}. Open positions cannot cross rolls.</p>}
             {position && <div className="mt-3 rounded bg-blue-50 p-3 text-xs text-blue-900"><div><strong>{position.direction.toUpperCase()}</strong> · entry {money(position.entry_price)} · qty {position.quantity.toFixed(4)}</div><div className="mt-1">Stop {money(position.stop_loss)} · target {money(position.take_profit)}</div><div className="mt-1">Initial risk <strong>{money(metrics.risk)}</strong> · Planned R:R <strong>{metrics.rr == null ? "—" : `${metrics.rr.toFixed(2)}:1`}</strong> · MFE/share {money(position.mfe_per_share)} · MAE/share {money(position.mae_per_share)}</div><button disabled={!nextBar} onClick={() => setPendingClose(true)} className="mt-2 underline">{pendingClose ? "Manual close queued for next bar open" : "Close manually on next bar open"}</button></div>}
             {closedTrade && <div className={`mt-3 rounded p-3 text-xs ${closedTrade.net_pnl >= 0 ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}><strong>Closed:</strong> {closedTrade.exit_reason} · {money(closedTrade.exit_price)} · P&L {money(closedTrade.net_pnl)}</div>}
             {journalStatus && <p className="mt-2 text-xs text-stone-600">{journalStatus}</p>}

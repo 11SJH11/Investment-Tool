@@ -26,7 +26,8 @@ class InstrumentSpec:
             data.update(family.as_dict())
             data["exchange"] = family.exchange
         if self.asset_type == "future":
-            data["execution_supported"] = bool(family and self.security_type == "future_contract")
+            data["execution_supported"] = bool(family and (self.security_type == "future_contract" or self.continuous_rank == 1))
+            data['execution_requires_source_contract'] = self.security_type == 'continuous_future'
             data["data_availability"] = "Subject to Massive contract coverage and account entitlement; live coverage not verified"
         return data
 

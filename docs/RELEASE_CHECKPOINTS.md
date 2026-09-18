@@ -142,11 +142,12 @@ from the 2026-09-17 continuation brief. Do not redo checkpoints 1-7.
 Do not claim TradingView parity or NQ1!
 execution support before checkpoint 8 is actually implemented and verified.
 
-Checkpoint 8 is in progress. Its first save point implements contract-reference
-caching/rate-limit protection and Trading 212 investor metrics, and records the
-official TradingView research and broker-extension audit. The main roll-schedule
-and continuous-alias execution work (8.2–8.7) is still outstanding. See
-`RELEASE_CHECKPOINT_8_PART_1.md` for exact verification and the resume boundary.
+Checkpoint 8 implementation now includes versioned volume/expiry schedules,
+raw dated execution behind front aliases, cross-roll guards, provenance and an
+offline parity comparison tool. Real TradingView parity remains unverified.
+See `RELEASE_CHECKPOINT_8.md` and `RELEASE_CHECKPOINT_8_PART_1.md` for exact
+verification, cache/Portfolio changes and limitations. Checkpoint 9 is authorized
+next: Backtest workflow, persistent bounded job queue and frontend foundations.
 
 
 ## Checkpoint 1 final handoff

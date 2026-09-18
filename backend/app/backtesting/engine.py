@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, time, timedelta, timezone
 import math
 from statistics import median
@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from app.data.futures import execution_economics, adverse_tick, on_tick
+from app.data.futures import execution_economics, execution_contract, validate_execution_frame, PROVENANCE_COLUMNS, adverse_tick, on_tick
 
 from app.backtesting.context import StrategyContext, timeframe_delta
 from app.backtesting.models import BacktestConfig, BacktestTrade, EntrySignal, ExitSignal, ManagePositionSignal, Position
@@ -55,13 +55,8 @@ class BacktestEngine:
         primary_rows: dict[str, dict[pd.Timestamp, Any]] = {}
         daily_last_bar: dict[str, dict[object, pd.Timestamp]] = {}
         for symbol, frames in symbol_frames.items():
-            economics = execution_economics(symbol)
-            if economics[1] is not None:
-                for frame in frames.values():
-                    if "adjustment_method" in frame and (frame["adjustment_method"] != "none").any():
-                        raise ValueError("Futures execution requires unadjusted dated-contract prices")
-                    if "source_contract" in frame and (frame["source_contract"].astype(str) != symbol).any():
-                        raise ValueError("Futures execution cannot cross source contracts")
+            for frame in frames.values():
+                validate_execution_frame(symbol,frame)
             prepared[symbol] = {timeframe: _prepare_frame(frame) for timeframe, frame in frames.items()}
             primary = prepared[symbol].get(primary_timeframe)
             if primary is None or primary.empty:
@@ -117,6 +112,13 @@ class BacktestEngine:
             # 1) Fill orders generated from already-completed earlier bars.
             for symbol in symbols_now:
                 bar = _row_to_series(primary_rows[symbol][timestamp])
+                source = execution_contract(symbol,bar)
+                if symbol in positions and positions[symbol].metadata.get('executed_contract',symbol) != source:
+                    raise ValueError(f'Open position crosses a contract roll for {symbol}; no cross-roll fill or transfer is modelled')
+                if symbol in pending_entries and pending_entries[symbol].get('source_contract',symbol) != source:
+                    pending = pending_entries.pop(symbol)
+                    setup_records[pending['record_index']].update(status='not_filled', resolution_time=timestamp_dt.isoformat(),resolution_reason='contract_roll')
+                    rejected_signals.append(_rejected(symbol,timestamp_dt,'contract_roll'))
                 last_bars[symbol] = bar
                 current_prices[symbol] = float(bar["open"])
 
@@ -185,6 +187,7 @@ class BacktestEngine:
                             signal=signal,
                             balance=balance,
                             current_exposure=current_exposure,
+                            execution_symbol=source,
                         )
                         if isinstance(outcome, Position):
                             positions[symbol] = outcome
@@ -274,6 +277,12 @@ class BacktestEngine:
                 )
                 decision = strategy.on_bar(ctx)
                 if isinstance(decision, EntrySignal):
+                    current = _row_to_series(primary_rows[symbol][timestamp])
+                    source = execution_contract(symbol,current)
+                    if 'source_contract' in current:
+                        decision = replace(decision,metadata={**dict(decision.metadata),
+                            **{k:current[k] for k in PROVENANCE_COLUMNS if k in current},
+                            'displayed_symbol':symbol,'executed_contract':source})
                     if decision.rejection_reason:
                         setup_records.append({
                             "symbol": symbol, "direction": decision.direction,
@@ -321,7 +330,7 @@ class BacktestEngine:
                         if decision.fill_time_filters_only:
                             allowed, reason = True, ""
                         if allowed:
-                            pending_entries[symbol] = {"signal": decision, "age": 0, "record_index": record_index, "decision_time": decision_time}
+                            pending_entries[symbol] = {"signal": decision, "age": 0, "record_index": record_index, "decision_time": decision_time, 'source_contract':source}
                         else:
                             rejected_signals.append(_rejected(symbol, decision_time, reason))
                             setup_record.update({"status": "filtered", "resolution_time": decision_time.isoformat(), "resolution_reason": reason})
@@ -499,6 +508,7 @@ class BacktestEngine:
         signal: EntrySignal,
         balance: float,
         current_exposure: float,
+        execution_symbol: str | None = None,
     ) -> Position | str:
         if signal.min_open_exclusive is not None and raw_open <= signal.min_open_exclusive:
             return "open_not_above_pivot"
@@ -510,7 +520,7 @@ class BacktestEngine:
             raw_open, signal.direction, entering=True,
             slippage_bps=self.config.slippage_bps, spread_bps=self.config.spread_bps,
         )
-        point_value, tick, step = execution_economics(symbol)
+        point_value, tick, step = execution_economics(execution_symbol or symbol)
         entry = adverse_tick(entry, tick, signal.direction, entering=True)
         stop = float(signal.stop_loss)
         target = float(signal.take_profit) if signal.take_profit is not None else None

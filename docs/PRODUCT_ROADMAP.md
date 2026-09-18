@@ -15,15 +15,18 @@
   trusted local Strategy Workspace, frozen Gold/Momentum, ORB/VWAP, and Gold filter
   variants/comparison. DXY-dependent variants cannot validate performance yet.
 
-## Required remaining release work
+## Release continuation
 
-7. Release-wide checks and current-documentation cleanup.
-8. TradingView-methodology research; versioned continuous roll schedules; NQ1!
+7. Release-wide checks and current-documentation cleanup completed.
+8. Implemented: TradingView-methodology research; versioned continuous roll schedules; NQ1!
    Backtest/Replay backed by raw dated-contract fills; cross-roll protection;
    durable Massive reference caching/rate-limit handling; targeted Trading 212
    investor metrics and universal broker-adapter extension audit.
 
-Do not claim NQ1! execution or verified TradingView parity before that work passes.
+9. Authorized next: Backtest UX, bounded persistent job queue, independent batches
+   and reusable frontend foundations. Do not redesign the rest of the application.
+
+NQ1! execution uses Ledger's documented approximation; TradingView parity remains unverified.
 No live orders, broker automation, fabricated roll data, silent currency mixing,
 frozen-strategy tuning, user-data replacement or broad visual redesign.
 

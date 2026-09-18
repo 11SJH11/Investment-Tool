@@ -39,7 +39,7 @@ FAMILIES = {row.root: row for row in (
     FuturesFamily("MCL", "Micro WTI Crude Oil", "NYMEX", .01, 100, _CRUDE),
 )}
 
-PROVENANCE_COLUMNS = ["source_contract", "roll_method", "roll_schedule_version",
+PROVENANCE_COLUMNS = ["continuous_alias", "provider", "adjustment_mode", "session_end_date", "source_contract", "roll_method", "roll_schedule_version",
                       "contract_last_trade_date", "roll_effective_at", "adjustment_method", "price_adjustment"]
 
 
@@ -66,3 +66,46 @@ def execution_economics(symbol):
     if family is None:
         raise ValueError("Futures execution requires a verified contract family")
     return family.contract_multiplier, family.tick_size, 1.0
+
+
+def validate_execution_symbol(symbol):
+    from app.data.instruments import instrument_spec
+    spec = instrument_spec(symbol)
+    if spec.security_type == 'continuous_future':
+        if spec.continuous_rank != 1 or spec.root not in FAMILIES:
+            raise ValueError('Continuous execution requires a supported front-contract family')
+        return
+    execution_economics(symbol)
+
+
+def execution_contract(symbol, bar):
+    """Resolve only raw, provenance-backed dated prices. Never infer a contract."""
+    from app.data.instruments import instrument_spec
+    spec = instrument_spec(symbol)
+    if spec.asset_type != 'future':
+        return symbol
+    validate_execution_symbol(symbol)
+    if bar.get('adjustment_method', 'none') != 'none' or bar.get('adjustment_mode', 'raw') != 'raw' or float(bar.get('price_adjustment', 0)) != 0:
+        raise ValueError('Futures execution requires unadjusted dated-contract prices')
+    source = bar.get('source_contract', symbol)
+    if spec.security_type == 'continuous_future':
+        dated = instrument_spec(source)
+        if (dated.security_type != 'future_contract' or dated.root != spec.root
+                or bar.get('continuous_alias') != spec.ticker or bar.get('provider') != 'massive'
+                or bar.get('roll_schedule_version') not in {'prior-session-volume45-v1','calendar-front-v1'}):
+            raise ValueError('Continuous execution requires verified raw source-contract provenance; refresh the data')
+    elif source != spec.ticker:
+        raise ValueError('Futures execution cannot cross source contracts')
+    execution_economics(source)
+    return source
+
+
+def validate_execution_frame(symbol, frame):
+    from app.data.instruments import instrument_spec
+    validate_execution_symbol(symbol)
+    if instrument_spec(symbol).asset_type != 'future' or frame.empty:
+        return
+    columns = [c for c in PROVENANCE_COLUMNS if c in frame]
+    records = frame[columns].drop_duplicates().to_dict('records') if columns else [{}]
+    for row in records:
+        execution_contract(symbol,row)

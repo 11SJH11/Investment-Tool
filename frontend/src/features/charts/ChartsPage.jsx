@@ -8,6 +8,7 @@ import { loadDrawings, saveDrawings } from "../../components/chart/drawingStore"
 import { useWatchlist } from "../../app/watchlist";
 import PriceChart from "../research/PriceChart";
 import ResearchPage from "../research/ResearchPage";
+import FuturesProvenance from '../../components/FuturesProvenance';
 
 const TF = ["1m","5m","15m","30m","1h","4h","1d"];
 const INITIAL_LOOK = {"1m":14,"5m":60,"15m":186,"30m":186,"1h":365,"4h":730,"1d":1825};
@@ -146,6 +147,7 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
       <button className={`chart-icon-btn ${objectsOpen?"active":""}`} title="Object panel" onClick={()=>setObjectsOpen(v=>!v)}>☷</button>
       <button className="chart-icon-btn" title={expanded?"Restore layout":"Maximise chart"} onClick={onExpand}>{expanded?"↙":"⛶"}</button>
     </header>
+    <FuturesProvenance bars={bars}/>
     <div className="indicator-strip">
       {indicators.map(item=><div key={item.id} className="indicator-chip" style={{"--indicator-color":item.color}}><span className="indicator-dot"/><span>{indicatorLabel(item,symbol)}</span><button title={item.visible===false?"Show":"Hide"} onClick={()=>updateIndicator(item.id,{visible:item.visible===false})}>{item.visible===false?"○":"●"}</button><button title="Settings" onClick={()=>setEditingIndicator(editingIndicator===item.id?null:item.id)}>⚙</button><button title="Remove" onClick={()=>setIndicators(xs=>xs.filter(x=>x.id!==item.id))}>×</button></div>)}
       {currentNonOverlay.map(item=><span key={`value-${item.id}`} className="indicator-value-chip">{indicatorLabel(item,symbol)} {item.current==null?"—":item.current.toFixed(2)}</span>)}

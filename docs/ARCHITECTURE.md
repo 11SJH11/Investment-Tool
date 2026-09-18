@@ -115,7 +115,9 @@ Research session handling and Strategy Lab both use New York session boundaries.
 - Replay clips canonical 1m bars before aggregation and indicators. Partial bars
   contain revealed data only; timeline navigation never exposes future OHLCV.
 - Dated futures use tick size, point value, multiplier and whole contracts in
-  Backtest/Replay. Continuous aliases remain chart-only until checkpoint 8.
+  Backtest/Replay. Checkpoint 8 resolves front aliases to raw dated contracts,
+  validates provenance and terminates open positions at a roll. Continuous
+  schedules and dated OHLCV are cached separately; aliases are reconstructed.
 - Strategy Workspace saves without execution, protects built-ins and runs
   explicitly trusted Python in a separate process. It is not a security sandbox.
 - Frozen Gold and Momentum baselines; ORB/VWAP baselines; separate Gold filter

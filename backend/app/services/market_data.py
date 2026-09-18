@@ -80,6 +80,16 @@ class MarketDataService:
         spec = instrument_spec(ticker)
         if force_refresh and spec.security_type == "continuous_future" and hasattr(provider, "list_contracts"):
             provider.list_contracts(spec.root, refresh=True)
+        if spec.security_type == 'continuous_future' and hasattr(provider,'raw_execution_provider'):
+            from copy import copy
+            continuous = copy(provider)
+            continuous.refresh_schedule = force_refresh
+            raw = MarketDataService(provider.raw_execution_provider(),self.store,self.coverage)
+            continuous.contract_loader = lambda symbol,tf,a,b: raw.get_bars(symbol,tf,a,b,force_refresh=force_refresh)
+            # Cache dated OHLCV, then restitch against the current versioned
+            # schedule. Never leave an old contract in cached alias history when
+            # delayed provider roll evidence becomes available.
+            return continuous.get_bars(ticker,timeframe,start,end)
         # Never merge independently adjusted segments into a shared cache.
         if instrument_spec(ticker).security_type == "continuous_future" and getattr(provider, "back_adjust", False):
             return provider.get_bars(ticker, timeframe, start, end)
@@ -98,6 +108,13 @@ class MarketDataService:
                     self._fetch_and_store(provider, ticker, timeframe, cached_end, end)
 
         return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
+
+    def get_execution_bars(self, ticker, timeframe, start, end):
+        provider = self.provider_for(ticker)
+        if hasattr(provider, 'raw_execution_provider'):
+            raw = provider.raw_execution_provider()
+            return MarketDataService(raw,self.store,self.coverage).get_bars(ticker,timeframe,start,end)
+        return self.get_bars(ticker,timeframe,start,end)
 
     def _fetch_and_store(
         self,

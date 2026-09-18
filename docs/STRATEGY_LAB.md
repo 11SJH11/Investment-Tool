@@ -263,4 +263,5 @@ Older runs without those fingerprints remain readable; retention is unavailable.
 Strategy Workspace: STRATEGY_WORKSPACE.md. Saving/editing performs no execution;
 explicit trusted-code actions run in a separate process. Built-ins remain protected.
 Dated futures economics and current continuous-execution restrictions:
-FUTURES_FOUNDATION.md. Continuous aliases remain chart-only until checkpoint 8.
+FUTURES_FOUNDATION.md (historical checkpoint 3). Current front-alias execution,
+roll safeguards and adjustment boundaries are in RELEASE_CHECKPOINT_8.md.

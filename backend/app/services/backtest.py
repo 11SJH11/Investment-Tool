@@ -18,7 +18,7 @@ from app.services.chart_data import prepare_chart_bars
 from app.services.replay_snapshot import aggregate_revealed
 from app.services.market_data import MarketDataService
 from app.data.instruments import instrument_spec
-from app.data.futures import execution_economics
+from app.data.futures import validate_execution_symbol, validate_execution_frame
 from app.storage.backtest_run_repository import BacktestRunRepository
 
 NY = ZoneInfo("America/New_York")
@@ -83,7 +83,7 @@ class BacktestService:
             raise ValueError("Phase 5 limits one run to 20 symbols; split larger research runs into batches")
 
         for symbol in symbols:
-            execution_economics(symbol)
+            validate_execution_symbol(symbol)
 
         primary = str(payload.get("primary_timeframe") or strategy_spec.timeframes[0])
         if primary not in SUPPORTED_TIMEFRAMES:
@@ -176,7 +176,8 @@ class BacktestService:
                     symbol: {
                         "provider": getattr(self._provider(symbol), "key", None),
                         "feed": getattr(self._provider(symbol), "historical_feed", None),
-                        "adjustment": getattr(self._provider(symbol), "adjustment", None),
+                        "adjustment": 'unadjusted' if self._instrument(symbol).asset_type == 'future' else getattr(self._provider(symbol), "adjustment", None),
+                        'roll_schedule_versions': sorted(set(str(v) for frame in frames_by_symbol[symbol].values() if 'roll_schedule_version' in frame for v in frame.roll_schedule_version)),
                         "instrument": self._instrument(symbol).as_dict(),
                     } for symbol in symbols
                 },
@@ -280,8 +281,6 @@ class BacktestService:
             requested_end = datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=NY).astimezone(timezone.utc)
 
         spec = self._instrument(symbol)
-        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
-            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         provider = self._provider(symbol)
         delay = self._delay(symbol)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
@@ -335,6 +334,7 @@ class BacktestService:
         if cutoff < pd.Timestamp(effective_reveal_at) or cutoff > pd.Timestamp(replay_end):
             raise ValueError("Replay frontier must lie within the replay horizon")
         revealed = working.loc[timestamps <= cutoff].copy()
+        validate_execution_frame(symbol,revealed)
         display = aggregate_revealed(revealed, timeframe, session, spec.session_profile)
         display["timestamp"] = display["timestamp"].astype(str)
         revealed["timestamp"] = revealed["timestamp"].astype(str)
@@ -355,7 +355,7 @@ class BacktestService:
             "visible_count": len(revealed),
             "provider": getattr(provider, "key", None),
             "feed": getattr(provider, "historical_feed", None),
-            "adjustment": getattr(provider, "adjustment", None),
+            "adjustment": 'unadjusted' if spec.asset_type == 'future' else getattr(provider, "adjustment", None),
             "instrument": spec.as_dict(),
             "effective_session": session if spec.session_profile == "us_equity" else "24h",
             "source_timeframe": "1m" if timeframe not in {"1d", "1w"} else timeframe,
@@ -519,20 +519,23 @@ class BacktestService:
         default replay horizon/context instead of changing this invariant.
         """
         spec = self._instrument(symbol)
-        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
-            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         source_timeframe = timeframe if timeframe in {"1d", "1w"} else "1m"
-        frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
+        frame = self._execution_bars(symbol, source_timeframe, start, end)
         return prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
 
     def _load_timeframe(self, symbol: str, timeframe: str, start: datetime, end: datetime, session: str):
         spec = self._instrument(symbol)
-        if spec.security_type == "continuous_future" and getattr(self._provider(symbol), "back_adjust", False):
-            raise ValueError("Back-adjusted continuous history is chart-only; Replay requires unadjusted prices")
         source_timeframe = "30m" if spec.session_profile == "us_equity" and timeframe in {"1h", "4h"} else timeframe
-        frame = self.market_data.get_bars(symbol, source_timeframe, start, end)
+        frame = self._execution_bars(symbol, source_timeframe, start, end)
         prepared, _ = prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
         return prepared
+
+    def _execution_bars(self, symbol, timeframe, start, end):
+        if self._instrument(symbol).asset_type == 'future' and hasattr(self.market_data,'get_execution_bars'):
+            return self.market_data.get_execution_bars(symbol,timeframe,start,end)
+        if self._instrument(symbol).security_type == 'continuous_future' and getattr(self._provider(symbol),'back_adjust',False):
+            raise ValueError('Back-adjusted continuous history is chart-only; execution requires a raw provider path')
+        return self.market_data.get_bars(symbol,timeframe,start,end)
 
 
 def _audit_calendar_days(timeframe: str, session: str, bars: int) -> int:
