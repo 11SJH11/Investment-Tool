@@ -32,6 +32,12 @@ export default function StrategyWorkspace({onResult,onDirtyChange}) {
   const style={fontFamily:'ui-monospace, monospace',fontSize:13,lineHeight:'20px',tabSize:4,whiteSpace:'pre',padding:12,margin:0,border:0,boxSizing:'border-box'};
   return <section className="mt-5 min-w-0 rounded-xl border border-stone-200 bg-white p-5">
     <h3 className="text-lg font-semibold">Strategy Workspace</h3>
+    <ol className="mt-3 grid list-inside list-decimal gap-2 text-sm sm:grid-cols-3" aria-label="Workspace workflow">
+      <li>Create a strategy or make an editable copy.</li><li>Paste or edit the Python source.</li><li>Check syntax and save.</li>
+      <li>Trust your code and validate its interface.</li><li>Add deterministic test_ functions.</li><li>Run strategy tests.</li>
+      <li>Configure dates, symbols, sizing and costs.</li><li>Run a workspace backtest.</li><li>Open Runs for metrics and Trade Audit.</li>
+    </ol>
+    <details className="mt-3 text-sm"><summary className="cursor-pointer">Plugin API and example guidance</summary><p className="mt-2">New strategy loads a working template. Keep StrategySpec.key matched to workspace_filename, declare timeframes and parameters, and return EntrySignal from on_bar(ctx). Use ctx history only; the engine owns sizing, fills and accounting. Copy a built-in to inspect a fuller example. Tests should use fixed synthetic bars and assert signals and no-lookahead boundaries; do not optimize against future results.</p></details>
     <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-900">Local trusted-code execution. Python can access your files, network and credentials. This is not a secure sandbox. Paste, load, save and syntax checks do not execute code. Only run code you trust; do not put secrets in strategy files.</p>
     <fieldset disabled={busy} className="mt-4 min-w-0">
       <div className="flex flex-wrap items-center gap-3"><button className="mini-btn" onClick={fresh}>New strategy</button><label className="text-sm">Load strategy <select className="input ml-2 max-w-full" value="" onChange={e=>load(e.target.value)}><option value="">Choose a file</option>{files.map(f=><option key={f.filename} value={f.filename}>{f.filename}{f.read_only?' (built-in, read-only)':''}</option>)}</select></label><button className="mini-btn" onClick={copy}>Make editable copy</button></div>

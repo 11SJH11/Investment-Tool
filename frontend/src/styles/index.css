@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Shared product primitives. Existing palette remains the theme source. */
+:root {
+  --surface-panel: var(--ledger-surface);
+  --surface-elevated: var(--ledger-surface-2);
+  --color-accent: var(--ledger-accent);
+  --color-positive: #059669;
+  --color-negative: #dc2626;
+  --color-warning: #d97706;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem;
+  --space-4: 1rem; --space-5: 1.25rem; --space-6: 1.5rem;
+  --radius-control: .375rem; --radius-panel: .75rem;
+  --height-control: 2.25rem;
+}
+.ui-panel { min-width:0; margin-top:var(--space-5); padding:var(--space-5); border:1px solid var(--ledger-border); border-radius:var(--radius-panel); background:var(--surface-panel); color:var(--ledger-text); }
+.ui-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-3); min-width:0; }
+.ui-toolbar > * { max-width:100%; overflow-wrap:anywhere; }
+.ui-button { min-height:var(--height-control); padding:var(--space-2) var(--space-3); border:1px solid var(--ledger-border-strong); border-radius:var(--radius-control); background:var(--surface-elevated); color:var(--ledger-text); font-size:.75rem; }
+.ui-button:disabled { opacity:.45; }
+.ui-primary { background:var(--color-accent); color:white; border-color:var(--color-accent); }
+.ui-section { margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px solid var(--ledger-border); min-width:0; }
+.ui-section > summary { cursor:pointer; font-size:.875rem; font-weight:600; }
+.ui-form-grid,.ui-metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:var(--space-4); min-width:0; }
+.ui-metric-grid { margin-top:var(--space-4); }
+.bg-white { background-color:var(--surface-panel); }
+.text-emerald-700 { color:var(--color-positive); }
+.text-red-700 { color:var(--color-negative); }
+
 :root {
   /* Kept as variables now so Settings can make these user-customisable later. */
   --ledger-candle-up: #22c55e;
@@ -25,10 +52,10 @@ button, input, select, textarea { font: inherit; }
 [data-accent="violet"] { --ledger-accent:#7c3aed; --ledger-accent-hover:#6d28d9; }
 [data-accent="rose"] { --ledger-accent:#e11d48; --ledger-accent-hover:#be123c; }
 [data-accent="amber"] { --ledger-accent:#d97706; --ledger-accent-hover:#b45309; }
-.ledger-primary { background: var(--ledger-accent) !important; }
+.ledger-primary { background: var(--color-accent) !important; }
 .ledger-primary:hover { background: var(--ledger-accent-hover) !important; }
 .mini-btn { @apply rounded-md border border-stone-300 bg-white px-3 py-2 text-xs font-medium disabled:opacity-40; }
-.active-btn { background: var(--ledger-accent) !important; color:white !important; border-color:var(--ledger-accent) !important; }
+.active-btn { background: var(--color-accent) !important; color:white !important; border-color:var(--ledger-accent) !important; }
 [data-density="compact"] .input { @apply py-1.5; }
 
 /* Dark mode compatibility for the existing Tailwind utility-heavy UI. */
@@ -85,7 +112,7 @@ button, input, select, textarea { font: inherit; }
 
 body { background: var(--ledger-app-bg); color: var(--ledger-text); }
 [data-theme="dark"] body { background: var(--ledger-app-bg); color: var(--ledger-text); }
-[data-theme="dark"] .bg-white { background-color: var(--ledger-surface) !important; }
+[data-theme="dark"] .bg-white { background-color: var(--surface-panel) !important; }
 [data-theme="dark"] .bg-stone-50 { background-color: var(--ledger-surface-2) !important; }
 [data-theme="dark"] .bg-stone-100 { background-color: var(--ledger-surface-3) !important; }
 [data-theme="dark"] .bg-stone-200 { background-color: #35373c !important; }
@@ -238,11 +265,12 @@ body { background: var(--ledger-app-bg); color: var(--ledger-text); }
 .drawing-style-grid input[type="color"] { width:100%; height:30px; padding:2px; border:1px solid var(--ledger-border); border-radius:.35rem; background:var(--ledger-surface-2); }
 .drawing-text-edit { display:block; margin-top:.55rem; }
 .drawing-style-hint { margin-top:.55rem; color:var(--ledger-muted); font-size:.58rem; line-height:.85rem; }
-[data-theme="dark"] button.bg-stone-900 { background:var(--ledger-accent) !important; }
+[data-theme="dark"] button.bg-stone-900 { background:var(--color-accent) !important; }
 [data-theme="dark"] button.bg-stone-900:hover { filter:brightness(1.08); }
 [data-theme="dark"] .text-blue-700 { color:#93c5fd !important; }
-[data-theme="dark"] .text-emerald-700 { color:#6ee7b7 !important; }
-[data-theme="dark"] .text-red-700 { color:#fca5a5 !important; }
+[data-theme="dark"] { --color-positive:#6ee7b7; --color-negative:#fca5a5; }
+.text-emerald-700 { color:var(--color-positive) !important; }
+.text-red-700 { color:var(--color-negative) !important; }
 
 /* Phase 6.1.1 chart workspace refinements */
 .chart-workspace-shell { display:flex; flex-direction:column; gap:.5rem; min-height:0; flex:1 1 auto; }

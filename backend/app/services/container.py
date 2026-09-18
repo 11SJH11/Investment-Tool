@@ -14,6 +14,7 @@ from app.data.providers.registry import ProviderRegistry
 from app.data.providers.sec import SecProvider
 from app.services.fundamentals import FundamentalsService
 from app.services.backtest import BacktestService
+from app.services.backtest_jobs import BacktestJobs
 from app.services.macro import MacroService
 from app.services.market_data import MarketDataService
 from app.services.portfolio import PortfolioService
@@ -59,8 +60,11 @@ class AppServices:
     http: JsonHttpClient
     broker_sync: BrokerSyncService
     broker_connections: BrokerConnections
+    backtest_jobs: BacktestJobs | None = None
 
     def close(self) -> None:
+        if self.backtest_jobs:
+            self.backtest_jobs.close()
         self.http.close()
 
     def provider_status(self) -> dict:
@@ -229,4 +233,5 @@ def build_services(settings: Settings) -> AppServices:
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
         broker_sync=broker_sync,
         broker_connections=BrokerConnections(settings, database, legacy_oanda=broker_sync),
+        backtest_jobs=BacktestJobs(database, backtest, settings.max_concurrent_backtests),
     )

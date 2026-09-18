@@ -46,6 +46,7 @@ class BacktestEngine:
         symbol_frames: dict[str, dict[str, pd.DataFrame]],
         strategies: dict[str, Strategy],
         primary_timeframe: str,
+        progress=None,
     ) -> dict[str, Any]:
         self._validate()
         if not symbol_frames:
@@ -103,7 +104,9 @@ class BacktestEngine:
             "realized_pnl": 0.0, "closed_trades": [],
         })
 
-        for timestamp in event_times:
+        for event_index, timestamp in enumerate(event_times):
+            if progress is not None and event_index % 64 == 0:
+                progress(event_index, len(event_times))
             timestamp_dt = _to_datetime(timestamp)
             symbols_now = sorted(symbol for symbol, rows in primary_rows.items() if timestamp in rows)
             closed_here: list[BacktestTrade] = []

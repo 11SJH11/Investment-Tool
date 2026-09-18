@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Ledger"
+    max_concurrent_backtests: int = Field(default=2, ge=1, le=8, validation_alias="MAX_CONCURRENT_BACKTESTS")
     environment: str = Field(default="development", validation_alias="LEDGER_ENV")
     api_prefix: str = Field(default="/api", validation_alias="LEDGER_API_PREFIX")
     data_dir: Path = Field(default=Path("./data"), validation_alias="LEDGER_DATA_DIR")

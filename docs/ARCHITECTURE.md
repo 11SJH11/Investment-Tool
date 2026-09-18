@@ -126,3 +126,30 @@ Research session handling and Strategy Lab both use New York session boundaries.
 
 Current contracts: FUTURES_FOUNDATION.md, STRATEGY_WORKSPACE.md,
 ORB_VWAP_BASELINES.md, GOLD_EXPERIMENTS.md and BROKER_CONNECTIONS.md.
+
+## Checkpoint 9 — backtest jobs and frontend foundations
+
+`BacktestJobs` is a durable SQLite-backed queue with a bounded in-process thread
+pool (default two). The new `/strategy-lab/jobs` routes submit independent jobs,
+list progress, request cancellation and explicitly retry failures. Workers call
+the existing BacktestService; the engine adds only an optional observation/
+cancellation callback. Accounting and frozen strategy rules are unchanged.
+Successful results still use BacktestRunRepository. A queue-job identity in the
+immutable configuration allows startup recovery across the save/status boundary.
+
+MarketDataService serializes provider/cache preparation through process-wide
+reentrant locks keyed by cache root and provider. Continuous-to-dated recursive
+loads share the lock; ordinary missing-range requests deduplicate through coverage.
+Run one backend process per data directory. See BACKTEST_WORKFLOW.md for restart,
+cancellation, legacy synchronous API and trusted Workspace limitations.
+
+Frontend operational state lives in `useBacktestJobs`; deterministic payload,
+summary and filtering transforms live in `backtest-workflow.js`. `RunsTable` and
+`BacktestJobPanel` present those results. `uiPreferences`/`useUIPreference` store
+presentation preferences only. `components/ui.jsx` supplies reused Button, Panel,
+Section, TabBar, PageToolbar, FormGrid, MetricGrid and MetricCard primitives.
+
+The existing theme palette remains the source for surface/text/border tokens.
+New surface/accent/positive/negative aliases, spacing steps, radii and control-height
+tokens support shared primitives and existing color adapters. This is a focused
+foundation, not a full app redesign or a change to the chart library.

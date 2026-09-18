@@ -59,6 +59,40 @@ class BacktestRunUpdate(BaseModel):
     tags: list[str] | None = None
 
 
+class JobSubmission(BaseModel):
+    request_key: str = Field(min_length=1, max_length=100)
+    runs: list[BacktestRequest] = Field(min_length=1, max_length=100)
+
+
+@router.get('/jobs')
+def jobs(services: AppServices = Depends(get_services)):
+    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers}
+
+
+@router.post('/jobs')
+def submit_jobs(payload: JobSubmission, services: AppServices = Depends(get_services)):
+    try:
+        return {'jobs': services.backtest_jobs.enqueue([run.model_dump() for run in payload.runs], payload.request_key)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/jobs/{job_id}/cancel')
+def cancel_job(job_id: str, services: AppServices = Depends(get_services)):
+    try:
+        return services.backtest_jobs.cancel(job_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post('/jobs/{job_id}/retry')
+def retry_job(job_id: str, request_key: str, services: AppServices = Depends(get_services)):
+    try:
+        return {'jobs': services.backtest_jobs.retry(job_id, request_key)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/runs")
 def backtest_runs(limit: int = Query(default=100, ge=1, le=500), services: AppServices = Depends(get_services)):
     return {"runs": services.backtest.list_runs(limit=limit)}

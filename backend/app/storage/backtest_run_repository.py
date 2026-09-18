@@ -69,6 +69,8 @@ class BacktestRunRepository:
                        start_date, end_date, primary_timeframe, session, trades,
                        expectancy_r, total_r, net_pnl, return_pct, max_drawdown_pct,
                        created_at, updated_at
+                       , json_extract(result_json, '$.metrics.win_rate_pct') AS win_rate_pct
+                       , json_extract(result_json, '$.metrics.profit_factor_r') AS profit_factor_r
                 FROM backtest_runs
                 ORDER BY id DESC
                 LIMIT ?

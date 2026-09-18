@@ -65,7 +65,9 @@ class BacktestService:
     def indicators(self) -> list[dict]:
         return [asdict(spec) for spec in indicator_registry.specs()]
 
-    def run(self, payload: dict) -> dict:
+    def run(self, payload: dict, *, progress=None, persist=None) -> dict:
+        progress = progress or (lambda *args: None)
+        progress('preparing data', None, None)
         if self.market_data is None:
             raise RuntimeError("No market data provider is configured")
         strategy_key = str(payload.get("strategy_key") or "").strip()
@@ -125,6 +127,7 @@ class BacktestService:
         for symbol in symbols:
             frames: dict = {}
             for timeframe in requested_timeframes:
+                progress('preparing data', None, None)
                 frames[timeframe] = self._load_timeframe(symbol, timeframe, start, end, session)
                 if momentum:
                     frames[timeframe] = completed_daily_frame(frames[timeframe], end)
@@ -160,6 +163,7 @@ class BacktestService:
             symbol_frames=frames_by_symbol,
             strategies=strategies,
             primary_timeframe=primary,
+            progress=lambda done, total: progress('running', done, total),
         )
         result.update({
             "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params},
@@ -198,15 +202,17 @@ class BacktestService:
             annotate_gold(result, frames_by_symbol, config, strategies[symbols[0]].params)
             payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
         if self.runs is not None and bool(payload.get("save_run", True)):
-            saved = self.runs.create(
-                config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
-                result=result,
-                name=str(payload.get("run_name") or ""),
-                notes=str(payload.get("run_notes") or ""),
-                test_role=str(payload.get("test_role") or "development"),
-                experiment_group=str(payload.get("experiment_group") or ""),
-                tags=payload.get("run_tags") or [],
-            )
+            def save():
+                return self.runs.create(
+                    config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
+                    result=result,
+                    name=str(payload.get("run_name") or ""),
+                    notes=str(payload.get("run_notes") or ""),
+                    test_role=str(payload.get("test_role") or "development"),
+                    experiment_group=str(payload.get("experiment_group") or ""),
+                    tags=payload.get("run_tags") or [],
+                )
+            saved = persist(save) if persist else save()
             result["saved_run"] = {
                 "id": saved["id"], "name": saved["name"], "test_role": saved["test_role"],
                 "experiment_group": saved.get("experiment_group", ""), "tags": saved.get("tags", []),
@@ -667,7 +673,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
-        "max_consecutive_losses", "cooldown_minutes",
+        "max_consecutive_losses", "cooldown_minutes", "queue_job_id",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

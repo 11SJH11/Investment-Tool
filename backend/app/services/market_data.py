@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Callable
+from threading import RLock
+from collections import defaultdict
 
 import pandas as pd
 
@@ -12,6 +14,8 @@ from app.storage.market_store import MarketStore
 
 
 ProviderResolver = Callable[[str, InstrumentSpec], MarketDataProvider]
+_PROVIDER_LOCKS = defaultdict(RLock)
+_LOCK_GUARD = RLock()
 
 
 class MarketDataService:
@@ -53,7 +57,8 @@ class MarketDataService:
         resolver = getattr(provider, "latest_available_end", None)
         if callable(resolver):
             try:
-                return min(reference, _utc(resolver(ticker, timeframe, reference)))
+                with self._provider_lock(provider):
+                    return min(reference, _utc(resolver(ticker, timeframe, reference)))
             except Exception:
                 # Do not make charting less reliable because an optional freshness probe
                 # failed. The main data request still has its normal error handling.
@@ -61,6 +66,20 @@ class MarketDataService:
         return reference
 
     def get_bars(
+        self, ticker, timeframe, start, end, *, force_refresh=False,
+    ):
+        provider = self.provider_for(ticker)
+        # Shared across service copies (including continuous -> dated contracts).
+        # RLock makes that recursion safe; coverage is rechecked after waiting.
+        with self._provider_lock(provider):
+            return self._get_bars(ticker, timeframe, start, end, force_refresh=force_refresh)
+
+    def _provider_lock(self, provider):
+        with _LOCK_GUARD:
+            root = getattr(self.store, 'root', None)
+            return _PROVIDER_LOCKS[(str(root.resolve()) if root is not None else id(self.store), getattr(provider, 'key', type(provider).__name__))]
+
+    def _get_bars(
         self,
         ticker: str,
         timeframe: Timeframe,

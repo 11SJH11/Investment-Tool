@@ -1,3 +1,4 @@
+import {useUIPreference} from "../../app/useUIPreference.js";
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { formatInZone } from '../../utils/timezones';
@@ -7,7 +8,8 @@ import {TABLE_COLUMNS,loadColumns,saveColumns} from './journalPreferences';
 import ExecutionForm from './ExecutionForm';
 import { Summary, useUnsaved } from './JournalShared';
 export default function TradesView({filters,timeZone,playbooks,revision,onChanged,onDirtyChange}) {
-  const [rows,setRows]=useState([]),[summary,setSummary]=useState({}),[total,setTotal]=useState(0),[offset,setOffset]=useState(0),[view,setView]=useState('cards'),[selected,setSelected]=useState(null),[creating,setCreating]=useState(false),[dirty,setDirty]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [rows,setRows]=useState([]),[summary,setSummary]=useState({}),[total,setTotal]=useState(0),[offset,setOffset]=useState(0),[selected,setSelected]=useState(null),[creating,setCreating]=useState(false),[dirty,setDirty]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [view,setView]=useUIPreference("journal.view", "cards");
   const [columns,setColumns]=useState(()=>loadColumns(localStorage));
   useEffect(()=>saveColumns(localStorage,columns),[columns]);
   const cell=(trade,key)=>{

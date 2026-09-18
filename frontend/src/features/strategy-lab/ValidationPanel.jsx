@@ -1,3 +1,4 @@
+import {independentRuns} from "./backtest-workflow.js";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 
@@ -43,7 +44,7 @@ const STAGES = [
   ["out_of_sample", "Out of sample"],
 ];
 
-export default function ValidationPanel({ buildPayload, startDate, endDate, strategyName, strategy, refreshRuns, onError, savedExperiment = null, onClearSavedExperiment }) {
+export default function ValidationPanel({ mode = "Validation suite", submit, jobs = [], buildPayload, startDate, endDate, strategyName, strategy, refreshRuns, onError, savedExperiment = null, onClearSavedExperiment }) {
   const [ranges, setRanges] = useState(() => splitRange(startDate, endDate) || {
     development: { start: startDate, end: startDate }, validation: { start: startDate, end: startDate }, out_of_sample: { start: endDate, end: endDate },
   });
@@ -60,6 +61,18 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
   const [sensitivityValues, setSensitivityValues] = useState("");
   const [sensitivityResults, setSensitivityResults] = useState([]);
   const [sensitivityRunning, setSensitivityRunning] = useState(false);
+  const [submitted, setSubmitted] = useState(null);
+  const completedIds=jobs.filter(job=>job.status==='completed'&&submitted&&job.payload.experiment_group===submitted.group).map(job=>job.run_id).join(',');
+  useEffect(()=>{
+    if(!submitted||!completedIds)return;
+    let live=true;
+    Promise.all(completedIds.split(',').map(id=>api.strategyLabRun(id))).then(saved=>{
+      if(!live)return;
+      if(submitted.mode==='Validation suite')setResults(Object.fromEntries(saved.map(run=>[run.test_role,run.result])));
+      else setSensitivityResults(saved.map(run=>({value:run.config.strategy_params[submitted.parameter],result:run.result})).sort((a,b)=>a.value-b.value));
+    }).catch(e=>{if(live)onError?.(e.message);});
+    return()=>{live=false;};
+  },[completedIds,submitted]);
 
   useEffect(() => {
     if (savedExperiment) return;
@@ -99,21 +112,13 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
     const experiment = `${String(name || "validation").trim().replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`;
     setRunning(true); setResults({}); onError?.("");
     try {
-      const collected = {};
-      for (const [role, label] of STAGES) {
-        setStage(label);
-        const range = ranges[role];
-        const response = await api.runBacktest(buildPayload({
-          start_date: range.start, end_date: range.end, test_role: role,
-          experiment_group: experiment,
-          run_name: `${name || strategyName || "Strategy"} · ${label}`,
-          run_notes: notes,
-          run_tags: ["validation-suite"],
-          save_run: true,
-        }));
-        collected[role] = response;
-        setResults({ ...collected });
-      }
+      const payloads = STAGES.flatMap(([role,label]) => independentRuns(buildPayload({
+        start_date:ranges[role].start, end_date:ranges[role].end, test_role:role,
+        experiment_group:experiment, run_name:`${name || strategyName} - ${label}`,
+        run_notes:notes,run_tags:["validation-suite"],save_run:true,
+      })));
+      await submit(payloads);
+      setSubmitted({group:payloads[0].experiment_group,mode:'Validation suite',symbol:payloads[0].symbols[0]});
       await refreshRuns?.();
     } catch (error) {
       onError?.(error.message || String(error));
@@ -125,7 +130,7 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
   const runSensitivity = async () => {
     if (!sensitivityParam) return;
     const parameter = numericParameters.find((item) => item.key === sensitivityParam);
-    let values = String(sensitivityValues || "").split(",").map((value) => Number(value.trim())).filter(Number.isFinite);
+    let values = String(sensitivityValues || "").split(",").filter(value=>value.trim()!=='').map((value) => Number(value.trim())).filter(Number.isFinite);
     values = [...new Set(values)].slice(0, 9);
     if (!values.length) { onError?.("Enter at least one numeric sensitivity value."); return; }
     if (parameter) values = values.filter((value) => (parameter.minimum == null || value >= Number(parameter.minimum)) && (parameter.maximum == null || value <= Number(parameter.maximum)));
@@ -133,26 +138,24 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
     const experiment = `sensitivity-${sensitivityParam}-${Date.now()}`;
     setSensitivityRunning(true); setSensitivityResults([]); onError?.("");
     try {
-      const output = [];
-      for (const value of values) {
-        const base = buildPayload();
-        const response = await api.runBacktest({
-          ...base, start_date: ranges.development.start, end_date: ranges.development.end,
-          strategy_params: { ...(base.strategy_params || {}), [sensitivityParam]: parameter?.kind === "int" ? Math.round(value) : value },
-          test_role: "development", experiment_group: experiment,
-          run_name: `${strategyName || "Strategy"} · ${sensitivityParam}=${value}`,
-          run_tags: ["sensitivity", sensitivityParam],
-        });
-        output.push({ value, result: response }); setSensitivityResults([...output]);
-      }
+      const base = buildPayload();
+      const payloads = values.flatMap(value => independentRuns({
+        ...base, strategy_params:{...(base.strategy_params||{}),[sensitivityParam]:parameter?.kind==='int'?Math.round(value):value},
+        test_role:'development',experiment_group:experiment,
+        run_name:`${strategyName} - ${sensitivityParam}=${value}`,run_tags:['sensitivity',sensitivityParam],
+      }));
+      await submit(payloads);
+      setSubmitted({group:payloads[0].experiment_group,mode:'Sensitivity test',symbol:payloads[0].symbols[0],parameter:sensitivityParam});
       await refreshRuns?.();
     } catch (error) { onError?.(error.message || String(error)); }
     finally { setSensitivityRunning(false); }
   };
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+    {submitted&&<p className="mb-3 text-xs">Submitted to the queue. Live experiment summary for {submitted.symbol}; all symbols remain available in Runs and the batch comparison.</p>}
     {(strategy?.key === "momentum_vcp_breakout_baseline_v1" || savedExperiment?.runs?.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1")) && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Historical universe may contain survivorship bias. Each period needs at least 250 prior daily observations within its selected dates; short validation slices may contain only warm-up.</p>}
     {savedExperiment && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><span><strong>Opened saved validation experiment:</strong> {savedExperiment.experiment_group}. These are stored snapshots; nothing was rerun.</span><button onClick={onClearSavedExperiment} className="rounded-md border border-blue-300 bg-white px-3 py-2">Start a new experiment</button></div>}
+    {mode === "Validation suite" && <>
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h3 className="font-semibold">Development → validation → out-of-sample</h3><p className="mt-1 max-w-4xl text-sm text-stone-600">Run the <strong>same strategy and execution settings</strong> across three non-overlapping periods. Refine rules on development data, use validation to challenge them, and keep out-of-sample as untouched as practical.</p></div>
       <button type="button" onClick={() => { const next = splitRange(startDate, endDate); if (next) setRanges(next); }} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Reset to 60 / 20 / 20</button>
@@ -174,7 +177,7 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
     </div>
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-50 p-4">
       <p className="max-w-4xl text-xs text-stone-600"><strong>Important:</strong> Ledger does not hide the out-of-sample result after you see it. Repeatedly changing rules after looking at OOS turns it into tuning data, so create a new future holdout when possible.</p>
-      <button disabled={running} onClick={runSuite} className="rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{running ? `Running ${stage}…` : "Run 3-stage validation"}</button>
+      <button disabled={running} onClick={runSuite} className="rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{running ? `Running ${stage}…` : "Queue 3-stage validation"}</button>
     </div>
 
     {Object.keys(results).length > 0 && <div className="mt-6">
@@ -184,13 +187,14 @@ export default function ValidationPanel({ buildPayload, startDate, endDate, stra
       <StabilitySummary results={results} />
     </div>}
 
-    <div className="mt-7 border-t border-stone-100 pt-5">
-      <div><h4 className="text-sm font-semibold">One-parameter sensitivity</h4><p className="mt-1 max-w-4xl text-xs text-stone-500">Test nearby values on the <strong>development period only</strong>. This is a robustness check, not a winner picker: if small parameter changes destroy the result, the apparent edge may be fragile. Strategy-owned stop/target values can appear here as temporary research overrides without becoming ordinary run settings.</p></div>
-      {numericParameters.length ? <><div className="mt-4 grid gap-4 lg:grid-cols-[1fr_2fr_auto]"><Field label="Parameter"><select className="input" value={sensitivityParam} onChange={(e) => { const key = e.target.value; setSensitivityParam(key); const p = numericParameters.find((item) => item.key === key); const base = Number(p?.default || 0); const step = Number(p?.step || (p?.kind === "int" ? 1 : 0.25)); setSensitivityValues([-2,-1,0,1,2].map((offset) => base + offset * step).join(", ")); }}>{numericParameters.map((parameter) => <option key={parameter.key} value={parameter.key}>{parameter.label}{parameter.researchOnly ? " · strategy-owned research" : ""}</option>)}</select></Field><Field label="Values · comma separated · max 9"><input className="input" value={sensitivityValues} onChange={(e) => setSensitivityValues(e.target.value)} /></Field><div className="flex items-end"><button disabled={sensitivityRunning} onClick={runSensitivity} className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{sensitivityRunning ? "Running sweep…" : "Run sensitivity"}</button></div></div>
+    </>}
+    {mode === "Sensitivity test" && <div className="mt-7 border-t border-stone-100 pt-5">
+      <div><h4 className="text-sm font-semibold">One-parameter sensitivity</h4><p className="mt-1 max-w-4xl text-xs text-stone-500">Test nearby values on the <strong>selected base period only</strong>. This is a robustness check, not a winner picker: if small parameter changes destroy the result, the apparent edge may be fragile. Strategy-owned stop/target values can appear here as temporary research overrides without becoming ordinary run settings.</p></div>
+      {numericParameters.length ? <><div className="mt-4 grid gap-4 lg:grid-cols-[1fr_2fr_auto]"><Field label="Parameter"><select className="input" value={sensitivityParam} onChange={(e) => { const key = e.target.value; setSensitivityParam(key); const p = numericParameters.find((item) => item.key === key); const base = Number(p?.default || 0); const step = Number(p?.step || (p?.kind === "int" ? 1 : 0.25)); setSensitivityValues([-2,-1,0,1,2].map((offset) => base + offset * step).join(", ")); }}>{numericParameters.map((parameter) => <option key={parameter.key} value={parameter.key}>{parameter.label}{parameter.researchOnly ? " · strategy-owned research" : ""}</option>)}</select></Field><Field label="Values · comma separated · max 9"><input className="input" value={sensitivityValues} onChange={(e) => setSensitivityValues(e.target.value)} /></Field><div className="flex items-end"><button disabled={sensitivityRunning} onClick={runSensitivity} className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{sensitivityRunning ? "Running sweep…" : "Queue sensitivity"}</button></div></div>
       {numericParameters.find((item) => item.key === sensitivityParam)?.researchOnly && <p className="mt-2 text-xs text-blue-700">This value belongs to the strategy code in normal runs. Sensitivity temporarily overrides it for research only; the source default is not changed.</p>}
       {sensitivityResults.length > 0 && <div className="mt-4 overflow-x-auto rounded-lg border border-stone-200"><table className="w-full min-w-[760px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr><th className="px-3 py-3 text-left">{sensitivityParam}</th><th className="px-3 py-3 text-right">Trades</th><th className="px-3 py-3 text-right">Expectancy</th><th className="px-3 py-3 text-right">PF</th><th className="px-3 py-3 text-right">Total R</th><th className="px-3 py-3 text-right">Return</th><th className="px-3 py-3 text-right">Max DD</th></tr></thead><tbody className="divide-y divide-stone-100">{sensitivityResults.map(({ value, result }) => { const m = result.metrics || {}; return <tr key={value}><td className="px-3 py-3 font-semibold">{value}</td><td className="px-3 py-3 text-right">{m.trades}</td><td className="px-3 py-3 text-right">{r(m.expectancy_r)}</td><td className="px-3 py-3 text-right">{number(m.profit_factor_r)}</td><td className="px-3 py-3 text-right">{r(m.total_r)}</td><td className="px-3 py-3 text-right">{pct(m.return_pct)}</td><td className="px-3 py-3 text-right">{pct(m.max_drawdown_pct)}</td></tr>; })}</tbody></table></div>}
       {sensitivityResults.length > 1 && <SensitivitySummary rows={sensitivityResults} />}</> : <p className="mt-3 text-xs text-stone-500">This strategy has no numeric parameters to sweep.</p>}
-    </div>
+    </div>}
   </section>;
 }
 

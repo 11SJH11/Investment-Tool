@@ -7,6 +7,13 @@ import TradeAuditChart from "./TradeAuditChart";
 import ValidationPanel from "./ValidationPanel";
 import ReplayPanel from "./ReplayPanel";
 import StrategyWorkspace from "./StrategyWorkspace";
+import {useUIPreference} from "../../app/useUIPreference.js";
+import {useWatchlist} from "../../app/watchlist.js";
+import {Panel, Section, TabBar, MetricGrid, MetricCard, Button, FormGrid} from "../../components/ui.jsx";
+import {RUN_TYPES, parseSymbols, independentRuns, runSummary, configurationError} from "./backtest-workflow.js";
+import useBacktestJobs from "./useBacktestJobs.js";
+import BacktestJobPanel from "./BacktestJobPanel.jsx";
+import RunsTable from "./RunsTable.jsx";
 import RunComparison from "./RunComparison.jsx";
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
@@ -34,7 +41,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [symbolInput, setSymbolInput] = useState("");
   const [entryWindows, setEntryWindows] = useState([]);
   const [selectedWeekdays, setSelectedWeekdays] = useState([0, 1, 2, 3, 4]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useUIPreference("guardrails", false);
+  const [runType, setRunType] = useUIPreference("backtest.runType", "Single backtest");
+  const watchlist = useWatchlist();
   const [runMeta, setRunMeta] = useState({ name: "", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
     start_date: isoDateOffset(-90), end_date: isoDateOffset(-1), primary_timeframe: "5m", session: "auto",
@@ -50,6 +59,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
 
   const refreshRuns = useCallback(() => api.strategyLabRuns(100).then((data) => setRuns(data.runs || [])).catch(() => {}), []);
+  const queue = useBacktestJobs(refreshRuns);
   useEffect(() => {
     Promise.all([api.strategyLabStrategies(), api.strategyLabIndicators()])
       .then(([s, i]) => {
@@ -110,8 +120,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     if (!strategyKey || !symbols.length) return;
     setLoading(true); setError(""); setResult(null);
     try {
-      const response = await api.runBacktest(buildPayload());
-      setResult(response);
+      await queue.submit(independentRuns(buildPayload()));
       refreshRuns();
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -130,7 +139,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     try {
       const suite = await api.strategyLabExperiment(group);
       setSavedExperiment(suite);
-      setTab("Validation");
+      setRunType("Validation suite"); setTab("Backtest");
     } catch (e) { setError(e.message); }
   };
 
@@ -140,7 +149,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
       const saved = await api.strategyLabRun(runId);
       const config = saved.config || {};
       if (config.workspace) {
-        setTab("Strategy Workspace");
+        setTab("Workspace");
         setError(`This is a workspace run. Load ${config.workspace.filename} and rerun it from Strategy Workspace. Saved source SHA-256: ${config.workspace.source_sha256}.`);
         return;
       }
@@ -167,13 +176,17 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     } catch (e) { setError(e.message); }
   };
 
-  return <div className={standaloneTab === "Replay" ? "w-full max-w-none" : "max-w-[1600px]"}>
+  return <div className={standaloneTab === "Replay" ? "w-full max-w-none" : "min-w-0 w-full max-w-[1600px]"}>
     <div><p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">{standaloneTab === "Replay" ? "Replay" : standaloneTab === "Backtest" ? "Backtest" : "Strategy Lab"}</h2><p className="mt-2 max-w-5xl text-sm text-stone-600">{standaloneTab === "Replay" ? "Practise historical markets candle-by-candle without revealing the future; Replay trades feed directly into Journal." : "Backtest coded strategy plugins with explicit execution rules, saved reproducible runs, validation and diagnostic analysis."}</p></div>
-    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Validation","Runs","Strategies","Indicators","Strategy Workspace","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
-    {standaloneTab === "Backtest" && <div className="mt-5 flex flex-wrap gap-2">{["Backtest","Validation","Runs","Strategies","Indicators","Strategy Workspace"].map(item=><button key={item} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
+    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs","Strategies","Workspace","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
+    {standaloneTab === "Backtest" && <div className="mt-5 flex flex-wrap gap-2">{["Backtest","Runs","Strategies","Workspace"].map(item=><button key={item} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+    {standaloneTab !== "Replay" && <BacktestJobPanel queue={queue} onOpen={openSavedRun}/>}
+    {tab === "Strategies" && <Button onClick={()=>setTab("Indicators")}>Browse indicators</Button>}
+    {tab === "Indicators" && <Button onClick={()=>setTab("Strategies")}>Back to strategies</Button>}
     {tab === "Backtest" && <>
+      <div className="mt-5"><TabBar label="Run type" value={runType} options={RUN_TYPES} onChange={setRunType}/></div>
       <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
           <div>
@@ -183,10 +196,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
               <Field label="Start date"><input type="date" className="input" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
               <Field label="End date"><input type="date" className="input" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
               <Field label="Primary timeframe"><select className="input" value={form.primary_timeframe} onChange={(e) => setForm({ ...form, primary_timeframe: e.target.value })}>{timeframes.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
-              <Field label="Market data session"><select className="input" value={form.session} onChange={(e) => updateSession(e.target.value)}><option value="auto">Auto · match instrument</option><option value="24h">24h / full provider session</option><option value="regular">US regular · 09:30–16:00 ET</option><option value="extended">US extended · 04:00–20:00 ET</option></select></Field>
-              <Field label="Same-bar stop + target"><select className="input" value={form.same_bar_policy} onChange={(e) => setForm({ ...form, same_bar_policy: e.target.value })}><option value="stop_first">Stop first · conservative</option><option value="target_first">Target first · sensitivity test</option></select></Field>
             </div>
             <div className="mt-4"><span className="mb-1 block text-xs font-medium text-stone-500">Symbols</span><div className="flex flex-wrap gap-2">{symbols.map((symbol) => <button key={symbol} type="button" onClick={() => setSymbols((old) => old.filter((x) => x !== symbol))} className="rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-xs font-mono">{symbol} ×</button>)}</div><div className="mt-2 max-w-md"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => addSymbol(item.ticker)} placeholder="Add ticker…" /></div><button type="button" onClick={() => addSymbol()} className="mt-2 text-xs font-medium text-stone-600 underline">Add typed symbol</button></div>
+            <div className="mt-3"><label className="text-xs">Paste symbols <textarea aria-label="Paste symbols" className="input" value={symbolInput} onChange={e=>setSymbolInput(e.target.value)} placeholder="AAPL, MSFT, NVDA"/></label><Button onClick={()=>{setSymbols(old=>[...new Set([...old,...parseSymbols(symbolInput)])]);setSymbolInput('');}}>Add pasted symbols</Button><p className="mt-2 text-xs text-stone-500">Independent symbol tests: one account and immutable run per symbol. This does not simulate a shared-capital portfolio.</p><Section id="batch-watchlist" title="Select watchlist symbols"><div className="ui-toolbar">{watchlist.items.map(symbol=><label key={symbol} className="text-xs"><input type="checkbox" checked={symbols.includes(symbol)} onChange={()=>setSymbols(old=>old.includes(symbol)?old.filter(s=>s!==symbol):[...old,symbol])}/> {symbol}</label>)}</div></Section></div>
           </div>
           <div>
             <h3 className="font-semibold">Account sizing & execution</h3><p className="mt-1 text-xs text-stone-500">Controls how large positions are and how fills/costs are simulated. Stop, target and management rules belong to the selected strategy.</p>
@@ -194,39 +206,38 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
               <Field label="Starting balance"><NumberInput value={form.starting_balance} onChange={(v) => setForm({ ...form, starting_balance: v })} /></Field>
               <Field label="Sizing mode"><select className="input" value={form.sizing_mode} onChange={(e) => setForm({ ...form, sizing_mode: e.target.value })}><option value="risk_pct">Risk % of account</option><option value="cash_risk">Fixed cash risk</option><option value="quantity">Fixed share quantity</option><option value="cash_position">Fixed cash position</option><option value="position_pct">Position % of account</option></select></Field>
               <Field label={sizingLabel(form.sizing_mode)}><NumberInput value={form.risk_value} onChange={(v) => setForm({ ...form, risk_value: v })} /></Field>
-              <Field label="Max leverage"><NumberInput value={form.max_leverage} onChange={(v) => setForm({ ...form, max_leverage: v })} /></Field>
-              <Field label="Commission / order"><NumberInput value={form.commission_per_order} onChange={(v) => setForm({ ...form, commission_per_order: v })} /></Field>
-              <Field label="Slippage (bps)"><NumberInput value={form.slippage_bps} onChange={(v) => setForm({ ...form, slippage_bps: v })} /></Field>
-              <Field label="Assumed full spread (bps)"><NumberInput value={form.spread_bps} onChange={(v) => setForm({ ...form, spread_bps: v })} /></Field>
-              <Field label="Max open positions"><NumberInput value={form.max_open_positions} onChange={(v) => setForm({ ...form, max_open_positions: v })} /></Field>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 border-t border-stone-100 pt-5">
+        <Section id="execution" title="Advanced execution"><FormGrid>              <Field label="Market data session"><select className="input" value={form.session} onChange={(e) => updateSession(e.target.value)}><option value="auto">Auto · match instrument</option><option value="24h">24h / full provider session</option><option value="regular">US regular · 09:30–16:00 ET</option><option value="extended">US extended · 04:00–20:00 ET</option></select></Field>              <Field label="Same-bar stop + target"><select className="input" value={form.same_bar_policy} onChange={(e) => setForm({ ...form, same_bar_policy: e.target.value })}><option value="stop_first">Stop first · conservative</option><option value="target_first">Target first · sensitivity test</option></select></Field></FormGrid></Section>
+        <Section id="costs" title="Costs & slippage"><FormGrid>              <Field label="Commission / order"><NumberInput value={form.commission_per_order} onChange={(v) => setForm({ ...form, commission_per_order: v })} /></Field>              <Field label="Slippage (bps)"><NumberInput value={form.slippage_bps} onChange={(v) => setForm({ ...form, slippage_bps: v })} /></Field>              <Field label="Assumed full spread (bps)"><NumberInput value={form.spread_bps} onChange={(v) => setForm({ ...form, spread_bps: v })} /></Field></FormGrid></Section>
+        <Section id="limits" title="Account limits"><FormGrid>              <Field label="Max leverage"><NumberInput value={form.max_leverage} onChange={(v) => setForm({ ...form, max_leverage: v })} /></Field>              <Field label="Max open positions"><NumberInput value={form.max_open_positions} onChange={(v) => setForm({ ...form, max_open_positions: v })} /></Field></FormGrid></Section>
+        <Section id="schedule" title="Trading schedule">
           <h3 className="font-semibold">Trading schedule</h3><p className="mt-1 text-xs text-stone-500">No entry window means all loaded market hours are eligible. Optional windows use New York / ET, start-inclusive and end-exclusive. This is separate from the market-data session above.</p>
           <div className="mt-4 grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
             <div><p className="text-xs font-medium text-stone-500">Allowed entry windows <span className="font-normal">(optional)</span></p>{!entryWindows.length && <p className="mt-2 text-xs text-stone-400">None · entries may occur at any loaded market time.</p>}<div className="mt-2 space-y-2">{entryWindows.map((window, index) => <div key={index} className="flex max-w-xl items-center gap-2"><input type="time" className="input" value={window.start} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, start: e.target.value } : w))} /><span className="text-xs text-stone-500">to</span><input type="time" className="input" value={window.end} onChange={(e) => setEntryWindows((old) => old.map((w,i) => i === index ? { ...w, end: e.target.value } : w))} />{entryWindows.length > 1 && <button type="button" onClick={() => setEntryWindows((old) => old.filter((_,i) => i !== index))} className="px-2 text-xs text-red-700">Remove</button>}</div>)}</div><button type="button" onClick={() => setEntryWindows((old) => [...old, { start: "09:30", end: "16:00" }])} className="mt-2 text-xs font-medium text-stone-600 underline">+ Add another window</button></div>
             <div><p className="text-xs font-medium text-stone-500">Trading days</p><div className="mt-2 flex flex-wrap gap-2">{weekdays.map(([value,label]) => <button type="button" key={value} onClick={() => setSelectedWeekdays((old) => old.includes(value) ? old.filter((x) => x !== value) : [...old, value].sort())} className={`rounded-md border px-3 py-2 text-xs ${selectedWeekdays.includes(value) ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white text-stone-600"}`}>{label}</button>)}</div><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Hold overnight?"><select className="input" value={form.allow_overnight} onChange={(e) => setForm({ ...form, allow_overnight: e.target.value })}><option value="false">No · flatten same day</option><option value="true">Yes · allow overnight</option></select></Field>{form.allow_overnight === "false" && <Field label="Force close time (ET)"><input type="time" className="input" value={form.force_close_time} onChange={(e) => setForm({ ...form, force_close_time: e.target.value })} /></Field>}</div></div>
           </div>
-        </div>
+        </Section>
 
         <div className="mt-5 border-t border-stone-100 pt-4"><button type="button" onClick={() => setShowAdvanced((v) => !v)} className="text-sm font-medium text-stone-700 underline">{showAdvanced ? "Hide" : "Show"} session guardrails</button>{showAdvanced && <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Field label="Max trades / day"><OptionalNumberInput value={form.max_trades_per_day} onChange={(v) => setForm({ ...form, max_trades_per_day: v })} placeholder="No limit" /></Field><Field label="Stop after daily loss (R)"><OptionalNumberInput value={form.max_daily_loss_r} onChange={(v) => setForm({ ...form, max_daily_loss_r: v })} placeholder="No limit" /></Field><Field label="Stop after consecutive losses"><OptionalNumberInput value={form.max_consecutive_losses} onChange={(v) => setForm({ ...form, max_consecutive_losses: v })} placeholder="No limit" /></Field><Field label="Cooldown after exit (minutes)"><NumberInput value={form.cooldown_minutes} onChange={(v) => setForm({ ...form, cooldown_minutes: v })} /></Field></div>}</div>
 
-        {strategy && <div className="mt-6 border-t border-stone-100 pt-5"><div className="flex flex-wrap items-baseline justify-between gap-2"><div><h3 className="font-semibold">Strategy parameters</h3><p className="mt-1 text-xs text-stone-500">{strategy.description}</p></div><span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Reference strategy ≠ proven edge</span></div><div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{(strategy.parameters || []).map((parameter) => <ParameterField key={parameter.key} parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} />)}</div>{strategy.risk_management && Object.keys(strategy.risk_management).length > 0 && <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Strategy-owned risk management</p><p className="mt-1 text-xs text-stone-600">Stop, target and position-management rules come from the strategy code. The run controls only decide account sizing, costs, schedule and guardrails.</p></div>{strategy.source_file && <code className="rounded bg-white px-2 py-1 text-[11px] text-stone-500">{strategy.source_file}</code>}</div><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(strategy.risk_management).map(([label, value]) => <div key={label} className="rounded-md bg-white px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-stone-400">{label}</div><div className="mt-1 text-xs font-medium text-stone-700">{value}</div></div>)}</div></div>}</div>}
+        {strategy && <div className="mt-6 border-t border-stone-100 pt-5"><div className="flex flex-wrap items-baseline justify-between gap-2"><div><h3 className="font-semibold">Strategy parameters</h3><p className="mt-1 text-xs text-stone-500">{strategy.description}</p></div><span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Reference strategy ≠ proven edge</span></div><Section id="strategy-parameters" title="Strategy parameters"><div className="ui-form-grid">{(strategy.parameters || []).map((parameter) => <ParameterField key={parameter.key} parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} />)}</div></Section>{strategy.risk_management && Object.keys(strategy.risk_management).length > 0 && <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Strategy-owned risk management</p><p className="mt-1 text-xs text-stone-600">Stop, target and position-management rules come from the strategy code. The run controls only decide account sizing, costs, schedule and guardrails.</p></div>{strategy.source_file && <code className="rounded bg-white px-2 py-1 text-[11px] text-stone-500">{strategy.source_file}</code>}</div><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(strategy.risk_management).map(([label, value]) => <div key={label} className="rounded-md bg-white px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-stone-400">{label}</div><div className="mt-1 text-xs font-medium text-stone-700">{value}</div></div>)}</div></div>}</div>}
 
         <div className="mt-6 grid gap-4 border-t border-stone-100 pt-5 lg:grid-cols-4"><Field label="Run name (optional)"><input className="input" value={runMeta.name} onChange={(e) => setRunMeta({ ...runMeta, name: e.target.value })} placeholder="e.g. EMA baseline · no overnight" /></Field><Field label="Research role"><select className="input" value={runMeta.test_role} onChange={(e) => setRunMeta({ ...runMeta, test_role: e.target.value })}>{roles.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="Tags (comma separated)"><input className="input" value={runMeta.tags} onChange={(e) => setRunMeta({ ...runMeta, tags: e.target.value })} placeholder="baseline, AAPL, 5m" /></Field><Field label="Run notes (optional)"><input className="input" value={runMeta.notes} onChange={(e) => setRunMeta({ ...runMeta, notes: e.target.value })} placeholder="What hypothesis is this run testing?" /></Field></div>
         {runMeta.test_role === "out_of_sample" && <p className="mt-2 text-xs text-amber-800">Out-of-sample data is most useful when you avoid repeatedly tuning rules against it. Ledger labels the run but does not prevent you from reusing the period.</p>}
-        <div className="mt-5 flex items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || !symbols.length || !selectedWeekdays.length} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Fetching data / testing…" : "Run backtest"}</button></div>
+        <Panel><h3 className="font-semibold">{configurationError(buildPayload())?"Check configuration":"Ready to run"}</h3>{configurationError(buildPayload())&&<p role="alert" className="mt-2 text-sm text-red-700">{configurationError(buildPayload())}</p>}<p className="mt-1 text-sm">{strategy?.name} | {runType}</p><MetricGrid>{Object.entries(runSummary(buildPayload())).map(([label,value])=><MetricCard key={label} label={label}>{value}</MetricCard>)}</MetricGrid><p className="mt-3 text-xs text-stone-500">Requested date range; actual end is capped at the provider's latest available data and recorded in the saved result.</p>{runType!=="Single backtest"&&<p className="mt-3 text-xs">Base configuration above; the experiment controls below define each queued period or parameter override.</p>}</Panel>
+        {runType === "Single backtest" && <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || !symbols.length || !selectedWeekdays.length} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button></div>}
       </section>
+      {runType !== "Single backtest" && <ValidationPanel mode={runType} submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/>}
       {result && <BacktestResults result={result} />}
     </>}
 
-    {tab === "Validation" && <ValidationPanel buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment} onClearSavedExperiment={() => setSavedExperiment(null)} />}
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
     {tab === "Strategies" && <section className="mt-5 grid gap-4 lg:grid-cols-2">{strategies.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">{item.category}</p><h3 className="mt-1 font-semibold">{item.name}</h3></div><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.description}</p><p className="mt-3 text-xs text-stone-500">Default timeframe: {(item.timeframes || []).join(", ")}</p><p className="mt-2 text-xs text-stone-500">Strategy code owns entry, initial stop/target and next-bar position management (including breakeven, trailing rules and partial exits). The run screen owns account sizing, execution costs, schedule and account guardrails.</p>{item.risk_management && Object.keys(item.risk_management).length > 0 && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{Object.entries(item.risk_management).map(([label,value]) => <div key={label} className="mt-1"><strong>{label}:</strong> {value}</div>)}</div>}{(item.research_parameters || []).length > 0 && <p className="mt-3 text-xs text-stone-500"><strong>Research-only sensitivity:</strong> {(item.research_parameters || []).map((p) => p.label).join(", ")}. These do not appear on ordinary runs.</p>}</div>)}</section>}
     {tab === "Indicators" && <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{indicators.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-semibold">{item.name}</h3><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.overlay ? "Price-chart overlay" : "Separate/pane indicator"}</p><p className="mt-2 text-xs text-stone-500">Defaults: {Object.entries(item.defaults || {}).map(([k,v]) => `${k}=${v}`).join(", ") || "None"}</p></div>)}</section>}
-    {standaloneTab !== "Replay" && <div hidden={tab !== "Strategy Workspace"}><StrategyWorkspace onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();}} /></div>}
+    {standaloneTab !== "Replay" && <div hidden={tab !== "Workspace"}><StrategyWorkspace onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();}} /></div>}
     {tab === "Replay" && <ReplayPanel indicators={indicators} onError={setError} />}
   </div>;
 }
@@ -235,7 +246,7 @@ function BacktestResults({ result }) {
   const m = result.metrics || {};
   const [filters, setFilters] = useState({ symbol: "all", direction: "all", result: "all", exit_reason: "all" });
   const [auditTrade, setAuditTrade] = useState(null);
-  const [performanceMode, setPerformanceMode] = useState("equity");
+  const [performanceMode, setPerformanceMode] = useUIPreference("backtest.resultView", "equity");
   const [chartZone, setChartZone] = useState("America/New_York");
   const [expandedChart, setExpandedChart] = useState(null);
   const trades = result.trades || [];
@@ -291,7 +302,7 @@ function BacktestResults({ result }) {
 
 function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment }) {
   const [selected, setSelected] = useState([]);
-  const [view, setView] = useState("all");
+  const [view, setView] = useUIPreference("runs.view", "all");
   const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 12 ? old : [...old, id]);
   const compared = selected.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
   const experimentGroups = Object.entries(runs.reduce((groups, run) => {
@@ -312,7 +323,7 @@ function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment })
       {!experimentGroups.length && <p className="rounded-lg bg-stone-50 p-6 text-center text-sm text-stone-500">No saved validation suites yet.</p>}
       <div className="grid gap-3 xl:grid-cols-2">{experimentGroups.map(([group, items]) => <ExperimentSummary key={group} group={group} items={items} onOpen={onOpen} onOpenExperiment={onOpenExperiment} />)}</div>
     </div>}
-    {view !== "validation" && <div className="mt-4 overflow-x-auto rounded-lg border border-stone-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Compare","Run","Role","Experiment","Tags","Created","Strategy","Symbols","Period","TF","Trades","Expectancy","Total R","Return","Max DD","Actions"].map((head) => <th key={head} className="px-3 py-3 text-left">{head}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleRuns.map((run) => <tr key={run.id}><td className="px-3 py-3"><input type="checkbox" checked={selected.includes(run.id)} onChange={() => toggle(run.id)} /></td><td className="px-3 py-3"><div className="font-semibold">#{run.id} {run.name || "Untitled run"}</div></td><td className="px-3 py-3 text-xs"><RoleBadge role={run.test_role} /></td><td className="max-w-[180px] truncate px-3 py-3 text-xs" title={run.experiment_group || ""}>{run.experiment_group || "—"}</td><td className="px-3 py-3 text-xs">{(run.tags || []).join(", ") || "—"}</td><td className="whitespace-nowrap px-3 py-3 text-xs">{run.created_at}</td><td className="px-3 py-3">{run.strategy_name}</td><td className="px-3 py-3 font-mono text-xs">{(run.symbols || []).join(", ")}</td><td className="whitespace-nowrap px-3 py-3 text-xs">{run.start_date} → {run.end_date}</td><td className="px-3 py-3">{run.primary_timeframe}</td><td className="px-3 py-3">{run.trades}</td><td className="px-3 py-3">{r(run.expectancy_r)}</td><td className="px-3 py-3">{r(run.total_r)}</td><td className="px-3 py-3">{pct(run.return_pct)}</td><td className="px-3 py-3">{pct(run.max_drawdown_pct)}</td><td className="whitespace-nowrap px-3 py-3 text-xs"><button onClick={() => onOpen(run.id)} className="mr-3 font-medium underline">Open</button><button onClick={() => onUseSettings(run.id)} className="mr-3 font-medium underline">Use settings</button><button onClick={() => remove(run.id)} className="text-red-700 underline">Delete</button></td></tr>)}</tbody></table></div>}
+    {view !== "validation" && <RunsTable runs={visibleRuns} selected={selected} toggle={toggle} onOpen={onOpen} onUseSettings={onUseSettings} onRemove={remove}/>}
     {view !== "validation" && !visibleRuns.length && <p className="p-8 text-center text-sm text-stone-500">{view === "sensitivity" ? "No sensitivity runs yet." : "No saved runs yet. Your next successful backtest will appear here automatically."}</p>}
   </section>;
 }
