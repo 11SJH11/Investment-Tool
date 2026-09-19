@@ -67,3 +67,13 @@ def execute(draft: Execution, service=Depends(workspace), services=Depends(get_s
     return checked(lambda: service.execute(draft.action, draft.filename, draft.source,
         trusted=draft.trusted, services=services,
         payload=draft.backtest.model_dump() if draft.backtest else None))
+
+
+@router.post('/activate')
+def activate(draft: Draft, service=Depends(workspace), services=Depends(get_services)):
+    return checked(lambda: service.activate(draft.filename, draft.source, trusted=draft.trusted, services=services))
+
+
+@router.post('/deactivate')
+def deactivate(draft: Draft, service=Depends(workspace)):
+    return checked(lambda: service.deactivate(draft.filename))

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # pretending Alpaca equity bars can represent CME/COMEX instruments.
     futures_data_provider: str = Field(default="massive", validation_alias="FUTURES_DATA_PROVIDER")
     massive_api_key: str | None = Field(default=None, validation_alias="MASSIVE_API_KEY")
+    massive_calls_per_minute: int = Field(default=5, ge=1, le=1000, validation_alias="MASSIVE_CALLS_PER_MINUTE")
     massive_futures_base_url: str = Field(default="https://api.massive.com", validation_alias="MASSIVE_FUTURES_BASE_URL")
     futures_back_adjust: bool = Field(default=False, validation_alias="FUTURES_BACK_ADJUST")
     oanda_access_token: str | None = Field(default=None, validation_alias="OANDA_ACCESS_TOKEN")

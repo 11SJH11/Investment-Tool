@@ -47,7 +47,8 @@ def test_massive_continuous_front_stitches_dated_contracts_and_keeps_provenance(
         assert headers["Authorization"] == "Bearer key"
         assert "apiKey" not in params
         if url.endswith("/futures/v1/contracts"):
-            assert params == {"product_code": "NQ", "limit": 1000}
+            assert params['product_code'] == 'NQ' and params['limit'] == 1000
+            assert params['type'] == 'single' and params['date']
             return {
                 "results": [
                     {"ticker": "NQU6", "product_code": "NQ", "first_trade_date": "2025-06-20", "last_trade_date": "2026-09-18"},

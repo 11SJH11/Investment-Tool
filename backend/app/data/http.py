@@ -44,8 +44,8 @@ class JsonHttpClient:
     def close(self) -> None:
         self._client.close()
 
-    def get_json(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> Any:
-        return self._get(url, params=params, headers=headers).json()
+    def get_json(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, max_attempts=None) -> Any:
+        return self._get(url, params=params, headers=headers, max_attempts=max_attempts).json()
 
     def get_bytes(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout_seconds: float | None = None) -> bytes:
         return self._get(url, params=params, headers=headers, timeout_seconds=timeout_seconds).content
@@ -88,10 +88,11 @@ class JsonHttpClient:
                 break
         raise ProviderHttpError(f"GET {_redact_url(url)} failed: {last_error}")
 
-    def _get(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout_seconds: float | None = None) -> httpx.Response:
+    def _get(self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout_seconds: float | None = None, max_attempts=None) -> httpx.Response:
         last_error: str | None = None
         status_code = retry_after = None
-        for attempt in range(1, self.max_attempts + 1):
+        attempts = self.max_attempts if max_attempts is None else max_attempts
+        for attempt in range(1, attempts + 1):
             try:
                 kwargs = {"params": params, "headers": headers}
                 if timeout_seconds is not None:
@@ -99,7 +100,7 @@ class JsonHttpClient:
                 response = self._client.get(url, **kwargs)
                 status_code = response.status_code
                 retry_after = _retry_delay(response, attempt) if status_code == 429 else None
-                if _is_retryable_status(response.status_code) and attempt < self.max_attempts:
+                if _is_retryable_status(response.status_code) and attempt < attempts:
                     delay = _retry_delay(response, attempt)
                     if delay > 30:
                         raise ProviderHttpError(f"Provider HTTP {status_code}; retry after cooldown", status_code=status_code, retry_after=delay)
@@ -111,13 +112,13 @@ class JsonHttpClient:
                 last_error = _safe_http_status_error(exc)
                 # Ordinary 4xx errors are deterministic request/auth failures; do
                 # not hammer a rate-limited provider with identical retries.
-                if _is_retryable_status(exc.response.status_code) and attempt < self.max_attempts:
+                if _is_retryable_status(exc.response.status_code) and attempt < attempts:
                     time.sleep(_retry_delay(exc.response, attempt))
                     continue
                 break
             except httpx.HTTPError as exc:
                 last_error = type(exc).__name__
-                if attempt < self.max_attempts:
+                if attempt < attempts:
                     time.sleep(0.25 * attempt)
                     continue
                 break

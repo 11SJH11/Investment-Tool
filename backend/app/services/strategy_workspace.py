@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import importlib.util
+from datetime import datetime, timezone
 
 
 STRATEGIES = Path(__file__).resolve().parents[1] / 'backtesting' / 'strategies'
@@ -72,7 +74,95 @@ class StrategyWorkspace:
         return {'files': [{'filename': p.name, 'read_only': not p.name.startswith(PREFIX)}
                           for p in sorted(self.root.glob('*.py'))
                           if p.name not in {'__init__.py', 'base.py', 'registry.py'} and not p.is_symlink()],
-                'template': template(), 'default_filename': '_workspace_my_strategy.py'}
+                'template': template(), 'default_filename': '_workspace_my_strategy.py',
+                'activations': self._activations()}
+
+    def _activations(self):
+        path = self.root / '.workspace-activations.json'
+        if path.is_symlink():
+            raise ValueError('Unsafe activation manifest')
+        return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+
+    def _write_activations(self, values):
+        target = self.root / '.workspace-activations.json'
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.root, delete=False, suffix='.tmp') as stream:
+            temporary = Path(stream.name)
+            json.dump(values, stream)
+        try: os.replace(temporary, target)
+        finally: temporary.unlink(missing_ok=True)
+
+    def activate(self, filename, source, *, trusted=False, services=None):
+        from app.backtesting.strategies import strategy_registry
+        if not trusted:
+            raise ValueError('Activation requires explicit trusted local-code acknowledgement')
+        self._path(filename, writing=True)
+        key = filename.removesuffix('.py').removeprefix('_')
+        with _SAVE_LOCK:
+            if self.read(filename)['source'] != source:
+                raise ValueError('Save this exact source before activating')
+            if any(spec.key == key for spec in strategy_registry.specs()):
+                raise ValueError('Registry key already exists; deactivate your active version before replacing it')
+            checked = self.execute('tests', filename, source, trusted=True, services=services)
+            if not checked.get('ok'):
+                return checked
+            promoted = self._path(key + '.py')
+            if promoted.exists():
+                raise ValueError('Activation would overwrite an existing module')
+            metadata = {'filename': filename, 'source_sha256': revision(source),
+                        'version': revision(source)[:12], 'activated_at': datetime.now(timezone.utc).isoformat()}
+            generated = source + '\nfrom app.backtesting.strategies.registry import strategy_registry as _ledger_registry\n'
+            generated += f'_ledger_registry.register_workspace_class({checked["class_name"]}, {metadata!r})\n'
+            history = self.root / '_workspace_history'
+            if history.is_symlink():
+                raise ValueError('Unsafe workspace history directory')
+            history.mkdir(exist_ok=True)
+            history_file = history / (revision(source) + '.py')
+            if history_file.is_symlink():
+                raise ValueError('Unsafe workspace history file')
+            if not history_file.exists():
+                history_file.write_text(source, encoding='utf-8')
+            # A unique new module is discoverable on the next startup, too.
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.root, suffix='.tmp', delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(generated)
+            try: os.replace(temporary, promoted)
+            finally: temporary.unlink(missing_ok=True)
+            module_name = 'app.backtesting.strategies.' + key
+            try:
+                spec = importlib.util.spec_from_file_location(module_name, promoted)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+                activations = self._activations()
+                activations[filename] = {**metadata, 'key': key, 'module': promoted.name,
+                    'module_sha256': revision(generated), 'active': True}
+                self._write_activations(activations)
+            except Exception:
+                existing = strategy_registry._items.get(key)
+                if existing and existing.__module__ == module_name:
+                    del strategy_registry._items[key]
+                promoted.unlink(missing_ok=True)
+                sys.modules.pop(module_name, None)
+                raise ValueError('Activation failed; source history preserved. Exception details withheld.') from None
+            return {'ok': True, 'message': 'Activated. Select this strategy in Backtest.', 'activation': activations[filename]}
+
+    def deactivate(self, filename):
+        from app.backtesting.strategies import strategy_registry
+        self._path(filename, writing=True)
+        with _SAVE_LOCK:
+            activations = self._activations()
+            item = activations.get(filename)
+            if not item or not item.get('active'):
+                raise ValueError('This draft has no active strategy')
+            promoted = self._path(item['module'])
+            if not promoted.name.startswith('workspace_') or revision(promoted.read_text(encoding='utf-8')) != item['module_sha256']:
+                raise ValueError('Promoted module changed; refusing to delete it')
+            strategy_registry.deactivate_workspace(item['key'], item['source_sha256'])
+            promoted.unlink()
+            sys.modules.pop('app.backtesting.strategies.' + item['key'], None)
+            item['active'] = False
+            self._write_activations(activations)
+            return {'ok': True, 'message': 'Deactivated. Draft and immutable source history retained.'}
 
     def read(self, filename):
         path = self._path(filename)

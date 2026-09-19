@@ -9,13 +9,33 @@ router = APIRouter(tags=['broker connections'])
 
 @router.get('/brokers')
 def broker_profiles(services=Depends(get_services)):
-    return services.broker_connections.statuses()
+    result = services.broker_connections.statuses()
+    scheduler = getattr(services, 'broker_scheduler', None)
+    if scheduler:
+        for item in result['items']:
+            item['auto_sync'] = scheduler.status(item['profile_id'])
+    return result
 
 
 @router.post('/brokers/{profile_id}/sync')
 def sync(profile_id: str, services=Depends(get_services)):
     try:
-        return services.broker_connections.sync(profile_id)
+        scheduler = getattr(services, 'broker_scheduler', None)
+        return scheduler.sync_now(profile_id) if scheduler else services.broker_connections.sync(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, str(exc)) from None
+
+
+class SyncSchedule(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    enabled: bool
+    interval_seconds: int = Field(ge=60, le=86400)
+
+
+@router.patch('/brokers/{profile_id}/schedule')
+def schedule(profile_id: str, body: SyncSchedule, services=Depends(get_services)):
+    try:
+        return services.broker_scheduler.configure(profile_id, body.enabled, body.interval_seconds)
     except BrokerHistoryError as exc:
         raise HTTPException(400, str(exc)) from None
 

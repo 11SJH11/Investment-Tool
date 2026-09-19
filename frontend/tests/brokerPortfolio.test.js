@@ -24,3 +24,13 @@ test('broker dates use the selected timezone and omit raw seconds',()=>{
   assert.equal(brokerDate('2026-09-17T17:38:44.220+03:00','UTC'),'17 Sept 2026, 14:38');
   assert.equal(brokerDate(null),'Unavailable');assert.equal(brokerDate('invalid'),'Unavailable');
 });
+
+import {activitySemantics} from '../src/features/portfolio/brokerPortfolioUtils.js';
+test('activity labels use explicit broker side and supported cash types, never ambiguous signs',()=>{
+  assert.equal(activitySemantics({order:{side:'BUY'},fill:{quantity:2}},'orders').direction,'BUY');
+  assert.equal(activitySemantics({order:{side:'SELL'},fill:{quantity:-2}},'orders').direction,'SELL');
+  assert.equal(activitySemantics({fill:{quantity:-2}},'orders').direction,'Unavailable');
+  for(const [type,direction] of [['DEPOSIT','IN'],['WITHDRAWAL','OUT'],['FEE','OUT'],['INTEREST','IN']])assert.equal(activitySemantics({type},'transactions').direction,direction);
+  assert.equal(activitySemantics({type:'TRANSFER',amount:-5},'transactions').direction,'Unavailable');
+  assert.equal(activitySemantics({type:'TRANSFER',direction:'OUT'},'transactions').direction,'OUT');
+});

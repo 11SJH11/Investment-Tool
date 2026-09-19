@@ -90,7 +90,7 @@ class BrokerConnections:
             message = str(exc) if isinstance(exc,BrokerHistoryError) else "Broker sync could not complete; previous Portfolio records were preserved"
             if adapter and adapter.account_key:
                 self.state.failure(adapter,message)
-            raise BrokerHistoryError(message) from None
+            raise BrokerHistoryError(message, status_code=getattr(exc,'status_code',None), retry_after=getattr(exc,'retry_after',None)) from None
         finally:
             if adapter: adapter.close()
             self._lock.release()

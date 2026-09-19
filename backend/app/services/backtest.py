@@ -135,6 +135,9 @@ class BacktestService:
 
         params = dict(payload.get("strategy_params") or {})
         strategies = {symbol: strategy_registry.create(strategy_key, **params) for symbol in symbols}
+        workspace = getattr(strategies[symbols[0]], 'workspace_provenance', None)
+        if workspace:
+            payload = {**payload, 'workspace': dict(workspace)}
         entry_windows = _entry_windows(payload.get("entry_windows"))
         weekdays = _weekdays(payload.get("trading_weekdays"))
         allow_overnight = bool(payload.get("allow_overnight", True))
@@ -202,6 +205,8 @@ class BacktestService:
             annotate_gold(result, frames_by_symbol, config, strategies[symbols[0]].params)
             payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
         if self.runs is not None and bool(payload.get("save_run", True)):
+            if workspace:
+                result['workspace'] = dict(workspace)
             def save():
                 return self.runs.create(
                     config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
@@ -673,7 +678,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
-        "max_consecutive_losses", "cooldown_minutes", "queue_job_id",
+        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

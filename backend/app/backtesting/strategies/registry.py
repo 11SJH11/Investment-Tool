@@ -21,5 +21,19 @@ class StrategyRegistry:
     def specs(self):
         return [item.spec for item in self._items.values()]
 
+    def register_workspace_class(self, strategy, provenance):
+        existing = self._items.get(strategy.spec.key)
+        if existing is not None and existing is not strategy:
+            raise ValueError('Workspace key is already registered')
+        strategy.workspace_provenance = dict(provenance)
+        self._items[strategy.spec.key] = strategy
+
+    def deactivate_workspace(self, key, source_hash):
+        existing = self._items.get(key)
+        if existing is not None:
+            if getattr(existing, 'workspace_provenance', {}).get('source_sha256') != source_hash:
+                raise ValueError('Refusing to deactivate a different or built-in strategy')
+            del self._items[key]
+
 
 strategy_registry = StrategyRegistry()

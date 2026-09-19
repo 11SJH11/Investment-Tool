@@ -189,7 +189,7 @@ def test_rate_limit_retry_is_bounded_and_redirects_are_not_followed():
         calls.append(req);return httpx.Response(429,headers={'Retry-After':'1'})
     a=Trading212Portfolio('k','s','demo',client=httpx.Client(transport=httpx.MockTransport(limited)),sleep=sleeps.append)
     with pytest.raises(BrokerHistoryError,match='429'):a.read_account()
-    assert len(calls)==3 and sleeps==[1,1];a.close()
+    assert len(calls)==1 and sleeps==[];a.close()
     calls.clear()
     def redirect(req):
         calls.append(req);return httpx.Response(302,headers={'Location':'https://evil.example'})

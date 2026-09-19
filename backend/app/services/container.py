@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.data.http import JsonHttpClient
+from app.data.massive_request_gate import MassiveRequestGate
 from app.data.providers.alpaca import AlpacaProvider
 from app.data.providers.autochartist import AutochartistProvider
 from app.data.providers.massive_futures import MassiveFuturesProvider
@@ -23,6 +24,7 @@ from app.services.fx import FxRateService
 from app.services.journal import JournalService
 from app.services.broker_sync import BrokerSyncService
 from app.services.broker_connections import BrokerConnections
+from app.services.broker_scheduler import BrokerScheduler
 from app.services.research import ResearchService
 from app.services.screener import ScreenerService
 from app.services.symbols import SymbolUniverseService
@@ -61,8 +63,11 @@ class AppServices:
     broker_sync: BrokerSyncService
     broker_connections: BrokerConnections
     backtest_jobs: BacktestJobs | None = None
+    broker_scheduler: BrokerScheduler | None = None
 
     def close(self) -> None:
+        if self.broker_scheduler:
+            self.broker_scheduler.close()
         if self.backtest_jobs:
             self.backtest_jobs.close()
         self.http.close()
@@ -80,7 +85,9 @@ class AppServices:
             "massive": {
                 "configured": self.settings.massive_configured,
                 "purpose": "CME/CBOT/NYMEX/COMEX futures bars and contract reference data",
-                "continuous_roll": "calendar_front_v1",
+                "continuous_roll": "prior-session-volume45-v1",
+                "reference_discovery": "dated single-contract snapshots",
+                "calls_per_minute": self.settings.massive_calls_per_minute,
                 "back_adjust": self.settings.futures_back_adjust,
             },
             "oanda": {
@@ -164,7 +171,7 @@ def build_services(settings: Settings) -> AppServices:
             base_url=settings.massive_futures_base_url,
             back_adjust=settings.futures_back_adjust,
             reference_cache_path=settings.market_data_dir / "contract-reference.sqlite",
-            http=http,
+            http=MassiveRequestGate(http, settings.massive_api_key, calls_per_minute=settings.massive_calls_per_minute),
         )
         providers.register("market_data_futures", massive_provider)
 
@@ -225,6 +232,7 @@ def build_services(settings: Settings) -> AppServices:
     backtest = BacktestService(market_data, backtest_runs)
 
     broker_sync = BrokerSyncService(settings, database)
+    broker_connections = BrokerConnections(settings, database, legacy_oanda=broker_sync)
     return AppServices(
         settings=settings, database=database, providers=providers, symbols=symbols,
         symbol_universe=symbol_universe, market_data=market_data,
@@ -232,6 +240,7 @@ def build_services(settings: Settings) -> AppServices:
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
         broker_sync=broker_sync,
-        broker_connections=BrokerConnections(settings, database, legacy_oanda=broker_sync),
+        broker_connections=broker_connections,
+        broker_scheduler=BrokerScheduler(broker_connections, database),
         backtest_jobs=BacktestJobs(database, backtest, settings.max_concurrent_backtests),
     )

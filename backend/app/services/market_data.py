@@ -97,8 +97,6 @@ class MarketDataService:
         provider = self.provider_for(ticker)
         # Backward adjustment depends on later rolls in the requested range.
         spec = instrument_spec(ticker)
-        if force_refresh and spec.security_type == "continuous_future" and hasattr(provider, "list_contracts"):
-            provider.list_contracts(spec.root, refresh=True)
         if spec.security_type == 'continuous_future' and hasattr(provider,'raw_execution_provider'):
             from copy import copy
             continuous = copy(provider)

@@ -109,30 +109,32 @@ class MassiveFuturesProvider(MarketDataProvider):
             return frame
         return self._contract_bars(symbol, resolution, start, end, source_contract=symbol)
 
-    def list_contracts(self, product_code: str, *, refresh: bool = False) -> list[FutureContract]:
+    def list_contracts(self, product_code: str, *, refresh: bool = False, as_of: date | None = None) -> list[FutureContract]:
         root = str(product_code or "").strip().upper()
         if not root.isalnum() or len(root) > 8:
             raise ValueError("Futures product code is invalid")
+        as_of = as_of or datetime.now(timezone.utc).date()
         def load():
             return [dict(ticker=c.ticker, product_code=c.product_code,
                          first_trade_date=c.first_trade_date.isoformat(), last_trade_date=c.last_trade_date.isoformat())
-                    for c in self._fetch_contracts(root)]
-        rows = self.reference_cache.get(self.base_url + ":contracts-v1:" + root, load, refresh=refresh)
+                    for c in self._fetch_contracts(root, as_of)]
+        rows = self.reference_cache.get(f'{self.base_url}:contracts-snapshot-v2:{root}:{as_of}', load, refresh=refresh)
         return [FutureContract(c["ticker"], c["product_code"], date.fromisoformat(c["first_trade_date"]),
                                date.fromisoformat(c["last_trade_date"])) for c in rows]
 
-    def _fetch_contracts(self, product_code: str) -> list[FutureContract]:
+    def _fetch_contracts(self, product_code: str, as_of: date) -> list[FutureContract]:
         root = str(product_code or "").strip().upper()
         if not root:
             raise ValueError("Futures product code is required")
         url = f"{self.base_url}/futures/v1/contracts"
-        # Keep the contracts query deliberately conservative. Massive documents
-        # product_code and limit for this endpoint, while the richer filters/sorts
-        # have changed during the futures API rollout. We sort and filter locally,
-        # which avoids a provider-side 400 without changing Ledger semantics.
+        # Without date, this is a history of daily snapshots, NOT a unique
+        # contract directory. Real NQ requests returned 1000 repeated snapshots
+        # plus pagination; a dated request returned 13 contracts in one page.
         params: dict[str, Any] | None = {
             "product_code": root,
             "limit": 1000,
+            "date": as_of.isoformat(),
+            "type": "single",
         }
         headers = self._auth_headers()
         rows: list[dict] = []
@@ -168,8 +170,19 @@ class MassiveFuturesProvider(MarketDataProvider):
             if not ticker or first is None or last is None:
                 continue
             contracts.append(FutureContract(ticker=ticker, product_code=root, first_trade_date=first, last_trade_date=last))
-        contracts.sort(key=lambda item: (item.last_trade_date, item.first_trade_date, item.ticker))
-        return contracts
+        return _unique_contracts(contracts)
+
+    def _range_contracts(self, root, start, end):
+        # Sample authoritative snapshots, not guessed exchange expiry dates.
+        # A monthly directory also covers non-quarterly supported products.
+        cursor = start.date().replace(day=1)
+        contracts = []
+        while cursor <= end.date():
+            snapshot = max(cursor, start.date())
+            contracts.extend(self.list_contracts(root, as_of=snapshot,
+                refresh=getattr(self, 'refresh_schedule', False)))
+            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return _unique_contracts(contracts)
 
     def _auth_headers(self) -> dict[str, str]:
         # Massive supports Bearer authentication. Prefer it over ?apiKey= so
@@ -183,7 +196,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         return self._contract_bars(ticker,resolution,start,end,source_contract=ticker)
 
     def _scheduled_front(self, root, resolution, start, end):
-        contracts = self.list_contracts(root)
+        contracts = self._range_contracts(root, start, end)
         if not contracts:
             raise ValueError(f'No dated contracts available for {root}')
         now = datetime.now(timezone.utc)
@@ -231,7 +244,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         return pd.concat(segments,ignore_index=True).sort_values('timestamp').reset_index(drop=True),rolls
 
     def _continuous_front(self, root: str, resolution: str, start: datetime, end: datetime) -> pd.DataFrame:
-        contracts = self.list_contracts(root)
+        contracts = self._range_contracts(root, start, end)
         if not contracts:
             raise RuntimeError(f"Massive returned no dated contracts for futures product {root}")
 
@@ -389,3 +402,13 @@ def _parse_date(value: Any) -> date | None:
         return date.fromisoformat(str(value)[:10])
     except ValueError:
         return None
+
+
+def _unique_contracts(contracts):
+    unique = {}
+    for contract in contracts:
+        existing = unique.get(contract.ticker)
+        if existing is not None and existing != contract:
+            raise ValueError('Conflicting dated-contract metadata; refusing ambiguous contract identity')
+        unique[contract.ticker] = contract
+    return sorted(unique.values(), key=lambda c: (c.last_trade_date, c.first_trade_date, c.ticker))

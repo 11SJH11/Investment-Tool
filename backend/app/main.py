@@ -13,6 +13,7 @@ from app.services.container import build_services
 async def lifespan(app: FastAPI):
     services = build_services(get_settings())
     app.state.services = services
+    services.broker_scheduler.start()
     try:
         yield
     finally:

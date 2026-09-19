@@ -42,7 +42,6 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [entryWindows, setEntryWindows] = useState([]);
   const [selectedWeekdays, setSelectedWeekdays] = useState([0, 1, 2, 3, 4]);
   const [showAdvanced, setShowAdvanced] = useUIPreference("guardrails", false);
-  const [runType, setRunType] = useUIPreference("backtest.runType", "Single backtest");
   const watchlist = useWatchlist();
   const [runMeta, setRunMeta] = useState({ name: "", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
@@ -139,7 +138,8 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     try {
       const suite = await api.strategyLabExperiment(group);
       setSavedExperiment(suite);
-      setRunType("Validation suite"); setTab("Backtest");
+      localStorage.setItem("ledger.ui.section.validation-research", "true");
+      setTab("Backtest");
     } catch (e) { setError(e.message); }
   };
 
@@ -186,7 +186,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     {tab === "Strategies" && <Button onClick={()=>setTab("Indicators")}>Browse indicators</Button>}
     {tab === "Indicators" && <Button onClick={()=>setTab("Strategies")}>Back to strategies</Button>}
     {tab === "Backtest" && <>
-      <div className="mt-5"><TabBar label="Run type" value={runType} options={RUN_TYPES} onChange={setRunType}/></div>
+
       <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
           <div>
@@ -227,17 +227,17 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
         <div className="mt-6 grid gap-4 border-t border-stone-100 pt-5 lg:grid-cols-4"><Field label="Run name (optional)"><input className="input" value={runMeta.name} onChange={(e) => setRunMeta({ ...runMeta, name: e.target.value })} placeholder="e.g. EMA baseline · no overnight" /></Field><Field label="Research role"><select className="input" value={runMeta.test_role} onChange={(e) => setRunMeta({ ...runMeta, test_role: e.target.value })}>{roles.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="Tags (comma separated)"><input className="input" value={runMeta.tags} onChange={(e) => setRunMeta({ ...runMeta, tags: e.target.value })} placeholder="baseline, AAPL, 5m" /></Field><Field label="Run notes (optional)"><input className="input" value={runMeta.notes} onChange={(e) => setRunMeta({ ...runMeta, notes: e.target.value })} placeholder="What hypothesis is this run testing?" /></Field></div>
         {runMeta.test_role === "out_of_sample" && <p className="mt-2 text-xs text-amber-800">Out-of-sample data is most useful when you avoid repeatedly tuning rules against it. Ledger labels the run but does not prevent you from reusing the period.</p>}
-        <Panel><h3 className="font-semibold">{configurationError(buildPayload())?"Check configuration":"Ready to run"}</h3>{configurationError(buildPayload())&&<p role="alert" className="mt-2 text-sm text-red-700">{configurationError(buildPayload())}</p>}<p className="mt-1 text-sm">{strategy?.name} | {runType}</p><MetricGrid>{Object.entries(runSummary(buildPayload())).map(([label,value])=><MetricCard key={label} label={label}>{value}</MetricCard>)}</MetricGrid><p className="mt-3 text-xs text-stone-500">Requested date range; actual end is capped at the provider's latest available data and recorded in the saved result.</p>{runType!=="Single backtest"&&<p className="mt-3 text-xs">Base configuration above; the experiment controls below define each queued period or parameter override.</p>}</Panel>
-        {runType === "Single backtest" && <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || !symbols.length || !selectedWeekdays.length} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button></div>}
+        <Panel><h3 className="font-semibold">{configurationError(buildPayload())?"Check configuration":"Ready to run"}</h3>{configurationError(buildPayload())&&<p role="alert" className="mt-2 text-sm text-red-700">{configurationError(buildPayload())}</p>}<p className="mt-1 text-sm">{strategy?.name}</p><MetricGrid>{Object.entries(runSummary(buildPayload())).map(([label,value])=><MetricCard key={label} label={label}>{value}</MetricCard>)}</MetricGrid><p className="mt-3 text-xs text-stone-500">Requested date range; actual end is capped at the provider's latest available data and recorded in the saved result.</p></Panel>
+        {<div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || !symbols.length || !selectedWeekdays.length} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button></div>}
       </section>
-      {runType !== "Single backtest" && <ValidationPanel mode={runType} submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/>}
+      {["Validation suite","Sensitivity test"].map(mode=><Section key={mode} id={mode=== "Validation suite"?"validation-research":"sensitivity-research"} title={mode==="Validation suite"?"Validation & out-of-sample":"Sensitivity analysis"}><ValidationPanel mode={mode} submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/></Section>)}
       {result && <BacktestResults result={result} />}
     </>}
 
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
     {tab === "Strategies" && <section className="mt-5 grid gap-4 lg:grid-cols-2">{strategies.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">{item.category}</p><h3 className="mt-1 font-semibold">{item.name}</h3></div><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.description}</p><p className="mt-3 text-xs text-stone-500">Default timeframe: {(item.timeframes || []).join(", ")}</p><p className="mt-2 text-xs text-stone-500">Strategy code owns entry, initial stop/target and next-bar position management (including breakeven, trailing rules and partial exits). The run screen owns account sizing, execution costs, schedule and account guardrails.</p>{item.risk_management && Object.keys(item.risk_management).length > 0 && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{Object.entries(item.risk_management).map(([label,value]) => <div key={label} className="mt-1"><strong>{label}:</strong> {value}</div>)}</div>}{(item.research_parameters || []).length > 0 && <p className="mt-3 text-xs text-stone-500"><strong>Research-only sensitivity:</strong> {(item.research_parameters || []).map((p) => p.label).join(", ")}. These do not appear on ordinary runs.</p>}</div>)}</section>}
     {tab === "Indicators" && <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{indicators.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-semibold">{item.name}</h3><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.overlay ? "Price-chart overlay" : "Separate/pane indicator"}</p><p className="mt-2 text-xs text-stone-500">Defaults: {Object.entries(item.defaults || {}).map(([k,v]) => `${k}=${v}`).join(", ") || "None"}</p></div>)}</section>}
-    {standaloneTab !== "Replay" && <div hidden={tab !== "Workspace"}><StrategyWorkspace onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();}} /></div>}
+    {standaloneTab !== "Replay" && <div hidden={tab !== "Workspace"}><StrategyWorkspace onActivation={()=>api.strategyLabStrategies().then(data=>setStrategies(data.strategies||[])).catch(e=>setError(e.message))} onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();}} /></div>}
     {tab === "Replay" && <ReplayPanel indicators={indicators} onError={setError} />}
   </div>;
 }

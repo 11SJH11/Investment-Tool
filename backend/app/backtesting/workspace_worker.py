@@ -23,6 +23,12 @@ class CapturedOutput(io.TextIOBase):
 def execute(job):
     from app.backtesting.strategies import strategy_registry
     from app.backtesting.strategies.base import Strategy, StrategySpec
+    # This is a disposable worker: revalidate an active draft without colliding
+    # with its own startup-discovered version. Built-ins remain protected.
+    active = strategy_registry._items.get(job['key'])
+    provenance = getattr(active, 'workspace_provenance', {})
+    if provenance.get('filename') == job['filename']:
+        strategy_registry.deactivate_workspace(job['key'], provenance['source_sha256'])
     before = {s.key for s in strategy_registry.specs()}
     module = types.ModuleType('ledger_workspace_draft')
     module.__file__ = job['filename']
@@ -48,7 +54,7 @@ def execute(job):
         strategy_registry.register(cls)
     elif added != {job['key']} or type(strategy_registry.create(job['key'])) is not cls:
         raise ValueError('Unexpected strategy registration')
-    result = {'ok': True, 'message': 'Strategy interface valid.', 'strategy': asdict(cls.spec)}
+    result = {'ok': True, 'message': 'Strategy interface valid.', 'strategy': asdict(cls.spec), 'class_name': cls.__name__}
     if job['action'] == 'tests':
         tests = [(name,fn) for name,fn in vars(module).items() if name.startswith('test_') and inspect.isfunction(fn) and fn.__module__ == module.__name__]
         if not tests:

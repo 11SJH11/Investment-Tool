@@ -150,7 +150,7 @@ def test_retryable_error_retries_get_without_following_redirects(monkeypatch):
     def handler(r):
         calls.append(r)
         assert r.method=='GET'
-        return httpx.Response(429 if len(calls)<3 else 200,json={'ok':True})
+        return httpx.Response(503 if len(calls)<3 else 200,json={'ok':True})
     broker=adapter(handler,environment='live')
     assert broker._get('summary')=={'ok':True} and len(calls)==3
     assert all(r.url.host=='api-fxtrade.oanda.com' for r in calls)
@@ -175,4 +175,14 @@ def test_legacy_conversion_and_invalid_timestamp():
     t['openTime']='2026-06-01T23:30:00'
     with pytest.raises(BrokerHistoryError,match='timestamp'):
         broker._map(t,o,c,p,'GBP')
+    broker.close()
+
+
+def test_oanda_429_is_deferred_to_scheduler_and_honors_retry_after():
+    calls=[]
+    def handler(request):
+        calls.append(request);return httpx.Response(429,headers={'Retry-After':'180'})
+    broker=adapter(handler)
+    with pytest.raises(BrokerHistoryError) as error:broker._get('summary')
+    assert len(calls)==1 and error.value.status_code==429 and error.value.retry_after==180
     broker.close()

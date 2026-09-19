@@ -88,9 +88,9 @@ class Trading212Portfolio:
                 response = self._client.get(self._base + path, auth=self._auth, follow_redirects=False)
                 if response.headers.get("x-ratelimit-remaining") == "0":
                     self._ready[expected] = float(response.headers.get("x-ratelimit-reset", time.time()+10)) + .1
-                if response.status_code == 429 and attempt < 2:
-                    self._wait(float(response.headers.get("Retry-After", "10")))
-                    continue
+                if response.status_code == 429:
+                    from app.data.http import _retry_delay
+                    raise BrokerHistoryError('Trading 212 HTTP 429: rate-limited; last good data retained', status_code=429, retry_after=max(60, _retry_delay(response, attempt+1)))
                 if response.status_code != 200:
                     raise BrokerHistoryError(f"Trading 212 read failed (HTTP {response.status_code}); previous data preserved")
                 return response.json()

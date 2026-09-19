@@ -164,3 +164,44 @@ def test_workspace_api_boundaries(workspace,tmp_path):
         assert client.put('/api/strategy-workspace/files',json=draft,headers={'origin':'https://evil.invalid'}).status_code == 403
     with TestClient(app,client=('192.0.2.1',1234)) as client:
         assert client.get('/api/strategy-workspace/files').status_code == 403
+
+def test_activation_unique_discoverable_and_deactivation_preserves_history(workspace):
+    from app.backtesting.strategies import strategy_registry
+    source=template('activation_case');filename='_workspace_activation_case.py'
+    workspace.save(filename,source)
+    result=workspace.activate(filename,source,trusted=True)
+    assert result['ok'],result
+    try:
+        strategy=strategy_registry.create('workspace_activation_case')
+        assert strategy.workspace_provenance['source_sha256']==result['activation']['source_sha256']
+        assert (workspace.root/'workspace_activation_case.py').exists()
+        with pytest.raises(ValueError,match='already exists'):workspace.activate(filename,source,trusted=True)
+        with pytest.raises(ValueError):workspace.deactivate('_workspace_unowned.py')
+    finally:workspace.deactivate(filename)
+    assert 'workspace_activation_case' not in {s.key for s in strategy_registry.specs()}
+    assert workspace.read(filename)['source']==source
+    assert (workspace.root/'_workspace_history'/f"{result['activation']['source_sha256']}.py").read_text()==source
+    assert not workspace.list()['activations'][filename]['active']
+
+
+def test_activation_requires_saved_exact_source_and_passing_tests(workspace):
+    source=template('activation_bad')+'\ndef test_fails():\n    assert False\n'
+    filename='_workspace_activation_bad.py';workspace.save(filename,source)
+    with pytest.raises(ValueError,match='acknowledgement'):workspace.activate(filename,source)
+    with pytest.raises(ValueError,match='exact source'):workspace.activate(filename,source+'\n',trusted=True)
+    assert not workspace.activate(filename,source,trusted=True)['ok']
+    assert not (workspace.root/'workspace_activation_bad.py').exists()
+
+
+def test_active_workspace_can_be_revalidated_in_disposable_worker(workspace):
+    from app.backtesting.strategies import strategy_registry
+    from app.backtesting.workspace_worker import execute
+    source=template('active_revalidate');filename='_workspace_active_revalidate.py'
+    workspace.save(filename,source);assert workspace.activate(filename,source,trusted=True)['ok']
+    active=strategy_registry._items['workspace_active_revalidate']
+    try:
+        result=execute({'key':'workspace_active_revalidate','filename':filename,'source':source,'action':'tests'})
+        assert result['ok']
+    finally:
+        strategy_registry._items['workspace_active_revalidate']=active
+        workspace.deactivate(filename)

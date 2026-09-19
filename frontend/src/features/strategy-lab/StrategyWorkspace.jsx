@@ -5,17 +5,18 @@ import {pythonTokens} from './workspace-utils';
 const colours={plain:'#e2e8f0',keyword:'#c4b5fd',string:'#86efac',comment:'#94a3b8',number:'#fcd34d'};
 const defaults={strategy_key:'workspace_my_strategy',symbols:['AAPL'],start_date:'2026-01-05',end_date:'2026-01-09',primary_timeframe:'5m',session:'regular',starting_balance:10000,sizing_mode:'risk_pct',risk_value:1,commission_per_order:0,slippage_bps:0,spread_bps:0,save_run:true};
 
-export default function StrategyWorkspace({onResult,onDirtyChange}) {
+export default function StrategyWorkspace({onResult,onDirtyChange,onActivation}) {
   const [files,setFiles]=useState([]),[filename,setFilename]=useState('_workspace_my_strategy.py');
   const [source,setSource]=useState(''),[savedSource,setSavedSource]=useState(''),[savedFilename,setSavedFilename]=useState('');
   const [revision,setRevision]=useState(null),[readOnly,setReadOnly]=useState(false),[trusted,setTrusted]=useState(false);
   const [busy,setBusy]=useState(false),[report,setReport]=useState(null),[error,setError]=useState('');
   const [settings,setSettings]=useState(JSON.stringify(defaults,null,2));
+  const [activations,setActivations]=useState({});
   const original=useRef(''),pre=useRef(null),editor=useRef(null);
   const dirty=source!==savedSource||filename!==savedFilename;
   useEffect(()=>{onDirtyChange?.(dirty||busy);return()=>onDirtyChange?.(false);},[dirty,busy,onDirtyChange]);
-  const refresh=()=>api.workspaceFiles().then(data=>{setFiles(data.files);original.current=data.template;return data;});
-  useEffect(()=>{let active=true;api.workspaceFiles().then(data=>{if(!active)return;setFiles(data.files);original.current=data.template;setSource(data.template);setSavedSource(data.template);setSavedFilename(data.default_filename);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[]);
+  const refresh=()=>api.workspaceFiles().then(data=>{setFiles(data.files);setActivations(data.activations||{});original.current=data.template;return data;});
+  useEffect(()=>{let active=true;api.workspaceFiles().then(data=>{if(!active)return;setFiles(data.files);setActivations(data.activations||{});original.current=data.template;setSource(data.template);setSavedSource(data.template);setSavedFilename(data.default_filename);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[]);
   useEffect(()=>{const guard=e=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
   const replace=()=>!dirty||window.confirm('Discard the unsaved workspace changes?');
   const load=async name=>{if(!name||!replace())return;setBusy(true);setError('');try{const data=await api.workspaceRead(name);setFilename(name);setSavedFilename(name);setSource(data.source);setSavedSource(data.source);setRevision(data.revision);setReadOnly(data.read_only);setTrusted(false);setReport(null);}catch(e){setError(e.message);}finally{setBusy(false);}};
@@ -23,10 +24,11 @@ export default function StrategyWorkspace({onResult,onDirtyChange}) {
   const copy=()=>{setFilename('_workspace_copy.py');setRevision(null);setReadOnly(false);setTrusted(false);setReport({message:'Copy created in the editor. Set StrategySpec.key to workspace_copy (or match your new filename) before executing.'});};
   const action=async kind=>{setBusy(true);setError('');setReport(null);try{
     const draft={filename,source,expected_revision:filename===savedFilename?revision:null,trusted};
-    const response=kind==='save'?await api.workspaceSave(draft):kind==='syntax'?await api.workspaceSyntax(draft):await api.workspaceExecute({...draft,action:kind,...(kind==='backtest'?{backtest:JSON.parse(settings)}:{})});
+    const response=kind==='activate'?await api.workspaceActivate(draft):kind==='deactivate'?await api.workspaceDeactivate(draft):kind==='save'?await api.workspaceSave(draft):kind==='syntax'?await api.workspaceSyntax(draft):await api.workspaceExecute({...draft,action:kind,...(kind==='backtest'?{backtest:JSON.parse(settings)}:{})});
     setReport(response);
     if(kind==='save'&&response.ok){setRevision(response.revision);setSavedSource(source);setSavedFilename(filename);await refresh();}
     if(kind==='backtest'&&response.ok)onResult?.(response.result);
+    if(['activate','deactivate'].includes(kind)&&response.ok){await refresh();onActivation?.(response.activation);}
   }catch(e){setError(e.message);}finally{setBusy(false);}};
   const edit=value=>{setSource(value);setReport(null);};
   const style={fontFamily:'ui-monospace, monospace',fontSize:13,lineHeight:'20px',tabSize:4,whiteSpace:'pre',padding:12,margin:0,border:0,boxSizing:'border-box'};
@@ -53,6 +55,8 @@ export default function StrategyWorkspace({onResult,onDirtyChange}) {
       <div className="mt-3 flex flex-wrap gap-2"><button className="mini-btn" onClick={()=>action('syntax')}>Check syntax</button><button disabled={readOnly} className="mini-btn" onClick={()=>action('save')}>Save strategy</button></div>
       <label className="mt-4 flex items-start gap-2 text-sm"><input type="checkbox" checked={trusted} onChange={e=>setTrusted(e.target.checked)}/>I trust this Python code and allow local execution when I click an execution button.</label>
       <div className="mt-3 flex flex-wrap gap-2"><button disabled={!trusted||readOnly} className="mini-btn" onClick={()=>action('interface')}>Validate interface</button><button disabled={!trusted||readOnly} className="mini-btn" onClick={()=>action('tests')}>Run strategy tests</button></div>
+      <div className="mt-3 flex flex-wrap gap-2"><button disabled={!trusted||readOnly||dirty||!revision||activations[filename]?.active} className="mini-btn ledger-primary text-white" onClick={()=>action('activate')}>Activate strategy</button><button disabled={!activations[filename]?.active} className="mini-btn" onClick={()=>action('deactivate')}>Deactivate</button></div>
+      <p className="mt-2 text-xs text-stone-500">Activation rechecks syntax, interface and tests, then loads this trusted version into the normal Backtest selector and on backend startup. Deactivate before replacing an active version. Draft and source history are retained.</p>
       <p className="mt-2 text-xs text-stone-500">Tests are synchronous, zero-argument test_ functions in this file. They must assert behaviour using deterministic fixtures. Validation/tests time out after 15 seconds; backtests after 120 seconds. Output is captured but withheld to protect secrets.</p>
       <details className="mt-4" open><summary className="cursor-pointer text-sm font-semibold">Backtest settings</summary><p className="mt-2 text-xs text-stone-500">The common BacktestEngine and provider routing are used. Edit the JSON settings, including costs. The strategy key is taken from the workspace filename. Saved results appear under Runs; rerun workspace code from here.</p><textarea aria-label="Workspace backtest settings" className="input mt-2 h-52 font-mono text-xs" value={settings} onChange={e=>setSettings(e.target.value)}/><button disabled={!trusted||readOnly} className="mini-btn mt-2" onClick={()=>action('backtest')}>Run workspace backtest</button></details>
     </fieldset>

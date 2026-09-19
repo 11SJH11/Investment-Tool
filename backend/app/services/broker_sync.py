@@ -1,8 +1,12 @@
 from threading import Lock
+from hashlib import sha256
 
 from app.brokers.base import BrokerHistoryError
 from app.brokers.oanda import OandaHistory
 from app.storage.broker_sync_repository import BrokerSyncRepository
+
+_guard = Lock()
+_account_locks = {}
 
 
 class BrokerSyncService:
@@ -10,7 +14,9 @@ class BrokerSyncService:
         self.settings = settings
         self.repository = BrokerSyncRepository(database)
         self.factory = factory
-        self._lock = Lock()
+        key = sha256(f'{settings.oanda_environment}:{settings.oanda_account_id}'.encode()).hexdigest()
+        with _guard:
+            self._lock = _account_locks.setdefault(key, Lock())
 
     def _adapter(self):
         return self.factory(self.settings.oanda_access_token.strip(), self.settings.oanda_account_id.strip(), self.settings.oanda_environment.strip().lower())
@@ -43,7 +49,7 @@ class BrokerSyncService:
             message = str(exc) if isinstance(exc, BrokerHistoryError) else "Broker sync could not complete; previous trades and cursor were preserved. Retry after checking the connection."
             if adapter:
                 self.repository.failure(adapter, message)
-            raise BrokerHistoryError(message) from None
+            raise BrokerHistoryError(message, status_code=getattr(exc,'status_code',None), retry_after=getattr(exc,'retry_after',None)) from None
         finally:
             if adapter:
                 adapter.close()

@@ -1,4 +1,14 @@
 // Position prices are in instrument currency; wallet facts are in account currency.
+export function activitySemantics(facts, kind) {
+  if (kind === 'orders') {
+    const side = String(facts.order?.side || facts.side || '').toUpperCase();
+    return {type:'Order / fill', direction:['BUY','SELL'].includes(side)?side:'Unavailable'};
+  }
+  const type = kind === 'dividends' ? 'DIVIDEND' : String(facts.type || '').toUpperCase();
+  const known = {DEPOSIT:['Deposit','IN'],WITHDRAWAL:['Withdrawal','OUT'],INTEREST:['Interest','IN'],DIVIDEND:['Dividend','IN'],FEE:['Fee','OUT']};
+  if (known[type]) return {type:known[type][0],direction:known[type][1]};
+  return {type:type.replaceAll('_',' ') || 'Unavailable',direction:['IN','OUT'].includes(facts.direction)?facts.direction:'Unavailable'};
+}
 export function returnPercent(pnl, cost) {
   return Number.isFinite(pnl) && Number.isFinite(cost) && cost > 0 ? 100 * pnl / cost : null;
 }

@@ -74,7 +74,10 @@ class OandaHistory:
                     f"{self._base}/v3/accounts/{self._account_id}/{suffix}", params=params,
                     headers={"Authorization": f"Bearer {self._token}", "Accept-Datetime-Format": "RFC3339"},
                 )
-                if response.status_code == 429 or response.status_code >= 500:
+                if response.status_code == 429:
+                    from app.data.http import _retry_delay
+                    raise BrokerHistoryError('OANDA history is rate-limited; last good data retained', status_code=429, retry_after=max(60, _retry_delay(response, attempt+1)))
+                if response.status_code >= 500:
                     if attempt < 2:
                         time.sleep(0.25 * (attempt + 1))
                         continue

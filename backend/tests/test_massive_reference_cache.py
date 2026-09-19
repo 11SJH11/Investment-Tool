@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from threading import Event
 
 import httpx
@@ -28,7 +28,7 @@ def test_reference_is_durable_separate_and_reused_across_timeframes(tmp_path):
         assert bars.source_contract.tolist()==["NQU6"]
     assert sum(c["url"].endswith("/contracts") for c in p.http.calls)==1
     other=provider(tmp_path,lambda *a:pytest.fail("cached metadata should survive a new provider instance"))
-    assert other.list_contracts("NQ")[0].ticker=="NQU6"
+    assert other.list_contracts("NQ", as_of=date(2026,6,1))[0].ticker=="NQU6"
     assert (tmp_path/"reference.sqlite").exists()
 
 

@@ -158,7 +158,7 @@ export default function ValidationPanel({ mode = "Validation suite", submit, job
     {mode === "Validation suite" && <>
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h3 className="font-semibold">Development → validation → out-of-sample</h3><p className="mt-1 max-w-4xl text-sm text-stone-600">Run the <strong>same strategy and execution settings</strong> across three non-overlapping periods. Refine rules on development data, use validation to challenge them, and keep out-of-sample as untouched as practical.</p></div>
-      <button type="button" onClick={() => { const next = splitRange(startDate, endDate); if (next) setRanges(next); }} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Reset to 60 / 20 / 20</button>
+      <button type="button" onClick={() => { const next = splitRange(startDate, endDate); if (next) setRanges(next); }} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Auto split 60 / 20 / 20</button>
     </div>
 
     <div className="mt-5 grid gap-4 lg:grid-cols-3">

@@ -27,6 +27,8 @@ function queryString(params) {
 }
 
 export const api = {
+  workspaceActivate: draft => request('/strategy-workspace/activate',{method:'POST',body:JSON.stringify(draft)}),
+  workspaceDeactivate: draft => request('/strategy-workspace/deactivate',{method:'POST',body:JSON.stringify(draft)}),
   backtestJobs: () => request('/strategy-lab/jobs'),
   queueBacktests: (runs, request_key) => request('/strategy-lab/jobs', {method:'POST', body:JSON.stringify({runs,request_key})}),
   cancelBacktestJob: id => request(`/strategy-lab/jobs/${id}/cancel`, {method:'POST'}),
@@ -74,6 +76,7 @@ export const api = {
   saveJournalSettings: (timezone) => request("/journal/settings", { method: "PUT", body: JSON.stringify({ timezone }) }),
   brokerStatus: () => request("/journal/brokers"),
   brokerProfiles: () => request('/brokers'),
+  brokerSchedule: (id, payload) => request(`/brokers/${encodeURIComponent(id)}/schedule`, {method:'PATCH',body:JSON.stringify(payload)}),
   syncBrokerProfile: (id) => request(`/brokers/${encodeURIComponent(id)}/sync`, {method:'POST'}),
   brokerPortfolioAccounts: () => request('/portfolio/broker-accounts'),
   brokerPortfolioRecords: (account_key,kind,offset=0) => request(`/portfolio/broker-records?${queryString({account_key,kind,offset,limit:100})}`),
