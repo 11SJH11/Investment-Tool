@@ -1,4 +1,4 @@
-export const DEFAULT_NAV = ["Dashboard","Screener","Charts","Replay","Journal","Backtest","Investment Portfolio","Settings"];
+export const DEFAULT_NAV = ["Dashboard","Charts","Replay","Backtest","Journal","Investment Portfolio","Screener","Settings"];
 export const DEFAULT_PREFS = {
   theme: "dark",
   accent: "blue",

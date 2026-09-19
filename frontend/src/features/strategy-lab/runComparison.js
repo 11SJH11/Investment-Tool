@@ -57,10 +57,11 @@ export function comparison(run, reference) {
     unfilled_setups: setups.filter(s => s.status === "not_filled").length,
     fill_rate: setups.length ? 100 * setups.filter(s => s.status === "filled").length / setups.length : null,
     max_drawdown_pct: result.metrics?.max_drawdown_pct ?? null,
+    return_pct: result.metrics?.return_pct ?? null,
     consecutive_losses: result.metrics?.longest_losing_streak ?? null,
     pnl: result.metrics?.net_pnl ?? null, ...retention(run, reference) };
   if (unsupported) {
-    for (const metric of ["win_rate", "average_r", "total_r", "profit_factor_r", "max_drawdown_pct", "consecutive_losses", "pnl"]) summary[metric] = null;
+    for (const metric of ["win_rate", "average_r", "total_r", "profit_factor_r", "max_drawdown_pct", "consecutive_losses", "pnl", "return_pct"]) summary[metric] = null;
     summary.warning = "DXY data unavailable: no performance conclusion is possible. " + summary.warning;
   }
   const groups = Object.fromEntries(["session", "direction", "weekday", "month", "year", "regime"].map(k => [k, {}]));

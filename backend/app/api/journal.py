@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
 from app.brokers.base import BrokerHistoryError
-from app.core.journal_analytics import journal_zone, parse_dimensions, filter_options
+from app.core.journal_analytics import journal_zone, parse_dimensions, filter_options, table_rules
 from app.services.container import AppServices
 
 
@@ -117,6 +117,9 @@ class TradeUpdate(ReviewFields):
 
 
 class JournalReportRequest(BaseModel):
+    table_filters_json: str = "{}"
+    table_sort_json: str = "{}"
+    search: str = ""
     dimensions_json: str = "{}"
     account: str = ""
     external_account_key: str = ""
@@ -177,6 +180,7 @@ class PlaybookRequest(BaseModel):
 def resolved_filters(req, services):
     try:
         parse_dimensions(req.model_dump())
+        table_rules(req.model_dump())
         return services.journal_repository.filters(req.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None

@@ -40,7 +40,10 @@ def parse_dimensions(filters):
 
 def filter_options(rows, timezone_name):
     zone = journal_zone(timezone_name)
-    return {key: sorted({v for t in rows for v in dimension_values(t, key, zone)}) for key in DIMENSIONS}
+    result = {key: sorted({v for t in rows for v in dimension_values(t, key, zone)}) for key in DIMENSIONS}
+    for key in ('currency','playbook_title','exit_reason'):
+        result[key] = sorted({str(table_value(t,key) or '') for t in rows})
+    return result
 
 
 def journal_zone(value):
@@ -69,6 +72,7 @@ def trade_date(trade, zone):
 def filter_trades(trades, filters):
     zone = journal_zone(filters.get("timezone"))
     dimensions = parse_dimensions(filters)
+    table_filters, table_sort = table_rules(filters)
     output = []
     for trade in trades:
         if any(selected and not set(selected).intersection(dimension_values(trade, key, zone))
@@ -86,8 +90,70 @@ def filter_trades(trades, filters):
             continue
         if filters.get("date_to") and (not day or day > filters["date_to"]):
             continue
-        output.append({**trade, "journal_date": day or None})
+        enriched = {**trade, "journal_date": day or None}
+        if any(not table_match(table_value(enriched, key), rule) for key, rule in table_filters.items()):
+            continue
+        if filters.get('search') and str(filters['search']).casefold() not in ' '.join(str(table_value(enriched,k) if table_value(enriched,k) is not None else '') for k in TABLE_FIELDS).casefold():
+            continue
+        output.append(enriched)
+    if table_sort:
+        key = table_sort['key']
+        present = [t for t in output if table_value(t,key) is not None]
+        missing = [t for t in output if table_value(t,key) is None]
+        output = sorted(present, key=lambda t: timestamp(t.get('opened_at')) if key=='opened_at' else table_value(t,key), reverse=table_sort.get('direction')=='desc') + missing
     return output
+
+
+TABLE_FIELDS = {'opened_at','ticker','direction','quantity','entry_price','exit_price','pnl_amount','currency',
+    'r_multiple','source','external_provider','account','environment','playbook_title','setup','setup_grade',
+    'plan_followed','session_time','market_condition','duration','exit_reason','notes','entry_notes','learning'}
+NUMERIC_FIELDS = {'quantity','entry_price','exit_price','pnl_amount','r_multiple','duration'}
+
+
+def table_value(trade, key):
+    if key == 'opened_at': return trade.get('journal_date')
+    if key == 'currency': return trade.get('account_currency') or trade.get('position_currency') or 'USD'
+    if key in {'environment','exit_reason'}: return (trade.get('source_metadata') or {}).get(key)
+    if key == 'duration':
+        start,end = timestamp(trade.get('opened_at')),timestamp(trade.get('closed_at'))
+        return (end-start).total_seconds()/60 if start and end and end>=start else None
+    return trade.get(key)
+
+
+def table_rules(filters):
+    try:
+        rules = json.loads(filters.get('table_filters_json') or '{}')
+        sort = json.loads(filters.get('table_sort_json') or '{}')
+        if not isinstance(rules,dict) or not isinstance(sort,dict): raise ValueError()
+        if set(rules)-TABLE_FIELDS or (sort and (sort.get('key') not in TABLE_FIELDS or sort.get('direction') not in {'asc','desc'})): raise ValueError()
+        for key,rule in rules.items():
+            if rule is None or isinstance(rule,str): continue
+            if isinstance(rule,list) and all(isinstance(v,str) for v in rule): continue
+            if not isinstance(rule,dict) or set(rule)-{'kind','operator','min','max'}: raise ValueError()
+            if rule.get('kind') != ('number' if key in NUMERIC_FIELDS else 'date' if key=='opened_at' else None): raise ValueError()
+            if rule.get('operator','between') not in {'between','greater','less'}: raise ValueError()
+            for bound in ('min','max'):
+                value=rule.get(bound)
+                if value not in ('',None):
+                    if key in NUMERIC_FIELDS and not math.isfinite(float(value)): raise ValueError()
+                    if key=='opened_at': datetime.strptime(value,'%Y-%m-%d')
+        return rules,sort
+    except (ValueError,TypeError):
+        raise ValueError('Invalid Journal table filter or sort') from None
+
+
+def table_match(value, rule):
+    if rule is None or rule=='': return True
+    if isinstance(rule,list): return not rule or str(value if value is not None else '') in rule
+    if isinstance(rule,str): return rule.casefold() in str(value if value is not None else '').casefold()
+    lo,hi=rule.get('min'),rule.get('max')
+    if lo in ('',None) and hi in ('',None): return True
+    if value is None: return False
+    if rule['kind']=='number':
+        value=float(value);lo=float(lo) if lo not in ('',None) else None;hi=float(hi) if hi not in ('',None) else None
+    if rule.get('operator')=='greater': return lo in ('',None) or value>lo
+    if rule.get('operator')=='less': return hi in ('',None) or value<hi
+    return (lo in ('',None) or value>=lo) and (hi in ('',None) or value<=hi)
 
 
 def summary(rows):
@@ -165,6 +231,9 @@ def report(rows, filters):
     def local(t, fmt):
         dt = trade_date(t, zone)
         return dt.strftime(fmt) if dt else "Unknown"
+    def bucket(t, minutes):
+        dt = trade_date(t, zone)
+        return f'{dt.hour:02d}:{dt.minute//minutes*minutes:02d}' if dt else 'Unknown'
     extractors = {
         "symbol": lambda t: t.get("ticker"), "setup": lambda t: t.get("setup"),
         "playbook": lambda t: t.get("playbook_title") or "Unlinked", "setup_grade": lambda t: t.get("setup_grade"),
@@ -173,6 +242,11 @@ def report(rows, filters):
         "structure_alignment": lambda t: t.get("review_data", {}).get("structure_alignment"),
         "session": lambda t: t.get("session_time"), "weekday": lambda t: local(t, "%A"),
         "entry_hour": lambda t: local(t, "%H:00"), "source": lambda t: t.get("source"),
+        "month": lambda t: local(t, "%Y-%m"),
+        "entry_10min": lambda t: bucket(t,10),
+        "entry_30min": lambda t: bucket(t,30),
+        "weekday_time": lambda t: local(t,'%A')+' '+bucket(t,30),
+        "confluence": lambda t: t.get("review_data", {}).get("confluences", []),
         "provider": lambda t: t.get("external_provider"), "account": lambda t: t.get("account"),
         "mistake": lambda t: t.get("review_data", {}).get("mistakes", []),
         "emotion": lambda t: t.get("review_data", {}).get("emotions", []),
@@ -191,7 +265,14 @@ def report(rows, filters):
             for v in dict.fromkeys(str(v or "Unlabelled") for v in (values or [None])):
                 buckets[v].append(t)
         groups[name] = sorted(({name: k, **summary(v)} for k, v in buckets.items()), key=lambda x: x["trades"], reverse=True)
-    return {"filters": filters, "timezone": str(zone), "date_basis": "entry", "summary": summary(rows), "breakdowns": groups, "trades": rows}
+    curve, values, cumulative, peak = [], [], 0.0, 0.0
+    for t in sorted(rows, key=lambda t:(timestamp(t.get('closed_at')) or timestamp(t.get('opened_at')) or datetime.min.replace(tzinfo=timezone.utc),t['id'])):
+        if t.get('status')!='closed' or t.get('r_multiple') is None: continue
+        values.append(float(t['r_multiple']));cumulative+=values[-1];peak=max(peak,cumulative)
+        recent=values[-20:]
+        curve.append({'id':t['id'],'timestamp':t.get('closed_at') or t.get('opened_at'),
+            'cumulative_r':cumulative,'drawdown_r':cumulative-peak,'rolling_expectancy':sum(recent)/len(recent),'n':len(recent)})
+    return {"filters": filters, "timezone": str(zone), "date_basis": "entry", "summary": summary(rows), "breakdowns": groups, "trades": rows, 'r_curve':curve}
 
 
 def daily_summary(rows):

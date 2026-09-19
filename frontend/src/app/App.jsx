@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
+import TopNav from "../components/TopNav";
+import {useUIPreference} from "./useUIPreference.js";
 import DashboardPage from "../features/dashboard/DashboardPage";
 import ScreenerPage from "../features/screener/ScreenerPage";
 import ChartsPage from "../features/charts/ChartsPage";
@@ -11,7 +12,7 @@ import { sections } from "./navigation";
 import { applyPreferences, loadPreferences, savePreferences } from "./preferences";
 
 export default function App(){
- const [active,setActive]=useState("Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
+ const [active,setActive]=useUIPreference("navigation.active", "Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
  const [journalDirty,setJournalDirty]=useState(false);
  const [workspaceDirty,setWorkspaceDirty]=useState(false);
  const selectPage=next=>{if(active==="Backtest"&&next!==active&&workspaceDirty&&!confirm("Discard unsaved Strategy Workspace changes?"))return;if(active!=="Journal"||next==="Journal"||!journalDirty||confirm("Discard unsaved Journal changes?"))setActive(next);};
@@ -20,8 +21,9 @@ export default function App(){
  const order=(prefs.navOrder||sections).filter(x=>sections.includes(x)); const missing=sections.filter(x=>!order.includes(x)); const nav=[...order,...missing];
  const openCharts=t=>{setSelectedTicker(t);setActive("Charts")};
  const workspacePage = active === "Charts" || active === "Replay";
- return <div className="flex h-screen overflow-hidden bg-stone-50 text-stone-900"><Sidebar sections={nav} active={active} onSelect={selectPage} compact={prefs.sidebar==="compact"}/><main className={`flex-1 overflow-y-auto ${workspacePage ? "p-3 lg:p-4" : prefs.density==="compact"?"p-5 lg:p-6":"p-8 lg:p-10"}`}>
-  {active==="Dashboard"&&<DashboardPage/>}
+ return <div className="app-shell"><TopNav sections={nav} active={active} onSelect={selectPage}/><main id="workspace" className={`app-workspace ${workspacePage ? "chart-workspace" : ""}`}>
+
+  {active==="Dashboard"&&<DashboardPage onNavigate={selectPage}/>}
   {active==="Screener"&&<ScreenerPage onOpenTicker={openCharts}/>} 
   {active==="Charts"&&<ChartsPage selectedTicker={selectedTicker} onTickerChange={setSelectedTicker}/>} 
   {active==="Replay"&&<StrategyLabPage initialTab="Replay" standaloneTab="Replay"/>}

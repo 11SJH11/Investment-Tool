@@ -1,5 +1,17 @@
 # Ledger release checkpoints — 2026-09-16
 
+## Current status - 2026-09-19
+
+Checkpoints 1-11 are complete. Historical sections below describe earlier stages
+and are superseded by this status. Checkpoint 9: `9b08d93`. Checkpoint 10:
+`69278b1` (477 backend / 34 frontend tests). Checkpoint 11 continues the existing
+uncommitted UX work: 488 backend / 39 frontend tests, production build, diff check
+and 39 browser page/viewport checks pass. See [Checkpoint 11 handoff](RELEASE_CHECKPOINT_11.md)
+for exact files, preservation, browser workflows and limitations; checkpoint 10's
+real Massive NQ evidence remains in [its report](RELEASE_CHECKPOINT_10.md).
+No next checkpoint is authorized. Resume only for issues established by real use.
+
+
 Baseline: master, commit 7b69031 preserves the previously uncommitted Journal V2
 and Momentum/VCP release. Audit baseline: 193 backend tests, 3 Journal utility
 tests and frontend production build pass. Two existing backend deprecations.
