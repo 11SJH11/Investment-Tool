@@ -1,3 +1,9 @@
+import ReplayOrderTicket from "./ReplayOrderTicket.jsx";
+import {loadPreferences} from "../../app/preferences.js";
+import ReplayToolbar from "./ReplayToolbar.jsx";
+import {useReplayPlayback} from "./useReplayPlayback.js";
+import {jumpCursor} from "./replayControls.js";
+import {useWorkflow} from "../../app/WorkflowContext.js";
 import { replayEconomics, replaySource, replayRollAction } from "./futures-utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
@@ -11,73 +17,22 @@ import DrawingObjectPanel from "../../components/chart/DrawingObjectPanel";
 import { loadDrawings, saveDrawings } from "../../components/chart/drawingStore";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h"];
-const INDICATOR_COLORS = ["#60a5fa", "#f59e0b", "#a78bfa", "#22c55e", "#f43f5e", "#06b6d4", "#e879f9", "#84cc16", "#fb7185", "#38bdf8", "#facc15", "#c084fc"];
-let indicatorSequence = 0;
-
-function daysAgo(days) { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); }
-function addDays(value, days) { const d = new Date(`${value}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
-function money(value) { return value == null || !Number.isFinite(Number(value)) ? "—" : `$${Number(value).toFixed(2)}`; }
-function fmt(value, zone) { return value ? new Intl.DateTimeFormat("en-GB", { timeZone: resolvedZone(zone), dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—"; }
-function nyDate(value) { return value ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)) : ""; }
-function currentValue(indicator, lastTimestamp) {
-  const eligible = (indicator?.values || []).filter((point) => new Date(point.timestamp).getTime() <= new Date(lastTimestamp).getTime());
-  return eligible.length ? Number(eligible[eligible.length - 1].value) : null;
-}
-function countThroughTimestamp(bars, timestamp, fallback = 1) {
-  if (!timestamp || !Array.isArray(bars) || !bars.length) return Math.min(Math.max(1, Number(fallback || 1)), bars?.length || 1);
-  const cutoff = new Date(timestamp).getTime();
-  const count = bars.reduce((total, bar) => total + (new Date(bar.timestamp).getTime() <= cutoff ? 1 : 0), 0);
-  return Math.min(Math.max(1, count || Number(fallback || 1)), bars.length);
-}
-function indicatorRequestSignature(item, dataset, symbol, timeframe, session, replayDate, replayEndDate, startTime, context) {
-  return JSON.stringify({
-    id: item.id, key: item.key, params: item.params || {},
-    symbol, timeframe, session, replayDate, replayEndDate, startTime,
-    contextBars: context.contextBars, contextDays: context.contextDays,
-    frontier: dataset?.frontier, datasetCount: dataset?.count, sourceTimeframe: dataset?.source_timeframe, aggregation: dataset?.aggregation,
-  });
-}
-function contextArgs(mode, customBars) {
-  if (mode === "1d") return { contextDays: 1, contextBars: 0 };
-  if (mode === "5d") return { contextDays: 8, contextBars: 0 };
-  if (mode === "1m") return { contextDays: 31, contextBars: 0 };
-  if (mode === "3m") return { contextDays: 93, contextBars: 0 };
-  return { contextDays: null, contextBars: Math.max(0, Number(customBars || 0)) };
-}
-function makeIndicator(spec, colorIndex) {
-  return {
-    id: `indicator-${Date.now()}-${indicatorSequence++}`,
-    key: spec.key,
-    params: { ...(spec.defaults || {}) },
-    visible: true,
-    color: INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length],
-    lineWidth: 2,
-    ...(spec.key === "volume" ? { upColor: "#34d399", downColor: "#f87171", volumeOpacity: 0.28 } : {}),
-  };
-}
-function plannedMetrics(position) {
-  if (!position) return { risk: null, rr: null };
-  const entry = Number(position.entry_price); const qty = Number(position.quantity || 0);
-  const stop = position.stop_loss == null ? null : Number(position.stop_loss);
-  const target = position.take_profit == null ? null : Number(position.take_profit);
-  const perShareRisk = stop == null ? null : Math.abs(entry - stop);
-  return {
-    risk: perShareRisk == null ? null : perShareRisk * qty * (position.contract_multiplier || 1),
-    rr: perShareRisk && target != null ? Math.abs(target - entry) / perShareRisk : null,
-  };
-}
+import {INDICATOR_COLORS,daysAgo,addDays,money,fmt,nyDate,currentValue,countThroughTimestamp,indicatorRequestSignature,contextArgs,makeIndicator,plannedMetrics} from "./replayHelpers.js";
 
 export default function ReplayPanel({ indicators = [], onError }) {
+  const {context:workflow}=useWorkflow();
+  const handoff=workflow?.target==="Replay"?workflow:null;
+  const preferences=useMemo(()=>loadPreferences(),[]);
   const busy = useRef(false);
-  const initialDate = daysAgo(30);
-  const [symbol, setSymbol] = useState("AAPL");
-  const [symbolInput, setSymbolInput] = useState("AAPL");
+  const initialDate = handoff?.start_date||daysAgo(30);
+  const [symbol, setSymbol] = useState(handoff?.symbol||"AAPL");
+  const [symbolInput, setSymbolInput] = useState(handoff?.symbol||"AAPL");
   const [replayDate, setReplayDate] = useState(initialDate);
-  const [replayEndDate, setReplayEndDate] = useState(addDays(initialDate, 7));
-  const [startTime, setStartTime] = useState("09:30");
-  const [timeframe, setTimeframe] = useState(() => localStorage.getItem("ledger.chartTimeframe") || "5m");
-  const [session, setSession] = useState("regular");
-  const [contextMode, setContextMode] = useState("5d");
+  const [replayEndDate, setReplayEndDate] = useState(handoff?.end_date||addDays(initialDate, 7));
+  const [startTime, setStartTime] = useState(handoff?.start_time||"09:30");
+  const [timeframe, setTimeframe] = useState(() => handoff?.timeframe || (TIMEFRAMES.includes(localStorage.getItem("ledger.chartTimeframe"))?localStorage.getItem("ledger.chartTimeframe"):"5m"));
+  const [session, setSession] = useState(handoff?.symbol&&(/!$/.test(handoff.symbol)||handoff.symbol==="XAUUSD")?"24h":"regular");
+  const [contextMode, setContextMode] = useState(preferences.replayContext||"5d");
   const [contextBars, setContextBars] = useState(500);
   const [timeZone, setTimeZone] = useState("America/New_York");
   const [dataset, setDataset] = useState(null);
@@ -85,9 +40,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const [furthestVisibleCount, setFurthestVisibleCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(Number(preferences.replaySpeed)||1);
   const [expanded, setExpanded] = useState(false);
-  const [followReplay, setFollowReplay] = useState(false);
+  const [followReplay, setFollowReplay] = useState(Boolean(preferences.replayFollow));
   const [jumpToken, setJumpToken] = useState(0);
   const [integrityCompromised, setIntegrityCompromised] = useState(false);
   const [selectedIndicators, setSelectedIndicators] = useState([]);
@@ -224,33 +179,22 @@ export default function ReplayPanel({ indicators = [], onError }) {
   }, [dataset, selectedIndicators, symbol, replayDate, replayEndDate, startTime, timeframe, session, context.contextBars, context.contextDays, indicators, indicatorData]);
 
 
-  useEffect(() => {
-    if (!playing || !dataset || finished) return undefined;
-    const interval = Math.max(80, Math.round(1000 / Number(playbackSpeed || 1)));
-    const timer = globalThis.setInterval(() => advance(1), interval);
-    return () => globalThis.clearInterval(timer);
-  });
   useEffect(() => { if (finished) setPlaying(false); }, [finished]);
-
-  useEffect(() => {
-    const handler = (event) => {
-      if (!dataset || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
-      if (event.code === "Space") { event.preventDefault(); setPlaying((value) => !value); }
-      if (event.key === "ArrowRight") { event.preventDefault(); advance(event.shiftKey ? 5 : 1); }
-      if (event.key === "ArrowLeft") { event.preventDefault(); rewindOne(); }
-      if (event.key === "Escape" && expanded) setExpanded(false);
-    };
-    globalThis.addEventListener("keydown", handler);
-    return () => globalThis.removeEventListener("keydown", handler);
-  });
 
   const closeTrade = async (exitPriceValue, exitTime, reason, pos = position) => {
     if (!pos) return;
-    const {symbol, replayDate, replayEndDate, startTime, timeframe, session} = dataset.config;
     const mult = pos.direction === "long" ? 1 : -1;
     const gross = (Number(exitPriceValue) - pos.entry_price) * mult * pos.quantity * (pos.contract_multiplier || 1);
     const trade = { ...pos, exit_price: Number(exitPriceValue), exit_time: exitTime, exit_reason: reason, net_pnl: gross };
     setClosedTrade(trade); setPosition(null); setPendingClose(false);
+    if(preferences.replayAutoJournal!==false)await saveTradeToJournal(trade);
+    else setJournalStatus("Auto-journal is off. Save this closed trade before starting another.");
+  };
+
+  const saveTradeToJournal=async trade=>{
+    if(!trade)return;
+    const {symbol,replayDate,replayEndDate,startTime,timeframe,session}=dataset.config;
+    const reason=trade.exit_reason;
     try {
       const externalId = [
         "replay", symbol, replayDate, startTime, timeframe, trade.direction,
@@ -400,6 +344,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
       catch (error) { onError?.(error.message); return; }
     }
     if (!(amount > 0)) { onError?.("Position value must be greater than zero."); return; }
+    if(preferences.replayConfirm&& !confirm(`Queue ${direction.toUpperCase()} ${orderType} replay order?`))return;
     setPendingOrder({
       direction, order_type: orderType, entry_price: explicitEntry,
       stop_loss: stop === "" ? null : Number(stop), take_profit: target === "" ? null : Number(target),
@@ -458,24 +403,25 @@ export default function ReplayPanel({ indicators = [], onError }) {
     } catch (error) { setCheckpointStatus(`Could not resume checkpoint: ${error.message}`); }
   };
 
+  const jumpTo = async stamp => {
+    if(busy.current||!dataset)return;
+    const cursor=jumpCursor(bars,stamp,dataset.initial_visible_count||1);
+    if(cursor==null){onError?.('Choose a time inside the loaded replay period.');return;}
+    setPlaying(false);
+    if(cursor>=visibleCount){await advance(cursor-visibleCount);return;}
+    if(position||pendingOrder||pendingClose){onError?.('Close/cancel the active replay trade or order before rewinding.');return;}
+    await fetchReplay(dataset.config,{anchorTimestamp:bars[cursor-1].timestamp,frontierTimestamp:bars[furthestVisibleCount-1].timestamp,integrityCompromised:true,followReplay:false,preserveViewport:true});
+  };
+  useReplayPlayback({playing,speed:playbackSpeed,ready:Boolean(dataset),finished,actions:{
+    next:()=>advance(1),five:()=>advance(5),previous:rewindOne,play:()=>setPlaying(v=>!v),
+    buy:()=>document.querySelector('[data-replay-buy]')?.focus(),sell:()=>document.querySelector('[data-replay-sell]')?.focus(),
+    limit:()=>setOrderType('limit'),close:()=>{if(position&&nextBar)setPendingClose(true);},
+    escape:()=>{setDrawingTool('cursor');setSelectedDrawingId(null);setExpanded(false);}
+  }});
   const workspace = dataset && <div className={expanded ? "fixed inset-0 z-50 overflow-auto bg-stone-100 p-3" : "mt-4"}>
     <div className={`rounded-xl border border-stone-200 bg-white ${expanded ? "min-h-[calc(100vh-24px)] p-3 shadow-2xl" : "p-4"}`}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 pb-3">
-        <div className="mr-2"><strong>{symbol}</strong> <span className="text-xs text-stone-500">{timeframe} · {dataset?.effective_session||session} · {fmt(currentBar?.timestamp, timeZone)}</span></div>
-        {expanded && <div className="replay-fullscreen-timeframes">{TIMEFRAMES.map((tf) => <button key={tf} type="button" onClick={() => switchTimeframe(tf)} className={`chart-toolbar-btn ${timeframe === tf ? "active" : ""}`}>{tf}</button>)}</div>}
-        <button disabled={visibleCount <= (dataset.initial_visible_count || 1) || position || pendingOrder} onClick={rewindOne} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">◀ -1 min</button>
-        <button disabled={!nextBar} onClick={() => advance(1)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">▶ +1 min</button>
-        <button disabled={!nextBar} onClick={() => advance(5)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">+5 min</button>
-        <button disabled={!nextBar} onClick={() => setPlaying((value) => !value)} className="rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white">{playing ? "Pause" : "Play"}</button>
-        <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))} className="rounded-md border border-stone-300 px-2 py-2 text-xs"><option value="0.5">0.5x</option><option value="1">1x</option><option value="2">2x</option><option value="5">5x</option><option value="10">10x</option></select>
-        <button onClick={jumpNextSession} disabled={!nextBar} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">Next session</button>
-        <button onClick={() => { const next = !followReplay; setFollowReplay(next); if (next) setJumpToken((value) => value + 1); }} className={`rounded-md border px-3 py-2 text-xs ${followReplay ? "border-blue-300 bg-blue-50 text-blue-800" : "border-stone-300 bg-white"}`}>Follow {followReplay ? "on" : "off"}</button>
-        <button onClick={() => setJumpToken((value) => value + 1)} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">Current candle</button>
-        <button onClick={saveCheckpoint} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">Save replay</button>
-        <button onClick={() => fetchReplay({ symbol, replayDate, replayEndDate, startTime, timeframe, session, ...context })} className="rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">Restart clean</button>
-        <button onClick={() => setObjectsOpen((value) => !value)} className={`rounded-md border px-3 py-2 text-xs ${objectsOpen ? "active-btn" : "border-stone-300 bg-white"}`}>Objects</button>
-        <button onClick={() => setExpanded((value) => !value)} className="ml-auto rounded-md border border-stone-300 bg-white px-3 py-2 text-xs">{expanded ? "Exit full screen" : "Full screen"}</button>
-      </div>
+      <ReplayToolbar busy={loading} help={preferences.replayHelp!==false} title={`${symbol} ${timeframe} / ${fmt(currentBar?.timestamp,timeZone)}`} canPrevious={visibleCount>(dataset.initial_visible_count||1)&&!position&&!pendingOrder&&!pendingClose} canNext={Boolean(nextBar)} playing={playing} speed={playbackSpeed} setSpeed={setPlaybackSpeed} follow={followReplay} expanded={expanded} previous={rewindOne} next={()=>advance(1)} five={()=>advance(5)} togglePlay={()=>setPlaying(v=>!v)} nextSession={jumpNextSession} toggleFollow={()=>{setFollowReplay(v=>!v);setJumpToken(v=>v+1);}} current={()=>setJumpToken(v=>v+1)} save={saveCheckpoint} restart={()=>fetchReplay({symbol,replayDate,replayEndDate,startTime,timeframe,session,...context})} objects={()=>setObjectsOpen(v=>!v)} toggleExpanded={()=>setExpanded(v=>!v)} jump={jumpTo}/>
+      {expanded&&<div className="ui-toolbar">{TIMEFRAMES.map(tf=><button key={tf} className="mini-btn" onClick={()=>switchTimeframe(tf)}>{tf}</button>)}</div>}
       <div className={`mt-3 rounded-md px-3 py-2 text-xs ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
         Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.provider ? `${dataset.provider} · ` : ""}{dataset.source_timeframe || timeframe}{String(dataset.aggregation||"").includes("aligned_from_1m") ? ` → ${timeframe}` : ""}{dataset.effective_session==="24h" ? " · 24h market" : ""}.</span>
         <FuturesProvenance bars={dataset.source_bars}/>
@@ -502,17 +448,8 @@ export default function ReplayPanel({ indicators = [], onError }) {
             <p className="mt-2 text-[11px] text-stone-500">Eye hides without deleting. Volume now behaves like an indicator instead of a separate Replay toggle. Settings change indicator inputs/style. The 12-colour palette is assigned per instance; colours repeat only after the palette is exhausted.</p>
           </div>
 
-          <div className="rounded-lg border border-stone-200 p-4"><h4 className="text-sm font-semibold">Order ticket</h4><p className="mt-1 text-[11px] text-stone-500">Risk, planned R:R and realised R are calculated from the actual fill, stop, target and exit; they are not manual inputs.</p>
-            <div className="mt-3 grid grid-cols-2 gap-3"><Field label="Order type"><select className="input" value={orderType} onChange={(e) => setOrderType(e.target.value)}><option value="market">Market · next bar open</option><option value="limit">Limit · at price</option><option value="stop">Stop entry · at price</option></select></Field><Field label={dataset?.instrument?.asset_type === "future" ? "Contracts" : "Position value · USD"}><input type="number" className="input" value={dataset?.instrument?.asset_type === "future" ? contracts : positionAmount} onChange={(e) => dataset?.instrument?.asset_type === "future" ? setContracts(e.target.value) : setPositionAmount(e.target.value)} /></Field>
-              {orderType !== "market" && <Field label="Entry price"><input type="number" step="any" className="input" value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="Price" /></Field>}
-              <Field label="Stop loss"><input type="number" step="any" className="input" value={stop} onChange={(e) => setStop(e.target.value)} /></Field><Field label="Take profit"><input type="number" step="any" className="input" value={target} onChange={(e) => setTarget(e.target.value)} /></Field><Field label="Setup"><input className="input" value={setup} onChange={(e) => setSetup(e.target.value)} placeholder="Optional" /></Field></div>
-            {!position && !pendingOrder && <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("long")} className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">BUY / LONG</button><button disabled={!nextBar || !atFrontier} onClick={() => placeOrder("short")} className="rounded-md bg-red-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">SELL / SHORT</button></div>}
-            {pendingOrder && <div className="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-900"><strong>{pendingOrder.direction.toUpperCase()} {pendingOrder.order_type.toUpperCase()}</strong>{pendingOrder.entry_price != null ? ` @ ${money(pendingOrder.entry_price)}` : " · next bar open"}. Stop {money(pendingOrder.stop_loss)} · target {money(pendingOrder.take_profit)}. <button onClick={() => setPendingOrder(null)} className="ml-2 underline">Cancel order</button></div>}
-            {dataset?.instrument?.asset_type === "future" && <p className="mt-2 text-xs text-amber-700">Raw execution: {currentBar?.source_contract || 'unavailable'} · USD {dataset.instrument.point_value} per point per contract; tick {dataset.instrument.tick_size}. {currentBar?.roll_schedule_version}. Open positions cannot cross rolls.</p>}
-            {position && <div className="mt-3 rounded bg-blue-50 p-3 text-xs text-blue-900"><div><strong>{position.direction.toUpperCase()}</strong> · entry {money(position.entry_price)} · qty {position.quantity.toFixed(4)}</div><div className="mt-1">Stop {money(position.stop_loss)} · target {money(position.take_profit)}</div><div className="mt-1">Initial risk <strong>{money(metrics.risk)}</strong> · Planned R:R <strong>{metrics.rr == null ? "—" : `${metrics.rr.toFixed(2)}:1`}</strong> · MFE/share {money(position.mfe_per_share)} · MAE/share {money(position.mae_per_share)}</div><button disabled={!nextBar} onClick={() => setPendingClose(true)} className="mt-2 underline">{pendingClose ? "Manual close queued for next bar open" : "Close manually on next bar open"}</button></div>}
-            {closedTrade && <div className={`mt-3 rounded p-3 text-xs ${closedTrade.net_pnl >= 0 ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}><strong>Closed:</strong> {closedTrade.exit_reason} · {money(closedTrade.exit_price)} · P&L {money(closedTrade.net_pnl)}</div>}
-            {journalStatus && <p className="mt-2 text-xs text-stone-600">{journalStatus}</p>}
-          </div>
+          {closedTrade&&<button className="mini-btn" onClick={()=>saveTradeToJournal(closedTrade)}>Save closed trade to Journal</button>}
+          <ReplayOrderTicket {...{orderType,setOrderType,dataset,contracts,positionAmount,setContracts,setPositionAmount,entryPrice,setEntryPrice,stop,setStop,target,setTarget,setup,setSetup,position,pendingOrder,nextBar,atFrontier,placeOrder,setPendingOrder,currentBar,metrics,setPendingClose,pendingClose,closedTrade,journalStatus}}/>
           <Field label="Display timezone"><select className="input" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>{TIMEZONE_OPTIONS.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select></Field>
         </div>
       </div>

@@ -1,56 +1,56 @@
-# Ledger v2
+# Ledger
 
-## Phase 6.3.0 — handoff / integration foundation
+Local trading research, charting, causal Replay, backtesting, Journal and investment
+Portfolio. Checkpoint 12 is the release-candidate workflow foundation.
 
-Phase 6.3 is the final broad app update before day-to-day implementation moves to Codex. It keeps the Phase 6.2.4 reliability work intact and adds narrow integration foundations rather than another large UI rewrite.
+## Run locally
 
-### What changed
+Use Python 3.11+ and Node compatible with the installed Vite version. From `backend`,
+create `.venv`, install `requirements.txt` (plus `pytest` for tests), copy `.env.example`
+to `.env` and configure only the providers you use. Run:
 
-- **Unified Journal ingestion readiness**
-  - Replay still auto-saves a closed trade to the normal Journal.
-  - Replay saves now carry a deterministic external ID so repeated saves are idempotent.
-  - Journal records support `external_provider`, `external_id`, `external_order_id`, `source_metadata` and `imported_at`.
-  - `broker_*` sources are supported for future read-only broker synchronisation without creating a separate broker journal.
-  - No OANDA order-placement/execution code was added.
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-- **Research workspace / common source model**
-  - Research records now have a provider-neutral storage model for future FT, Autochartist, OANDA/news/calendar and other sources.
-  - Research UI can save a source, external link, instrument, bias and the user's own thesis/summary.
-  - Ledger does **not** scrape Financial Times, OANDA or Autochartist content.
+From `frontend`, run `npm ci`, then `npm run dev`. Use one backend process per data
+directory; queue ownership, broker scheduling and provider quotas are process-local.
+This is a trusted local application, not a hardened multi-user internet service.
 
-- **Autochartist readiness only**
-  - Optional blank configuration and a capability/status scaffold were added.
-  - No remote Autochartist requests are made.
-  - Portal/MT4/MT5 access is not treated as developer API entitlement.
+## Preserve your data
 
-- **XAUUSD strategy audit**
-  - Audit charts can show the 1H liquidity level, sweep, Type 3 swing/confirmation, impulse high/low, entry/50% level, stop, target and exit when strategy metadata is present.
+Back up and retain `backend/data` (database, uploads and caches) and `backend/.env`.
+Startup migrations preserve existing records. Never replace your database with an
+update bundle. Workspace executes explicitly trusted Python; it is not a sandbox.
+Broker sync is read-only. No real/demo order execution is implemented.
 
-- **XAUUSD baseline v1.1 included**
-  - Stable plugin key remains `xau_liquidity_type3_baseline_v1` for compatibility.
-  - Version metadata is `xau_liquidity_type3_baseline_v1_1`.
-  - Stronger pre-sweep Type 3 structure selection uses a 40-bar lookback and 3-bar minimum separation by default.
-  - Baseline remains confluence-free and session-neutral.
+## Verify
 
-- **Codex guardrails**
-  - Root `AGENTS.md` defines the repository engineering contract, data/broker safety boundaries, frozen XAU baseline, anti-overfitting rules, test requirements and stop conditions.
-  - `CODEX_WORKFLOW.md` gives a concise task-writing workflow.
+```powershell
+# backend
+.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=<fresh-writable-directory>
+# frontend
+node --test tests/*.test.js
+npm.cmd run build
+# repository
+ git diff --check
+```
 
-### Regression status
+Use isolated fixture data for browser acceptance; never run test import/review scripts
+against your production database. See [release report](docs/RELEASE_CHECKPOINT_12.md)
+for exact results, browser setup and remaining limitations.
 
-Backend: **113 passed, 1 skipped**.
+## Documentation
 
-Frontend modified JSX/JS files were syntax-parsed successfully with the TypeScript parser in the build environment. A full Vite production build could not be run in the artifact environment because frontend dependencies were not present and package installation had no network access. Run `npm install` once locally if needed, then `npm run build` as part of the upgrade checklist.
+- [Architecture](docs/ARCHITECTURE.md), [data sources](docs/DATA_SOURCES.md)
+- [Charts and drawings](docs/CHART_WORKSPACE.md), [Journal](docs/JOURNAL.md)
+- [Backtest workflow](docs/BACKTEST_WORKFLOW.md), [Strategy Workspace](docs/STRATEGY_WORKSPACE.md)
+- [Broker connections](docs/BROKER_CONNECTIONS.md), [extension contract](docs/BROKER_EXTENSION_CONTRACT.md)
+- [Futures economics](docs/FUTURES_FOUNDATION.md), [continuous methodology and real NQ evidence](docs/CONTINUOUS_FUTURES_RESEARCH.md)
+- [Momentum/VCP](docs/MOMENTUM_VCP_BASELINE_V1.md), [ORB/VWAP](docs/ORB_VWAP_BASELINES.md), [Gold variants](docs/GOLD_EXPERIMENTS.md)
+- [Release history](docs/RELEASE_CHECKPOINTS.md), [third-party notices](docs/THIRD_PARTY.md)
+- [Engineering rules](AGENTS.md), [task workflow](CODEX_WORKFLOW.md)
 
-### Upgrade safety
-
-The update bundle intentionally does **not** contain a `backend/data/ledger.db` or `.env`.
-
-Keep your current:
-- `backend/.env`
-- `backend/data/ledger.db`
-- any existing `backend/data/market/` cache you want to retain
-
-See `UPGRADING_TO_6.3.md` before replacing your current project folder.
-
-NQ1!/Massive remains deferred. Autochartist network integration remains deferred until proper API entitlement/credentials are confirmed.
+NQ source/roll provenance is explicit; TradingView parity is unverified. Stock
+universes are current-only and historical analysis may contain survivorship bias.
+Autochartist remains scaffold-only; no licensed portal scraping is performed.

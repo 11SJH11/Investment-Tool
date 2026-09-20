@@ -1,3 +1,4 @@
+import {chartRequests,stableKey} from "./chartRequests.js";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
 async function request(path, options = {}) {
@@ -27,6 +28,11 @@ function queryString(params) {
 }
 
 export const api = {
+  scan:query=>request("/screener/query",{method:"POST",body:JSON.stringify(query)}),
+  refreshTechnicals:()=>request("/screener/refresh/technicals",{method:"POST"}),
+  technicalStatus:()=>request("/screener/refresh/technicals"),
+  clearChartCache:()=>chartRequests.clear(),
+  chartData:(ticker,payload)=>chartRequests.get(stableKey([ticker.toUpperCase(),{...payload,refresh:false}]),()=>request(`/research/${encodeURIComponent(ticker)}/chart-data`,{method:"POST",body:JSON.stringify(payload)}),{refresh:payload.refresh}),
   workspaceActivate: draft => request('/strategy-workspace/activate',{method:'POST',body:JSON.stringify(draft)}),
   workspaceDeactivate: draft => request('/strategy-workspace/deactivate',{method:'POST',body:JSON.stringify(draft)}),
   backtestJobs: () => request('/strategy-lab/jobs'),
@@ -40,6 +46,7 @@ export const api = {
   workspaceExecute: payload => request("/strategy-workspace/execute", {method:"POST", body:JSON.stringify(payload)}),
   health: () => request("/health"),
   dataStatus: () => request("/data/status"),
+  cacheDiagnostics: () => request("/data/cache"),
   autochartistCapabilities: () => request("/data/providers/autochartist/capabilities"),
   refreshSymbols: () => request("/data/symbols/refresh", { method: "POST" }),
   searchSymbols: (query = "", limit = 20) =>

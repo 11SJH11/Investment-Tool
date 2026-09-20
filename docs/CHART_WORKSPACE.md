@@ -36,7 +36,7 @@ Replay receives only the currently revealed bars, so a Replay drawing cannot anc
 - colour and line-width editing
 - text editing for text drawings
 
-Position drawings use three anchors: **entry -> stop -> target**. Replay copies these prices into its order ticket, while risk and planned R:R remain calculated outputs.
+Position drawings retain entry, stop, target and a horizontal extent anchor. Replay copies these prices into its order ticket, while risk and planned R:R remain calculated outputs.
 
 ## Persistence
 
@@ -66,3 +66,19 @@ This is intentionally a frontend persistence foundation. Moving chart layouts/dr
 - Freehand strokes are single objects: copy/paste/delete and styling are supported, but individual sampled points are intentionally not resize handles.
 - Long/short position tools place a pre-sized analysis object from one click, then allow Entry / Stop / Target / horizontal extent to be resized. R:R is always derived from those prices.
 - Fib levels, visibility, colours and background fill are object settings, not hard-coded chart constants.
+
+## Current interactions and efficiency
+
+Drawings invalidate on chart primitive/time-scale/resize events; there is no idle
+animation loop. Detach primitives before chart disposal. Screen projections are
+transient; persisted timestamp/price points remain unchanged by timeframe changes.
+Magnet lookup uses the nearest logical bar and its four OHLC values. Shift constrains
+two-point drawing angles. Whole brush objects move; sampled points remain uneditable.
+Object settings can Save tool defaults or Reset tool defaults without copying IDs,
+anchors or lock state. Templates save timeframe/session/indicators/display options,
+never symbols or drawings. Preferences are browser-local.
+PriceChart uses incremental candle/volume updates for latest/append changes and
+setData for initial load, corrected history, prepend, rewind or lattice replacement.
+Replay increments candles only from already-revealed responses. Indicators still
+rebuild their chart series; there is no new lower-pane framework or live tick feed.
+Historical workflow handoffs request a bounded period around the trade timestamp.

@@ -74,7 +74,7 @@ Stop and ask for a decision instead of guessing if a requested change would:
 - require storing, logging or exposing API secrets;
 - scrape or reverse-engineer a paywalled/licensed broker or research portal;
 - change the market-data provider used for an existing instrument;
-- revive or redesign the deferred NQ/Massive continuous-futures work;
+- change the versioned continuous-futures roll or raw-execution semantics;
 - weaken replay anti-look-ahead behaviour;
 - make a large architectural change that is not necessary for the task;
 - be materially ambiguous about trading semantics, fills, stops, targets or timestamps.
@@ -86,7 +86,7 @@ Use the existing `MarketDataService` / provider-routing architecture. Feature co
 Current routing intent:
 - US equities: Alpaca
 - XAUUSD: OANDA (`XAU_USD` at the provider boundary)
-- NQ1! / futures: Massive work is experimental/deferred
+- NQ1! / futures: Massive with versioned source-contract provenance; entitlement/coverage dependent
 
 Rules:
 - Keep Ledger's canonical instrument aliases separate from provider-specific symbols.
@@ -99,7 +99,7 @@ Rules:
 
 ## 6. OANDA safety and future broker imports
 
-The existing OANDA integration is a market-data integration. Future journal synchronisation may read broker/account history.
+OANDA supplies market data and read-only Journal history. Trading 212 supplies read-only Portfolio snapshots/history. Backend scheduling reconciles configured accounts.
 
 Unless a task explicitly and separately authorises execution:
 - OANDA account integration must be READ-ONLY.
@@ -336,7 +336,6 @@ When producing an update bundle:
 ## 19. Current intentionally deferred work
 
 Do not casually revive these items:
-- NQ1! / Massive continuous-futures reliability work
 - live broker execution from Ledger
 - Autochartist network integration
 - true order-flow/delta without an appropriate data source

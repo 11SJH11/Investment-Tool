@@ -36,7 +36,7 @@ Massive supplies dated futures contracts and OHLCV aggregates. Phase 6.2 accepts
 
 ### Continuous contract schedule
 
-Front aliases now use `prior-session-volume45-v1`: compare adjacent listed contracts' completed daily volumes in the 45 calendar days before expiry, then switch at a subsequent observed session start. No crossover produces an explicit expiry fallback. Full methodology and limitations: RELEASE_CHECKPOINT_8.md. This is a Ledger approximation, not a verified TradingView schedule.
+Front aliases now use `prior-session-volume45-v1`: compare adjacent listed contracts' completed daily volumes in the 45 calendar days before expiry, then switch at a subsequent observed session start. No crossover produces an explicit expiry fallback. Full methodology and limitations: CONTINUOUS_FUTURES_RESEARCH.md. This is a Ledger approximation, not a verified TradingView schedule.
 
 `FUTURES_BACK_ADJUST=false` is the default. When enabled for charts, backward additive adjustment uses both contracts' latest common completed daily closes before each switch. Backtest and Replay always request raw dated prices, independently of this chart setting.
 
@@ -61,7 +61,7 @@ Checkpoint 8 adds durable reference/schedule caching, raw dated OHLCV caching,
 versioned reconstruction, raw execution behind front aliases and roll diagnostics.
 Alias history is restitched to avoid retaining stale roll selection in an OHLCV
 cache. No TradingView equivalence is claimed.
-Provider entitlement/history coverage still requires real-market acceptance.
+CP10 verified real NQ September 2026 data; ongoing entitlement and other periods remain provider-dependent. Evidence is in CONTINUOUS_FUTURES_RESEARCH.md.
 
 ## Broker histories and unsupported data
 

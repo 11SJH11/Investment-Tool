@@ -1,4 +1,5 @@
-import { DEFAULT_FIB_LEVELS } from "./DrawingOverlay";
+import {saveDrawingDefault,resetDrawingDefault} from "./drawings/defaults.js";
+import { DEFAULT_FIB_LEVELS } from "./drawings/models.js";
 
 const labels = {
   trend: "Trend line", horizontal: "Horizontal line", "horizontal-ray": "Horizontal ray", vertical: "Vertical line",
@@ -19,6 +20,7 @@ export default function DrawingObjectPanel({ drawings = [], selectedId, onSelect
       <button type="button" className="chart-object-action danger" title="Delete" onClick={(e) => { e.stopPropagation(); onDelete?.(item.id); }}>×</button>
     </div>)}</div>}
     {selected && <div className="drawing-style-editor">
+      <div className="ui-toolbar"><button className="mini-btn" onClick={()=>saveDrawingDefault(selected.type,selected)}>Save tool defaults</button><button className="mini-btn" onClick={()=>resetDrawingDefault(selected.type)}>Reset tool defaults</button></div>
       <div className="drawing-style-head"><strong>{selected.text || labels[selected.type] || selected.type}</strong><span>{selected.type === "brush" ? "Stroke object" : selected.locked ? "Locked" : "Editable"}</span></div>
 
       {selected.type !== "long-position" && selected.type !== "short-position" && <div className="drawing-style-grid">
@@ -38,8 +40,8 @@ export default function DrawingObjectPanel({ drawings = [], selectedId, onSelect
         <div className="drawing-style-grid"><label><span>Font size</span><input className="input" type="number" min="8" max="36" value={selected.fontSize || 12} onChange={(e)=>patch({fontSize:Number(e.target.value)})}/></label><label><span>Background</span><input type="color" value={selected.backgroundColor||"#111827"} onChange={(e)=>patch({backgroundColor:e.target.value})}/></label><label><span>BG opacity</span><input className="input" type="number" min="0" max="1" step="0.05" value={selected.backgroundOpacity??.82} onChange={(e)=>patch({backgroundOpacity:Number(e.target.value)})}/></label></div>
       </>}
 
-      {selected.type === "fib" && <FibEditor item={selected} onPatch={patch}/>} 
-      {(selected.type === "long-position" || selected.type === "short-position") && <PositionEditor item={selected} onPatch={patch}/>} 
+      {selected.type === "fib" && <FibEditor item={selected} onPatch={patch}/>}
+      {(selected.type === "long-position" || selected.type === "short-position") && <PositionEditor item={selected} onPatch={patch}/>}
 
       {selected.type === "brush" ? <p className="drawing-style-hint">Freehand strokes are intentionally not resized point-by-point. Select the stroke to copy/paste or delete it.</p> : <p className="drawing-style-hint">Crosshair mode is also selection mode: click a drawing to move it or drag its handles to resize.</p>}
     </div>}

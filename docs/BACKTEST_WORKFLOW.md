@@ -1,6 +1,6 @@
 # Backtest workflow — Checkpoint 9
 
-## Choose a run type
+## Configure a backtest
 
 The primary tabs are **Backtest, Runs, Strategies, Workspace**. Indicators remain
 available from Strategies. The standalone Replay workspace is unchanged.
@@ -26,7 +26,7 @@ combined into portfolio performance. The queue accepts 1–100 jobs per submissi
 with exactly one symbol in each job. The older synchronous API still supports its
 existing shared-capital multi-symbol behavior; this UI never switches to it silently.
 
-### Validation suite
+### Validation & out-of-sample (expandable)
 
 Choose non-overlapping development, validation and out-of-sample dates, an
 experiment name and notes. All periods use the same base strategy/configuration.
@@ -35,7 +35,7 @@ the form stays available. The live summary shows the first submitted symbol;
 all completed symbols/periods remain accessible in Runs and batch comparison.
 Opening a saved experiment reads immutable snapshots, without rerunning it.
 
-### Sensitivity test
+### Sensitivity analysis (expandable)
 
 Choose one numeric parameter and up to nine values, using the displayed base
 configuration and requested period. The role is development. Values outside the
@@ -138,3 +138,8 @@ redaction remain unchanged. Local Python is not a secure sandbox.
 No live broker order routes, strategy tuning, provider-routing changes or new
 portfolio model were introduced. Continuous/TradingView parity remains unverified
 without real reference exports; current-stock-universe survivorship limitations remain.
+
+Backtest is the normal workflow. Optional research sections preserve chronological
+60 / 20 / 20 boundaries, editable periods and descriptive sensitivity. Settings
+defaults apply to new forms; Use settings retains saved configuration. Cross-feature
+actions prepopulate symbol, dates and compatible timeframe without submitting.

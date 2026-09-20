@@ -83,6 +83,7 @@ def research_bars(
     refresh: bool = False,
     session: str = Query(default="regular", pattern="^(regular|extended)$"),
     services: AppServices = Depends(get_services),
+    end_at: datetime | None = None,
 ):
     if services.market_data is None:
         raise HTTPException(status_code=503, detail="No market data provider is configured")
@@ -91,6 +92,7 @@ def research_bars(
         provider = services.market_data.provider_for(ticker)
         delay = services.market_data.historical_delay_minutes(ticker)
         end = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
+        end = min(end, end_at.replace(tzinfo=timezone.utc) if end_at.tzinfo is None else end_at) if end_at else end
         end = services.market_data.latest_available_end(ticker, timeframe, end)
         start = end - timedelta(days=lookback_days)
         # Equities need session-aligned 1h/4h bars from a smaller source cadence.
@@ -185,3 +187,41 @@ def research_indicator(
         "session": session if spec.session_profile == "us_equity" else "24h",
         "params": params, "values": output,
     }
+
+class ChartIndicatorRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    params: dict = Field(default_factory=dict)
+
+
+class ChartBatchRequest(BaseModel):
+    timeframe: Timeframe = '1d'
+    lookback_days: int = Field(default=365, ge=1, le=5000)
+    session: str = Field(default='regular', pattern='^(regular|extended)$')
+    refresh: bool = False
+    end_at: datetime | None = None
+    indicators: list[ChartIndicatorRequest] = Field(default_factory=list, max_length=20)
+
+
+@router.post('/research/{ticker}/chart-data')
+def chart_batch(ticker: str, req: ChartBatchRequest, services: AppServices = Depends(get_services)):
+    """One routed bar preparation for the entire chart; individual APIs stay compatible."""
+    from app.indicators import indicator_registry
+    import math
+    try:
+        indicators = [(item, indicator_registry.create(item.key)) for item in req.indicators]
+    except KeyError:
+        raise HTTPException(status_code=400, detail='Unknown chart indicator') from None
+    result = research_bars(ticker, req.timeframe, req.lookback_days, req.refresh, req.session, services, req.end_at)
+    frame = pd.DataFrame(result['bars'], columns=list(result['bars'][0]) if result['bars'] else ['timestamp','open','high','low','close','volume'])
+    frame['timestamp'] = pd.to_datetime(frame['timestamp'], utc=True)
+    output = []
+    for item, indicator in indicators:
+        try:
+            values = indicator.calculate(frame.copy(), **item.params)
+            values = values.iloc[:,0] if getattr(values,'ndim',1)>1 else values
+            points = [{'timestamp':str(frame.loc[index,'timestamp']), 'value':float(value)}
+                      for index,value in values.items() if value is not None and pd.notna(value) and math.isfinite(float(value))]
+            output.append({'key':item.key,'params':item.params,'values':points})
+        except (ValueError,TypeError,KeyError,ZeroDivisionError,IndexError):
+            output.append({'key':item.key,'params':item.params,'values':[], 'error':'Indicator unavailable. Check parameters and available history.'})
+    return {**result,'indicators':output}

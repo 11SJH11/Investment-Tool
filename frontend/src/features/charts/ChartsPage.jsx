@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import ChartSettings from "./ChartSettings.jsx";
+import {loadPreferences} from "../../app/preferences.js";
+import {useWorkflow} from "../../app/WorkflowContext.js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import WatchlistBar from "../../components/WatchlistBar";
@@ -27,9 +30,10 @@ function isMultiAssetSymbol(symbol){ const s=String(symbol||"").toUpperCase(); r
 function initialLook(symbol,timeframe){ return (isMultiAssetSymbol(symbol)?MULTI_ASSET_INITIAL_LOOK:INITIAL_LOOK)[timeframe]||365; }
 
 export default function ChartsPage({selectedTicker="AAPL",onTickerChange}){
-  const [mode,setMode]=useState("charts");
+  const {context,open}=useWorkflow();
+  const [mode,setMode]=useState(context?.target==="Research"?"research":"charts");
   const [layout,setLayout]=useState(1);
-  const [tf,setTf]=useState(()=>localStorage.getItem("ledger.chartTimeframe")||"5m");
+  const [tf,setTf]=useState(()=>context?.timeframe||localStorage.getItem("ledger.chartTimeframe")||"5m");
   const [session,setSession]=useState(()=>localStorage.getItem("ledger.chartSession")||"regular");
   const [zone]=useState(()=>localStorage.getItem("ledger.timeZone")||"America/New_York");
   const [symbols,setSymbols]=useState([selectedTicker,"NVDA","MSFT","SPY"]);
@@ -58,7 +62,7 @@ export default function ChartsPage({selectedTicker="AAPL",onTickerChange}){
       <button className="chart-toolbar-btn" onClick={()=>setLayoutFullscreen(v=>!v)} title="Fit the complete selected layout to the screen">{layoutFullscreen?"Exit layout full screen":"Full layout ⛶"}</button>
     </div>
     <div className={`multi-chart-workspace layout-${layout} ${expandedIndex!=null?"has-expanded":""}`}>
-      {visible.map((sym,i)=><ChartPanel key={i} index={i} symbol={sym} onSymbolChange={(value)=>change(i,value)} timeframe={tf} onTimeframeChange={setTf} layout={layout} onLayoutChange={setLayout} session={session} zone={zone} indicatorSpecs={indicatorSpecs} expanded={expandedIndex===i} onExpand={()=>setExpandedIndex(expandedIndex===i?null:i)} />)}
+      {visible.map((sym,i)=><ChartPanel key={i} index={i} symbol={sym} onSymbolChange={(value)=>change(i,value)} timeframe={tf} onTimeframeChange={setTf} layout={layout} onLayoutChange={setLayout} session={session} onSessionChange={setSession} zone={zone} indicatorSpecs={indicatorSpecs} expanded={expandedIndex===i} onExpand={()=>setExpandedIndex(expandedIndex===i?null:i)} />)}
     </div>
   </div>;
 
@@ -74,7 +78,12 @@ export default function ChartsPage({selectedTicker="AAPL",onTickerChange}){
   </div>;
 }
 
-function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,layout,onLayoutChange,session,zone,indicatorSpecs,expanded,onExpand}) {
+function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,layout,onLayoutChange,session,onSessionChange,zone,indicatorSpecs,expanded,onExpand}) {
+  const {open,context}=useWorkflow();
+  const focusTimestamp=index===0&&symbol===context?.symbol&&context?.target==="Charts"?context.timestamp:null;
+  const endAt=focusTimestamp?new Date(Date.parse(focusTimestamp)+86400000).toISOString():undefined;
+  const [settings,setSettings]=useState(()=>loadPreferences());
+  const [cursorTime,setCursorTime]=useState(null);
   const watchlist=useWatchlist();
   const [bars,setBars]=useState([]);
   const [marketMeta,setMarketMeta]=useState(null);
@@ -100,25 +109,24 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
   useEffect(()=>{ setDrawings(loadDrawings("charts",symbol)); setHistory([]);setRedo([]);setSelectedDrawingId(null);setHistoryDays({});setMarketMeta(null); },[symbol]);
   useEffect(()=>{ if(indicatorDefaultsReady||!indicatorSpecs.length)return; const volume=indicatorSpecs.find(x=>x.key==="volume"); if(volume)setIndicators([makeIndicator(volume,0)]); setIndicatorDefaultsReady(true); },[indicatorSpecs,indicatorDefaultsReady]);
   useEffect(()=>{ saveDrawings("charts",symbol,drawings); },[symbol,drawings]);
-  useEffect(()=>{ let cancelled=false; setLoading(true);setError(""); api.researchBars(symbol,timeframe,lookbackDays,false,session).then(r=>{if(!cancelled){setBars(r.bars||[]);setMarketMeta(r)}}).catch(e=>{if(!cancelled)setError(e.message)}).finally(()=>{if(!cancelled)setLoading(false)}); return()=>{cancelled=true}; },[symbol,timeframe,session,lookbackDays]);
-
+  const [refreshRevision,setRefreshRevision]=useState(0);
+  const refreshed=useRef(0);
+  const indicatorRequest=JSON.stringify(indicators.filter(x=>x.key!=="volume").map(x=>({key:x.key,params:x.params})));
   useEffect(()=>{
-    if(!indicators.length)return;
-    let cancelled=false;
-    const active=indicators.filter(x=>x.key!=="volume");
-    Promise.all(active.map(async item=>{
-      const sig=JSON.stringify([symbol,timeframe,session,lookbackDays,item.key,item.params]);
-      if(indicatorData[item.id]?._signature===sig)return null;
-      try{const data=await api.researchIndicator(symbol,item.key,timeframe,lookbackDays,session,item.params);return [item.id,{...data,_signature:sig}]}catch{return [item.id,{values:[],_signature:sig,error:true}]}
-    })).then(entries=>{if(cancelled)return;setIndicatorData(current=>{const next={...current};entries.filter(Boolean).forEach(([id,data])=>{next[id]=data});return next})});
-    return()=>{cancelled=true};
-  },[symbol,timeframe,session,lookbackDays,indicators]);
+    let cancelled=false;setLoading(true);setError("");
+    const refresh=refreshRevision!==refreshed.current;refreshed.current=refreshRevision;
+    api.chartData(symbol,{timeframe,lookback_days:lookbackDays,session,indicators:JSON.parse(indicatorRequest),refresh,end_at:endAt}).then(r=>{
+      if(cancelled)return;setBars(r.bars||[]);setMarketMeta(r);
+      setIndicatorData(r.indicators||[]);
+    }).catch(e=>{if(!cancelled)setError(e.message);}).finally(()=>{if(!cancelled)setLoading(false);});
+    return()=>{cancelled=true;};
+  },[symbol,timeframe,session,lookbackDays,indicatorRequest,refreshRevision,endAt]);
 
-  const overlays=useMemo(()=>indicators.filter(x=>x.visible!==false&&x.overlay).map(item=>({...item,values:indicatorData[item.id]?.values||[],label:indicatorLabel(item,symbol)})),[indicators,indicatorData,symbol]);
+  const overlays=useMemo(()=>indicators.filter(x=>x.visible!==false&&x.overlay).map(item=>({...item,values:indicatorData[indicators.filter(x=>x.key!=="volume").findIndex(x=>x.id===item.id)]?.values||[],label:indicatorLabel(item,symbol)})),[indicators,indicatorData,symbol]);
   const volumeIndicator=indicators.find(x=>x.key==="volume");
   const showVolume=Boolean(volumeIndicator ? volumeIndicator.visible!==false : !indicators.length);
   const volumeStyle=volumeIndicator?{upColor:volumeIndicator.upColor||"#34d399",downColor:volumeIndicator.downColor||"#f87171",opacity:Number(volumeIndicator.volumeOpacity??.28)}:null;
-  const currentNonOverlay=indicators.filter(x=>x.visible!==false&&!x.overlay&&x.key!=="volume").map(item=>{const values=indicatorData[item.id]?.values||[];return {...item,current:values.length?Number(values[values.length-1].value):null}});
+  const currentNonOverlay=indicators.filter(x=>x.visible!==false&&!x.overlay&&x.key!=="volume").map(item=>{const values=indicatorData[indicators.filter(x=>x.key!=="volume").findIndex(x=>x.id===item.id)]?.values||[];return {...item,current:values.length?Number(values[values.length-1].value):null}});
 
   const applyDrawings=(next,meta={})=>{if(meta.checkpoint){setHistory(h=>[...h.slice(-49),drawings]);setRedo([]);return;}if(meta.transient){setDrawings(next);return;}setHistory(h=>[...h.slice(-49),drawings]);setRedo([]);setDrawings(next)};
   const undo=()=>{if(!history.length)return;const previous=history[history.length-1];setRedo(r=>[drawings,...r]);setHistory(h=>h.slice(0,-1));setDrawings(previous)};
@@ -143,23 +151,26 @@ function ChartPanel({index,symbol,onSymbolChange,timeframe,onTimeframeChange,lay
       {marketMeta?.session_profile&&marketMeta.session_profile!=="us_equity"&&<span className="chart-timeframe-badge" title={`Provider: ${marketMeta.provider||"market data"}`}>24h · {marketMeta.provider||"data"}</span>}
       <span className="chart-history-badge" title="Scroll near the left edge to load more history">{historyLabel(lookbackDays)}{lookbackDays<maxLookback?" · scroll left for more":""}</span>
       {expanded && <div className="expanded-chart-controls"><div className="chart-toolbar-group compact">{TF.map(x=><button key={x} onClick={()=>onTimeframeChange?.(x)} className={`chart-toolbar-btn ${timeframe===x?"active":""}`}>{x}</button>)}</div><div className="chart-toolbar-group compact">{[1,2,4].map(n=><button key={n} onClick={()=>onLayoutChange?.(n)} className={`chart-toolbar-btn ${layout===n?"active":""}`}>{n}×</button>)}</div></div>}
+      <details className="chart-actions"><summary className="chart-toolbar-btn">Actions</summary><div className="chart-actions-menu">{[["Replay","Replay from here"],["Backtest","Backtest this symbol"],["Research","Open Research"]].map(([target,label])=><button key={target} onClick={()=>open(target,{symbol,timeframe,timestamp:cursorTime||bars.at(-1)?.timestamp})}>{label}</button>)}<button onClick={()=>watchlist.toggle(symbol)}>{watchlist.has(symbol)?"Remove Watchlist":"Add Watchlist"}</button></div></details>
       <div className="indicator-picker-wrap"><select className="chart-select" value={indicatorPicker} onChange={e=>{setIndicatorPicker(e.target.value);addIndicator(e.target.value)}}><option value="">＋ Indicators</option>{indicatorSpecs.map(x=><option key={x.key} value={x.key}>{x.key==="volume"&&String(symbol).toUpperCase()==="XAUUSD"?"Tick Volume · OANDA activity":x.name}</option>)}</select></div>
       <button className={`chart-icon-btn ${objectsOpen?"active":""}`} title="Object panel" onClick={()=>setObjectsOpen(v=>!v)}>☷</button>
+      <button className="chart-toolbar-btn" onClick={()=>setRefreshRevision(n=>n+1)} disabled={loading}>Refresh</button>
       <button className="chart-icon-btn" title={expanded?"Restore layout":"Maximise chart"} onClick={onExpand}>{expanded?"↙":"⛶"}</button>
     </header>
+    <ChartSettings settings={settings} onChange={setSettings} timeframe={timeframe} session={session} indicators={indicators} onApply={t=>{if(!t)return;setSettings(t.settings);onTimeframeChange(t.timeframe);onSessionChange(t.session);setIndicators(t.indicators.map((x,i)=>({...x,id:`template-${Date.now()}-${i}`})));}}/>
     <FuturesProvenance bars={bars}/>
     <div className="indicator-strip">
       {indicators.map(item=><div key={item.id} className="indicator-chip" style={{"--indicator-color":item.color}}><span className="indicator-dot"/><span>{indicatorLabel(item,symbol)}</span><button title={item.visible===false?"Show":"Hide"} onClick={()=>updateIndicator(item.id,{visible:item.visible===false})}>{item.visible===false?"○":"●"}</button><button title="Settings" onClick={()=>setEditingIndicator(editingIndicator===item.id?null:item.id)}>⚙</button><button title="Remove" onClick={()=>setIndicators(xs=>xs.filter(x=>x.id!==item.id))}>×</button></div>)}
       {currentNonOverlay.map(item=><span key={`value-${item.id}`} className="indicator-value-chip">{indicatorLabel(item,symbol)} {item.current==null?"—":item.current.toFixed(2)}</span>)}
     </div>
-    {editingIndicator&&<IndicatorSettings symbol={symbol} item={indicators.find(x=>x.id===editingIndicator)} onChange={patch=>updateIndicator(editingIndicator,patch)} onParam={(k,v)=>updateIndicatorParam(editingIndicator,k,v)} onClose={()=>setEditingIndicator(null)}/>} 
+    {editingIndicator&&<IndicatorSettings symbol={symbol} item={indicators.find(x=>x.id===editingIndicator)} onChange={patch=>updateIndicator(editingIndicator,patch)} onParam={(k,v)=>updateIndicatorParam(editingIndicator,k,v)} onClose={()=>setEditingIndicator(null)}/>}
     <div className="chart-stage">
       <ChartDrawingToolbar tool={tool} onToolChange={setTool} magnet={magnet} onMagnetChange={setMagnet} onUndo={undo} onRedo={redoOne} canDelete={Boolean(selectedDrawingId)} onDelete={()=>deleteDrawing(selectedDrawingId)}/>
       <div className="chart-canvas-wrap">
-        {loading&&!bars.length?<div className="chart-loading">Loading {symbol}…</div>:error?<div className="chart-error">{error}</div>:<PriceChart bars={bars} overlays={overlays} timeframe={timeframe} timeZone={zone} height={400} fill expanded={expanded} showVolume={showVolume} volumeStyle={volumeStyle} drawingTool={tool} magnet={magnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setTool} onUndoDrawing={undo} onRedoDrawing={redoOne} onDeleteDrawing={deleteDrawing} drawingMeta={{created_timeframe:timeframe}} onNeedMoreHistory={loadMoreHistory}/>} 
+        {loading&&!bars.length?<div className="chart-loading">Loading {symbol}…</div>:error?<div className="chart-error">{error}</div>:<PriceChart settings={settings} focusTimestamp={focusTimestamp} onCursorTime={setCursorTime} bars={bars} overlays={overlays} timeframe={timeframe} timeZone={zone} height={400} fill expanded={expanded} showVolume={showVolume} volumeStyle={volumeStyle} drawingTool={tool} magnet={magnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setTool} onUndoDrawing={undo} onRedoDrawing={redoOne} onDeleteDrawing={deleteDrawing} drawingMeta={{created_timeframe:timeframe}} onNeedMoreHistory={loadMoreHistory}/>}
         {loading&&bars.length>0&&<div className="chart-history-loading">Loading more history…</div>}
       </div>
-      {objectsOpen&&<DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id)=>{setSelectedDrawingId(id);setTool("cursor")}} onToggleVisible={(id)=>toggleDrawing(id,"visible")} onToggleLock={(id)=>toggleDrawing(id,"locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={()=>setObjectsOpen(false)}/>} 
+      {objectsOpen&&<DrawingObjectPanel drawings={drawings} selectedId={selectedDrawingId} onSelect={(id)=>{setSelectedDrawingId(id);setTool("cursor")}} onToggleVisible={(id)=>toggleDrawing(id,"visible")} onToggleLock={(id)=>toggleDrawing(id,"locked")} onDelete={deleteDrawing} onPatch={patchDrawing} onClose={()=>setObjectsOpen(false)}/>}
     </div>
   </section>;
   return expanded?<div className="chart-expanded-backdrop">{panel}</div>:panel;

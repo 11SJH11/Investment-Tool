@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {loadPreferences} from "../../app/preferences.js";
+import {useWorkflow} from "../../app/WorkflowContext.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS } from "../../utils/timezones";
@@ -31,8 +33,10 @@ function r(value) { return value == null ? "—" : `${Number(value) >= 0 ? "+" :
 function formatDate(value) { if (!value) return "—"; return new Intl.DateTimeFormat("en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "America/New_York" }).format(new Date(value)); }
 
 export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab = null, onWorkspaceDirty }) {
+  const {context,open:openWorkflow}=useWorkflow();
+  const appliedHandoff=useRef(null);
   const [savedTab, setSavedTab] = useUIPreference("backtest.tab", initialTab);
-  const tab=standaloneTab==="Replay"?"Replay":savedTab;
+  const tab=standaloneTab==="Replay"?"Replay":(["Backtest","Runs","Strategies","Workspace"].includes(savedTab)?savedTab:"Backtest");
   const setTab=value=>setSavedTab(value);
   const [strategies, setStrategies] = useState([]);
   const [indicators, setIndicators] = useState([]);
@@ -47,8 +51,8 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const watchlist = useWatchlist();
   const [runMeta, setRunMeta] = useState({ name: "", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
-    start_date: isoDateOffset(-90), end_date: isoDateOffset(-1), primary_timeframe: "5m", session: "auto",
-    starting_balance: "10000", sizing_mode: "risk_pct", risk_value: "1", commission_per_order: "0",
+    start_date: isoDateOffset(-90), end_date: isoDateOffset(-1), primary_timeframe: "5m", session: loadPreferences().backtestSession,
+    starting_balance: String(loadPreferences().backtestCapital), sizing_mode: loadPreferences().backtestSizing, risk_value: String(loadPreferences().backtestRisk), commission_per_order: String(loadPreferences().backtestCommission),
     slippage_bps: "0", spread_bps: "0", max_leverage: "1", max_open_positions: "5", same_bar_policy: "stop_first",
     allow_overnight: "true", force_close_time: "", max_trades_per_day: "", max_daily_loss_r: "",
     max_consecutive_losses: "", cooldown_minutes: "0",
@@ -87,6 +91,15 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     }
     setResult(null);
   }, [strategyKey, strategies.length]);
+
+  useEffect(()=>{
+    if(context?.target!=="Backtest"||!strategies.length||appliedHandoff.current===context.id)return;
+    const desired=strategies.find(s=>s.key===context.strategy_key)||strategies.find(s=>s.timeframes?.includes(context.timeframe)&&(!s.key.startsWith('xau')||context.symbol==='XAUUSD'))||strategy;
+    if(desired&&desired.key!==strategyKey){setStrategyKey(desired.key);return;}
+    if(context.symbol)setSymbols([context.symbol]);
+    setForm(old=>({...old,...(context.start_date?{start_date:context.start_date}:{}),...(context.end_date?{end_date:context.end_date}:{}),...(desired?.timeframes?.includes(context.timeframe)?{primary_timeframe:context.timeframe}:{})}));
+    setTab('Backtest');appliedHandoff.current=context.id;
+  },[context?.id,strategies.length,strategyKey]);
 
   const addSymbol = (ticker) => {
     const value = String(ticker || symbolInput).trim().toUpperCase();
@@ -244,6 +257,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 }
 
 function BacktestResults({ result }) {
+  const {open}=useWorkflow();
   const m = result.metrics || {};
   const [filters, setFilters] = useState({ symbol: "all", direction: "all", result: "all", exit_reason: "all" });
   const [auditTrade, setAuditTrade] = useState(null);
@@ -294,7 +308,7 @@ function BacktestResults({ result }) {
 
     <section className="mt-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter results and open any trade on the underlying historical chart to audit the engine.</p></div><span className="text-xs text-stone-500">Showing {filtered.length} of {trades.length}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`}><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td><td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`}><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td><td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
       {!filtered.length && <p className="p-8 text-center text-sm text-stone-500">No trades match these filters.</p>}
     </section>
     <section className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 text-xs text-stone-600"><strong>Execution assumptions:</strong> signal {result.execution_model?.signal_timing?.replaceAll("_", " ")} → fill {result.execution_model?.entry_timing?.replaceAll("_", " ")}; same-bar policy {result.execution_model?.same_bar_policy?.replaceAll("_", " ")}; stop gaps {result.execution_model?.stop_gap_policy?.replaceAll("_", " ")}; overnight {result.execution_model?.allow_overnight ? "allowed" : `disabled · flatten ${result.execution_model?.force_close_time} ET`}. Rejected entry signals: {(result.rejected_signals || []).length}.{(result.rejected_signal_summary || []).length > 0 && <span className="ml-1">{(result.rejected_signal_summary || []).map((item) => `${String(item.reason).replaceAll("_", " ")} (${item.count})`).join(" · ")}</span>}</section>

@@ -27,6 +27,7 @@ from app.services.broker_connections import BrokerConnections
 from app.services.broker_scheduler import BrokerScheduler
 from app.services.research import ResearchService
 from app.services.screener import ScreenerService
+from app.services.technical_screener import TechnicalScreener
 from app.services.symbols import SymbolUniverseService
 from app.storage.database import Database
 from app.storage.json_cache import JsonCacheRepository
@@ -65,7 +66,11 @@ class AppServices:
     backtest_jobs: BacktestJobs | None = None
     broker_scheduler: BrokerScheduler | None = None
 
+    technical_screener: TechnicalScreener | None = None
+
     def close(self) -> None:
+        if self.technical_screener:
+            self.technical_screener.close()
         if self.broker_scheduler:
             self.broker_scheduler.close()
         if self.backtest_jobs:
@@ -239,6 +244,7 @@ def build_services(settings: Settings) -> AppServices:
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
+        technical_screener=TechnicalScreener(database,market_data),
         broker_sync=broker_sync,
         broker_connections=broker_connections,
         broker_scheduler=BrokerScheduler(broker_connections, database),

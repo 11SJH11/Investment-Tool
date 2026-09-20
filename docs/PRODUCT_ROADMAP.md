@@ -1,44 +1,12 @@
-# Ledger current product roadmap
+# Ledger after Checkpoint 12
 
-## Implemented through checkpoint 6
+The application is entering usage-driven development. Fix observed reliability,
+data-integrity and workflow issues before adding breadth. Current functionality and
+verification are in RELEASE_CHECKPOINT_12.md; contracts are in ARCHITECTURE.md.
 
-- Charts and Replay share provider routing: US equities via Alpaca, XAUUSD via
-  OANDA, futures via Massive. Continuous aliases have chart support with provenance;
-  dated futures have multiplier/tick-aware Backtest and Replay execution.
-- Replay reveals canonical one-minute bars before aggregation, preserves timeframes
-  and integrity state, and idempotently journals closed trades.
-- One Journal supports manual/Replay/broker sources, Playbook custom fields,
-  Daily Review, attachments, filters, Analysis/Calendar and currency-separated totals.
-- OANDA Journal history and Trading 212 Portfolio imports are read-only, with
-  multiple profiles and account/environment identity. Tradovate is unsupported.
-- Backtest has saved immutable snapshots, validation roles, sensitivity, Trade Audit,
-  trusted local Strategy Workspace, frozen Gold/Momentum, ORB/VWAP, and Gold filter
-  variants/comparison. DXY-dependent variants cannot validate performance yet.
-
-## Release continuation
-
-7. Release-wide checks and current-documentation cleanup completed.
-8. Implemented: TradingView-methodology research; versioned continuous roll schedules; NQ1!
-   Backtest/Replay backed by raw dated-contract fills; cross-roll protection;
-   durable Massive reference caching/rate-limit handling; targeted Trading 212
-   investor metrics and universal broker-adapter extension audit.
-
-9. Authorized next: Backtest UX, bounded persistent job queue, independent batches
-   and reusable frontend foundations. Do not redesign the rest of the application.
-
-NQ1! execution uses Ledger's documented approximation; TradingView parity remains unverified.
-No live orders, broker automation, fabricated roll data, silent currency mixing,
-frozen-strategy tuning, user-data replacement or broad visual redesign.
-
-## Later research and UX
-
-Use development, validation and out-of-sample periods; change one hypothesis at a
-time. First Pullback/AMN require agreed numerical definitions. Point-in-time DXY,
-fundamentals/universes and explicit portfolio selection/capital rules are separate
-work. Walk-forward and sensitivity tests must not automatically select a winner.
-
-Advanced drawing tools, indicator panes/layouts, synchronized chart interactions
-and reporting presets remain optional later work, not release blockers.
-
-Checkpoint-specific documents are historical records. RELEASE_CHECKPOINTS.md is
-the continuation index; detailed contracts are linked from ARCHITECTURE.md.
+Priorities from real use may include large-history table virtualization, accessible
+keyboard/screen-reader coverage, indicator panes and authentic broker CSV adapters.
+Walk-forward/Monte Carlo, point-in-time universes/fundamentals, DXY data and new
+strategies are separate research decisions, not hidden release obligations.
+Keep frozen strategies unchanged; test one variable at a time. No live execution,
+fabricated missing data, implicit currency conversion or TradingView parity claim.

@@ -70,36 +70,18 @@ Broker imports retain adapter-owned accounting.
 
 ## Continuous history and no-lookahead boundary
 
-Execution requires a known **dated** family contract. Continuous aliases are
-chart-only: Backtest and new Journal execution records reject them, and Replay
-shows the restriction and rejects orders. Unadjusted continuous Replay viewing
-is available. Old Journal records remain readable/reviewable without revaluing
-their historical results; legacy Replay positions without economics cannot resume
-execution. There is no automatic correction of old futures P&L.
+Execution requires a known dated contract, directly selected or resolved from a
+continuous alias with valid raw provenance. Front aliases support Backtest and
+Replay; Journal retains alias and actual source/executed contract. Adjusted bars
+never become fills. Pending entries cancel at a roll; open-position transfers
+across contracts fail explicitly before any artificial gap P&L.
 
-Calendar-front-v1 chooses the nearest provider contract whose last-trade date
-has not passed. The boundary is **00:00 UTC after that date**, not the exchange's
-precise expiry instant. No bars are fabricated to bridge weekends or missing data.
-Each continuous bar retains:
-
-- `source_contract`, `contract_last_trade_date`;
-- `roll_method`, `roll_schedule_version`;
-- `roll_effective_at` (scheduled calendar boundary, not a claimed observed fill);
-- `adjustment_method`, `price_adjustment`.
-
-The first listed segment uses its provider first-trade date; later segments use
-the later of that date and the prior expiry boundary. Actual first observed bars
-can follow the schedule boundary. Cache namespace suffix `provenance-v2` separates
-this output from old caches; optional Parquet columns preserve provenance. Local
-aggregation separates source contracts even within a shared time bucket.
-
-Optional backward additive adjustment uses later observed roll gaps and is
-therefore **chart-only, not causal research data**. Such requests bypass the
-incrementally merged cache so separately adjusted segments cannot be mixed.
-Prices depend on the requested endpoint. Replay rejects adjusted continuous
-history; the engine rejects adjusted or cross-contract execution frames.
-No volume/OI rollover, immutable historical reference-data snapshot or TradingView
-equivalence is claimed.
+Current schedule, daily-close adjustment, cache versioning, real NQ evidence and
+provider limitations are documented in CONTINUOUS_FUTURES_RESEARCH.md. Calendar
+front selection remains a supported explicit legacy policy, not the default.
+TradingView roll/data parity is unverified. Old Journal data remains readable;
+legacy Replay positions without economics require a new session. No automatic
+historical futures P&L correction is performed.
 
 Replay still clips canonical minutes before aggregation and indicators. Futures
 chart buckets anchor at 18:00 America/New_York; winter/summer anchors are tested.

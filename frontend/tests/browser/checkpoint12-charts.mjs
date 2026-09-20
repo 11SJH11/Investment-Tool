@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+const {send,evaluate,click,fill,waitFor,errors,close}=await import('./cdp.mjs');
+const pause=()=>new Promise(r=>setTimeout(r,450));
+const nav=text=>evaluate(`[...document.querySelectorAll('[aria-label="Main navigation"] button')].find(b=>b.textContent===${JSON.stringify(text)}).click()`);
+const input=async(selector,value)=>{await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`);await pause();};
+await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await nav('Charts');await waitFor(`document.querySelector('.market-chart-panel canvas')`);
+for(const symbol of ['AAPL','XAUUSD','NQ1!']){
+ await input('.chart-symbol-search input',symbol);
+ for(const tf of ['1m','5m','15m','1h']){await evaluate(`[...document.querySelectorAll('.chart-global-toolbar button')].find(b=>b.textContent===${JSON.stringify(tf)}).click()`);await pause();await waitFor(`document.querySelector('.market-chart-panel canvas')&&!document.querySelector('.chart-loading,.chart-history-loading,.chart-error')`);assert(await evaluate(`document.querySelector('.chart-drawing-overlay').getBoundingClientRect().width>100`));}
+ console.log('PASS chart timeframes',symbol);
+}
+assert(await evaluate(`document.body.innerText.includes('NQZ6')`));
+await input('.chart-symbol-search input','AAPL');await waitFor(`document.querySelector('.market-chart-panel canvas')&&!document.querySelector('.chart-history-loading')`);
+await evaluate(`document.querySelector('[aria-label="Trend line"]').click()`);
+const rect=await evaluate(`(()=>{const r=document.querySelector('.chart-drawing-overlay').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()`);
+const x=rect.x+rect.width*.5,y=rect.y+rect.height*.5;
+await send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:x+100,y:y-60,button:'left',buttons:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:x+100,y:y-60,button:'left',clickCount:1});await pause();
+let objects=await evaluate(`JSON.parse(localStorage.getItem('ledger.drawings.v1:charts:AAPL')||'[]')`);assert(objects.length>0);const original=objects.at(-1);
+await evaluate(`[...document.querySelectorAll('.chart-global-toolbar button')].find(b=>b.textContent==='5m').click()`);await pause();assert.deepEqual((await evaluate(`JSON.parse(localStorage.getItem('ledger.drawings.v1:charts:AAPL'))`)).at(-1).points,original.points);
+await evaluate(`document.querySelector('.chart-drawing-overlay').focus()`);await send('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:2});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'c',code:'KeyC',modifiers:2});await send('Input.dispatchKeyEvent',{type:'keyDown',key:'v',code:'KeyV',modifiers:2});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'v',code:'KeyV',modifiers:2});await pause();assert.equal((await evaluate(`JSON.parse(localStorage.getItem('ledger.drawings.v1:charts:AAPL'))`)).length,objects.length+1);
+await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Delete',code:'Delete'});await pause();assert.equal((await evaluate(`JSON.parse(localStorage.getItem('ledger.drawings.v1:charts:AAPL'))`)).length,objects.length);
+for(const n of [2,4,1]){await evaluate(`[...document.querySelectorAll('.chart-global-toolbar button')].find(b=>b.textContent===${JSON.stringify(String(n))}).click()`);await waitFor(`document.querySelectorAll('.market-chart-panel').length===${n}`);await pause();assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'));}
+console.log('PASS drawing creation, market-anchor persistence, copy/paste/delete, 1/2/4 layouts');
+await nav('Journal');await evaluate(`[...document.querySelectorAll('[aria-label="Journal navigation"] button')].find(b=>b.textContent==='Trades').click()`);await waitFor(`document.querySelector('[aria-label="Journal trades"] tbody tr')`);
+await evaluate(`document.querySelector('[aria-label="Journal trades"] tbody [aria-haspopup="dialog"]').click()`);await click('Open chart at trade');await waitFor(`document.querySelector('.market-chart-panel canvas')&&!document.querySelector('.chart-loading,.chart-error')`);assert(await evaluate(`window.__requests.some(x=>x.includes('chart-data'))`));
+await nav('Research');await waitFor(`document.querySelector('[aria-label="Screener results"] tbody tr')`);await evaluate(`document.querySelector('[aria-label="Screener results"] tbody [aria-haspopup="dialog"]').click()`);await evaluate(`[...document.querySelectorAll('[aria-label="Row actions"] button')].find(b=>b.textContent==='Backtest').click()`);await waitFor(`document.body.innerText.includes('Ready to run')`);assert(await evaluate(`document.body.innerText.includes('AAPL')`));
+console.log('PASS Journal -> historical Chart, Screener -> Backtest');assert.equal(errors.length,0,errors.join('\n'));close();

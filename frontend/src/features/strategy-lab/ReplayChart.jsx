@@ -1,3 +1,4 @@
+import {seriesChange} from "../../components/chart/seriesUpdates.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, LineStyle, createChart, createSeriesMarkers } from "lightweight-charts";
 import { resolvedZone } from "../../utils/timezones";
@@ -130,7 +131,9 @@ export default function ReplayChart({
     } : null;
     const appendOnly = previous.length > 0 && clean.length >= previous.length && clean[0]?.time === previous[0]?.time && clean[previous.length - 1]?.time === previous[previous.length - 1]?.time;
 
-    candles.setData(clean.map(({ volume: _, ...bar }) => bar));
+    const change=seriesChange(previous,clean);
+    const candleData=clean.map(({volume:_,...bar})=>bar);
+    if(change.mode==="replace")candles.setData(candleData);else candleData.slice(change.from).forEach(b=>candles.update(b));
     volume.applyOptions({ visible: showVolume });
     const upVolume = volumeStyle?.upColor || "#34d399", downVolume = volumeStyle?.downColor || "#f87171", volumeOpacity = Number(volumeStyle?.opacity ?? .28);
     const volumeHex = (color, opacity) => { if (!/^#[0-9a-fA-F]{6}$/.test(color)) return color; const alpha=Math.round(Math.max(0,Math.min(1,opacity))*255).toString(16).padStart(2,"0"); return `${color}${alpha}`; };
@@ -152,7 +155,7 @@ export default function ReplayChart({
       if (from != null && to != null) requestAnimationFrame(() => { try { chart.timeScale().setVisibleLogicalRange({ from, to }); } catch { /* ignored */ } });
     }
     previousCleanRef.current = clean;
-  }, [clean, followReplay, showVolume, volumeStyle]);
+  }, [clean, followReplay, showVolume, volumeStyle,chartReady]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -168,7 +171,7 @@ export default function ReplayChart({
         .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
       series.setData(values); overlayRefs.current.push(series);
     });
-  }, [overlays]);
+  }, [overlays,chartReady]);
 
   useEffect(() => {
     const candles = candlesRef.current;
@@ -191,7 +194,7 @@ export default function ReplayChart({
     if (active?.entry_time) markers.push({ time: seconds(active.entry_time), position: active.direction === "long" ? "belowBar" : "aboveBar", shape: active.direction === "long" ? "arrowUp" : "arrowDown", color: "#60a5fa", text: `${active.direction.toUpperCase()} ENTRY` });
     if (closedTrade?.exit_time) markers.push({ time: seconds(closedTrade.exit_time), position: closedTrade.direction === "long" ? "aboveBar" : "belowBar", shape: closedTrade.direction === "long" ? "arrowDown" : "arrowUp", color: closedTrade.net_pnl >= 0 ? "#22c55e" : "#ef4444", text: `EXIT ${closedTrade.exit_reason}` });
     createSeriesMarkers(candles, markers.sort((a, b) => a.time - b.time));
-  }, [position, closedTrade, pendingOrder]);
+  }, [position, closedTrade, pendingOrder,chartReady]);
 
   useEffect(() => { if (jumpToken && chartRef.current) chartRef.current.timeScale().scrollToRealTime(); }, [jumpToken]);
 

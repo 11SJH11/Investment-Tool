@@ -159,5 +159,7 @@ Commands use the backend virtualenv, temporary pytest basetemp directories and
 5. Edit a draft, switch Runs/Workspace, then try leaving Backtest. Confirm the draft
    survives tab switching and cancelling the discard prompt keeps it open.
 
-Checkpoint 5 (ORB/VWAP), 6 (Gold variants/comparison), and 7 (release-wide final
-verification/report) are still pending. Checkpoint 4 does not implement them.
+
+## Activation
+
+ save an underscore-prefixed draft, acknowledge trusted Python execution, then Activate strategy. Activation reruns syntax/interface/tests, requires a unique key, atomically promotes a discoverable module, and refreshes the Backtest selector. Source SHA-256/version are retained in immutable history and saved runs. Deactivate removes the promoted module and registry entry while retaining source/history. Built-ins cannot be overwritten. Active drafts can be revalidated in a disposable worker. Trusted Python is not a sandbox.

@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS market_cache_coverage (
     PRIMARY KEY(namespace, ticker, timeframe)
 );
 
+CREATE TABLE IF NOT EXISTS technical_snapshots (
+ ticker TEXT PRIMARY KEY REFERENCES securities(ticker) ON DELETE CASCADE,
+ payload TEXT NOT NULL, source TEXT NOT NULL, snapshot_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS json_cache (
     namespace TEXT NOT NULL,
     cache_key TEXT NOT NULL,

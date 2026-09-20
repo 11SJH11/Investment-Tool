@@ -141,3 +141,9 @@ Manual acceptance: configure a read-only demo profile, restart, sync explicitly,
 inspect positions/history/currencies, save notes/tags and resync. Add another
 profile and confirm independent account/environment identity. Verify OANDA reviews
 and prior imported IDs survive. Tradovate must remain disabled/unsupported.
+
+## Backend scheduling and activity
+
+ backend lifecycle owns the schedule, with persisted app_settings preferences/cooldowns, OANDA minimum/default 60s and Trading 212 300s. Configured supported profiles are enabled by default; incomplete profiles make no calls. Manual Sync now remains. Same-profile active/pending work cannot overlap; OANDA additionally locks by account/environment. Provider 429s defer to the scheduler and honor Retry-After. Failures retain last successful data. Normal browser navigation has no effect on scheduling. The browser polls status only. Run one Ledger backend process: distributed/multi-worker scheduling is not implemented.
+
+Activity: explicit provider BUY/SELL and supported Deposit/Withdrawal/Interest/Dividend/Fee directions are visible. Missing/ambiguous action or transfer direction stays Unavailable rather than being guessed from quantity sign.

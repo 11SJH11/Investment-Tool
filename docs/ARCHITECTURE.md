@@ -2,14 +2,10 @@
 
 ## Product areas
 
-1. Dashboard
-2. Screener ✅
-3. Research ✅
-4. Markets
-5. Portfolio ✅
-6. Journal ✅
-7. Strategy Lab ✅ backtest foundation
-8. Settings
+Sticky top navigation: Overview, Charts, Replay, Backtest, Journal, Portfolio,
+Research (Screener), Settings. Company research remains inside Charts.
+Feature subtabs sit below global navigation. Data workspaces use available width;
+readable forms may be narrower. Tables scroll internally.
 
 ## Layering rule
 
@@ -153,3 +149,76 @@ The existing theme palette remains the source for surface/text/border tokens.
 New surface/accent/positive/negative aliases, spacing steps, radii and control-height
 tokens support shared primitives and existing color adapters. This is a focused
 foundation, not a full app redesign or a change to the chart library.
+
+## UI and presentation contracts
+
+
+- `TopNav` preserves route keys and dirty-navigation guards, exposes active-page
+  semantics and a skip link. Overview, Charts, Replay, Backtest, Journal,
+  Portfolio, Research and Settings use the sticky global header. Feature tabs
+  remain below it. Existing navigation order preferences are retained.
+- The common app workspace fills available width with 20-32px responsive outer
+  padding. Data tables scroll internally; Charts/Replay keep their own controls.
+- Shared CSS extends existing light/dark tokens for surfaces, borders, semantic
+  colors, spacing, typography, radii, control sizes and compact table density.
+- `DataTable`, `tableModel` and `useTableView` supply compact/comfortable density,
+  sticky headers/key column, column visibility/order, categorical search and OR
+  selection, numeric strict greater/less and inclusive ranges, date ranges,
+  text search, sorting, row selection, primary action plus secondary menu, 50-row
+  pagination, removable chips and Reset view. Runs and Portfolio filter locally;
+  Journal submits the same standard rules to its authoritative backend report.
+  The old Runs helper remains for compatibility tests, but no old Runs filter UI
+  or separate feature-specific table filter implementation is mounted.
+- Journal retains all 22 uncommon structured dimensions through + Filter, named
+  saved views, shared date/timezone rules and AND across fields. Backend filtering
+  precedes summary/calculation, so all matching rows contribute, not just the
+  displayed page. Money stays separated by currency. Primary metrics are Net
+  P&L, Total R, win rate and R profit factor; secondary metrics include N/outcomes,
+  average R/winner/loser/holding time; diagnostics are expandable.
+- Analysis adds entry-hour/10-minute/30-minute buckets, weekday/time heatmap,
+  session, strategy/Playbook, setup, direction, month and process breakdowns.
+  Cumulative R, drawdown and rolling last-20-recorded-R expectancy use closed
+  trades in close order. N and low-sample labels accompany descriptive results;
+  no automatic trading rule, causal conclusion or winner is generated.
+- Calendar uses entry dates in the Journal timezone, subtle positive/negative/
+  neutral treatment, per-day P&L/R/N, selected-month weekly totals and inline
+  day details. Daily Review receives the selected date and unique account where
+  available; ambiguous multi-account selection leaves the existing Main default.
+- Portfolio retains account summary cards, puts positions/orders/cash into the
+  common table, separates instrument and wallet currencies, and exposes notes,
+  tags and raw provider facts on demand. BUY/SELL and cash IN/OUT use checkpoint
+  10 provider semantics; missing/ambiguous facts remain unavailable.
+- Runs uses compact rows, Open plus an actions menu, full-width filters and
+  selection for comparison. Comparison has a metric grid, R/expectancy/drawdown/
+  trade-count charts, sample counts and existing fingerprint/retention warnings.
+  Independent run returns are never summed or ranked.
+- Backtest retains the normal workflow with secondary validation/sensitivity
+  sections. Multiple-symbol entry, advanced execution, costs, account limits,
+  schedule and additional strategy parameters are collapsible. Jobs retain
+  queue actions and progress with a compact collapsed summary.
+- Overview replaces the development checklist with a 30-calendar-day Journal
+  summary, separate broker investment snapshots, research/job status and recent
+  runs/trades. Missing source data is labelled unavailable; no synthetic product
+  values are inserted. `useOverviewData`, `useJournalData` and
+  `usePortfolioSnapshot` keep fetching outside presentation.
+- Presentation state uses browser-local `ledger.ui.*` keys. Older Journal column
+  selections and Runs filters/sort/columns are read if no new view exists. New
+  views take precedence. Reset restores that table's columns/order/filter/sort/
+  density; Journal reset also clears structured filters, view mode and expanded
+  diagnostic statistics. It never removes trading records or configuration.
+  Named saved views remain available after resetting the current view.
+
+
+## Checkpoint 12 workflow and data paths
+
+`WorkflowContext` carries ticker, compatible timeframe and explicit timestamps
+between Screener, Charts, Backtest, Replay and Journal. New York session dates
+are derived from UTC handoffs. Handoffs configure views; they never execute trades.
+`chartRequests` deduplicates pending chart requests and caches completed responses
+for 15 seconds (32 entries). Explicit refresh bypasses reuse. `chart-data` fetches
+one prepared frame for all requested registered indicators; old GET APIs remain.
+Screener background refresh reads only local daily Parquet caches, stores additive
+`technical_snapshots`, and queries validated SQL expressions. It is a current
+universe discovery service, not a point-in-time historical universe.
+Replay playback and ticket presentation are separate modules. Canonical reveal,
+fill, roll and Journal identity behavior remain in the existing Replay path.

@@ -72,3 +72,33 @@ def refresh_fundamentals(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"SEC bulk refresh failed: {exc}") from exc
+
+
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class ScanQuery(BaseModel):
+    conditions: list[dict] = Field(default_factory=list, max_length=30)
+    match: Literal['all','any'] = 'all'
+    security_type: str = 'stock'
+    text: str = ''
+    exchange: str = ''
+    tradable: bool | None = True
+    fractionable: bool | None = None
+    shortable: bool | None = None
+    require_fundamentals: bool = False
+    limit: int = Field(default=500,ge=1,le=500)
+    offset: int = Field(default=0,ge=0)
+
+@router.post('/screener/query')
+def scan_query(req: ScanQuery,services: AppServices=Depends(get_services)):
+    try:return services.technical_screener.query(**req.model_dump())
+    except ValueError as exc:raise HTTPException(status_code=400,detail=str(exc)) from None
+
+@router.post('/screener/refresh/technicals')
+def refresh_technicals(services: AppServices=Depends(get_services)):
+    return services.technical_screener.start()
+
+@router.get('/screener/refresh/technicals')
+def technical_status(services: AppServices=Depends(get_services)):
+    return services.technical_screener.status()

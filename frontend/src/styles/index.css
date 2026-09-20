@@ -81,7 +81,6 @@ button, input, select, textarea { font: inherit; }
 /* Phase 6.1 shared product shell ------------------------------------------------ */
 :root {
   --ledger-app-bg: #f5f5f4;
-  --ledger-sidebar-bg: #ffffff;
   --ledger-surface: #ffffff;
   --ledger-surface-2: #fafaf9;
   --ledger-surface-3: #f5f5f4;
@@ -96,7 +95,6 @@ button, input, select, textarea { font: inherit; }
 }
 [data-theme="dark"] {
   --ledger-app-bg: #111214;
-  --ledger-sidebar-bg: #17181a;
   --ledger-surface: #1e1f22;
   --ledger-surface-2: #232428;
   --ledger-surface-3: #2b2d31;
@@ -255,7 +253,6 @@ body { background: var(--ledger-app-bg); color: var(--ledger-text); }
   .market-chart-panel { min-height:560px; }
   .expanded-chart-controls { display:none; }
 }
-.ledger-sidebar { background:var(--ledger-sidebar-bg) !important; }
 .replay-page-section { width:100%; max-width:none; }
 .drawing-style-editor { position:sticky; bottom:0; border-top:1px solid var(--ledger-border); background:inherit; padding:.7rem; }
 .drawing-style-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:.55rem; font-size:.7rem; }
@@ -359,3 +356,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible {outline:2px solid va
 .calendar-scroll {max-width:100%;overflow:auto;border:1px solid var(--ledger-border);border-radius:var(--radius-panel);}.calendar-grid {display:grid;grid-template-columns:repeat(7,minmax(100px,1fr)) minmax(145px,1.2fr);min-width:850px;}.calendar-heading {padding:.8rem;color:var(--ledger-muted);font-size:var(--font-small);background:var(--ledger-surface-2);}.calendar-day,.calendar-week {min-height:120px;padding:.8rem;border-top:1px solid var(--ledger-border);border-right:1px solid var(--ledger-border);display:flex;flex-direction:column;align-items:flex-start;gap:.3rem;font-size:var(--font-small);background:var(--ledger-surface);}.calendar-day strong {font-size:.9rem;overflow-wrap:anywhere;}.calendar-day small,.calendar-week small {color:var(--ledger-muted);}.calendar-date {align-self:flex-end;}.calendar-day[aria-pressed="true"] {outline:2px solid var(--ledger-accent);outline-offset:-2px;}.day-positive {background:color-mix(in srgb,var(--color-positive) 7%,var(--ledger-surface));}.day-negative {background:color-mix(in srgb,var(--color-negative) 7%,var(--ledger-surface));}.day-positive strong {color:var(--color-positive);}.day-negative strong {color:var(--color-negative);}.outside-month {opacity:.5;}.calendar-week {background:var(--ledger-surface-2);}.calendar-day-trades>div {display:flex;gap:1rem;align-items:center;border-top:1px solid var(--ledger-border);padding:.6rem;margin-top:.5rem;font-size:var(--font-body);}.heatmap {width:100%;border-collapse:separate;border-spacing:3px;font-size:var(--font-small);}.heatmap th {padding:.5rem;}.heatmap td {min-width:110px;padding:.7rem;text-align:center;background:var(--ledger-surface-2);}.heatmap small {display:block;font-size:.65rem;color:var(--ledger-muted);}.heatmap .heat-positive {background:color-mix(in srgb,var(--color-positive) 9%,var(--ledger-surface));}.heatmap .heat-negative {background:color-mix(in srgb,var(--color-negative) 9%,var(--ledger-surface));}
 .overview-account {margin:1rem 0;border-top:1px solid var(--ledger-border);padding-top:.7rem;font-size:var(--font-small);}.overview-account dl {display:flex;flex-wrap:wrap;gap:1rem;margin:.7rem 0;}.overview-account dt {color:var(--ledger-muted);}.overview-account dd {font-size:1rem;}.overview-activity {display:block;width:100%;text-align:left;padding:.7rem 0;border-bottom:1px solid var(--ledger-border);font-size:var(--font-body);}.overview-activity small {display:block;color:var(--ledger-muted);margin-top:.2rem;}.ready-summary {margin-top:1.5rem;padding:1.2rem;background:var(--ledger-surface-2);border-radius:var(--radius-panel);}
 .heatmap .heat-info {background:color-mix(in srgb,var(--color-info) 8%,var(--ledger-surface));}.info-bar {background:var(--color-info);}
+.chart-actions {position:relative;}.chart-actions-menu {position:absolute;right:0;top:100%;z-index:60;min-width:190px;padding:.5rem;background:var(--ledger-surface);border:1px solid var(--ledger-border);box-shadow:var(--shadow-menu);border-radius:var(--radius-panel);}.chart-actions-menu button {display:block;width:100%;text-align:left;padding:.55rem;font-size:var(--font-small);}.chart-actions-menu button:hover {background:var(--ledger-hover);}
+
+.drawing-stroke:hover {filter:brightness(1.35);stroke-width:3px;}
+.chart-settings {padding:.3rem .75rem;min-width:0;}
+.replay-toolbar {display:flex;flex-direction:column;gap:.65rem;padding-bottom:.75rem;border-bottom:1px solid var(--ledger-border);}

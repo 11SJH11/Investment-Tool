@@ -106,3 +106,58 @@ partial 2R plus runner, stronger relative volume/strength, SPY/QQQ regime,
 sector-relative strength, earnings/fundamentals, alternate base depths,
 contraction thresholds or chase limits. Test one variable at a time with separate
 variants and development, validation and out-of-sample periods.
+
+## Parameter reference
+
+The parameter table below is generated from the frozen plugin defaults. Target
+R is fixed at 2.0 and cannot be overridden under this key. At least 250 prior
+bars is enforced even if a caller attempts to lower minimum_history.
+
+| Parameter | Default |
+|---|---|
+| `minimum_history` | `250` |
+| `ema_fast` | `20` |
+| `ema_medium` | `50` |
+| `sma_long` | `200` |
+| `sma_slope_sessions` | `20` |
+| `liquidity_sessions` | `20` |
+| `min_dollar_volume` | `20000000.0` |
+| `momentum_sessions` | `60` |
+| `min_return_pct` | `0.0` |
+| `high_sessions` | `60` |
+| `max_distance_high_pct` | `5.0` |
+| `base_min` | `10` |
+| `base_max` | `30` |
+| `max_base_depth_pct` | `15.0` |
+| `contraction_recent_sessions` | `5` |
+| `max_atr_ratio` | `0.75` |
+| `max_volume_ratio` | `1.0` |
+| `breakout_volume_sessions` | `20` |
+| `breakout_volume_multiple` | `1.0` |
+| `max_chase_pct` | `2.0` |
+| `swing_left` | `2` |
+| `swing_right` | `2` |
+| `max_stop_distance_pct` | `8.0` |
+
+Default generic account configuration remains: $10,000 starting balance,
+1% realized-balance risk, maximum 5 positions, 1x maximum exposure, fractional
+quantities, zero configured commissions/slippage/spread, stop-first same-bar
+policy and overnight holding. Costs and account controls must be set explicitly
+for the intended research; zero defaults are not a claim that stock trading is free.
+New entries are filtered at their next open; default weekdays are Monday–Friday.
+
+
+## Deterministic acceptance examples
+
+Synthetic valid fixture: 30-session base high/pivot 100, low 92 (8% depth),
+last confirmed swing low 97.5 on January 2, 2024. Friday January 5 close 101,
+volume 1.2m versus prior average 875k. Recent/early ATR% ratio about 0.1932;
+volume contraction ratio 0.5; average dollar volume $85.875m. Monday January 8
+open 101 enters; risk/share 3.5, target 108. Tuesday January 9 hits 108:
+exactly +2R with zero configured costs. All date/price/exit/R expectations are
+asserted in the hand-worked test.
+
+Rejected example: same confirmed setup but next open 103 (3% above pivot),
+so `entry_too_extended`, no trade and the original pivot remains 100. Opens
+99 or 100 reject as `open_not_above_pivot`. Required risk above the configured
+cap rejects as `stop_distance_exceeded`; the stop is never replaced.

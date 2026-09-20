@@ -125,3 +125,11 @@ def macro_snapshot(refresh: bool = False, services: AppServices = Depends(get_se
         return services.macro.get_snapshot(refresh=refresh)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"FRED fetch failed: {exc}") from exc
+
+
+@router.get("/data/cache")
+def cache_diagnostics(services: AppServices = Depends(get_services)):
+    """Read-only coverage metadata. Never includes settings, secrets or cache payloads."""
+    with services.database.connect() as con:
+        rows=[dict(row) for row in con.execute("SELECT ticker,timeframe AS source_timeframe,namespace AS provider_cache,covered_start,covered_end,updated_at FROM market_cache_coverage ORDER BY updated_at DESC,ticker LIMIT 500")]
+    return {"items":rows,"limit":500,"note":"Coverage is the requested source range, including possible empty market sessions; it is not proof of uninterrupted bars. Refresh a chart to request newer history. Futures source contracts remain attached to each bar."}
