@@ -1,11 +1,16 @@
 export const RUN_TYPES = ['Single backtest', 'Validation suite', 'Sensitivity test'];
 export function configurationError(payload) {
+  if(!String(payload.run_name||'').trim())return 'Run name is required.';
   if(!payload.symbols?.length)return 'Choose at least one symbol.';
   if(!payload.start_date||!payload.end_date||payload.start_date>payload.end_date)return 'Choose a valid start and end date.';
   for(const key of ['starting_balance','risk_value','max_leverage','max_open_positions'])if(!Number.isFinite(payload[key])||payload[key]<=0)return `${key.replaceAll('_',' ')} must be positive.`;
   for(const key of ['commission_per_order','slippage_bps','spread_bps'])if(!Number.isFinite(payload[key])||payload[key]<0)return 'Costs must be zero or positive.';
   if(!payload.trading_weekdays?.length)return 'Choose at least one trading day.';
   return '';
+}
+export function nextRunName(runs=[]) {
+  const highest=runs.reduce((max,run)=>Math.max(max,Number(run?.id)||0),0);
+  return `Run ${highest+1}`;
 }
 export function parseSymbols(value) { return [...new Set(String(value).toUpperCase().split(/[\s,;]+/).filter(Boolean))]; }
 export function independentRuns(payload) {
@@ -17,12 +22,12 @@ export function runSummary(payload) {
   const sessions=[...new Set(payload.symbols.map(s=>isNonEquity(s)?'24h':'regular'))];
   const session = payload.session==='auto' ? sessions.join(' / ')+' (per instrument)' : payload.session;
   return {
-    Instruments: payload.symbols.join(' · '), Timeframe:payload.primary_timeframe,
+    Run: payload.run_name, Instruments: payload.symbols.join(' · '), Timeframe:payload.primary_timeframe,
     Period:`${payload.start_date} → ${payload.end_date}`,
     Balance:`$${payload.starting_balance.toLocaleString('en-US')} per independent run`,
     Sizing:`${payload.sizing_mode.replaceAll('_',' ')} · ${payload.risk_value}`,
     Costs:`$${payload.commission_per_order}/order · ${payload.slippage_bps} bps slippage · ${payload.spread_bps} bps spread`,
-    Session:session, Role:payload.test_role.replaceAll('_',' '),
+    Session:session,
     Execution:`${payload.same_bar_policy.replaceAll('_',' ')} · leverage cap ${payload.max_leverage}×`,
   };
 }

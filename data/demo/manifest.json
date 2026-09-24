@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-21T20:00:00+00:00",
+  "seed": 20260922,
+  "years": 3,
+  "database": "/mnt/data/ledger_step3/Investment-Tool/data/demo/ledger.db",
+  "counts": {
+    "securities": 300,
+    "technical_snapshots": 300,
+    "fundamental_metrics": 300,
+    "journal_trades": 1211,
+    "daily_reviews": 553,
+    "playbook_entries": 4,
+    "portfolio_transactions": 96,
+    "research_items": 160,
+    "backtest_runs": 90
+  },
+  "warning": "All records are synthetic and are only for UI/load testing."
+}

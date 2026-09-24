@@ -25,5 +25,7 @@ export default function useBacktestJobs(onComplete) {
   };
   const cancel=async id=>{await api.cancelBacktestJob(id);await refresh();};
   const retry=async id=>{await api.retryBacktestJob(id,crypto.randomUUID());await refresh();};
-  return {jobs,workers,error,submit,cancel,retry,refresh};
+  const remove=async id=>{await api.deleteBacktestJob(id);await refresh();};
+  const clearFinished=async()=>{await api.clearFinishedBacktestJobs();await refresh();};
+  return {jobs,workers,error,submit,cancel,retry,remove,clearFinished,refresh};
 }

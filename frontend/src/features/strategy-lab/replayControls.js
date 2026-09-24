@@ -1,4 +1,9 @@
-﻿export function replayShortcut(event,element) {
+﻿const SOURCE_BARS_PER_CANDLE={"1m":1,"5m":5,"15m":15,"30m":30,"1h":60,"4h":240};
+export function replayStepSize(timeframe,count=1) {
+ const bars=SOURCE_BARS_PER_CANDLE[String(timeframe||'1m')]||1;
+ return Math.max(1,Math.floor(Number(count)||1))*bars;
+}
+export function replayShortcut(event,element) {
  if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.repeat||element?.isContentEditable||['INPUT','TEXTAREA','SELECT','BUTTON'].includes(element?.tagName))return null;
  if(event.code==='Space')return 'play';
  if(event.key==='ArrowRight')return event.shiftKey?'five':'next';

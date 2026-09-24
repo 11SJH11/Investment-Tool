@@ -80,6 +80,29 @@ def test_bounded_batch_states_cancellation_and_immutable_save(queue):
     assert len(jobs.list()) == 4
 
 
+
+def test_terminal_job_cleanup_keeps_saved_runs(queue):
+    jobs, service, _ = queue
+    service.release.set()
+    completed = jobs.enqueue([{'symbols': ['AAPL']}], 'cleanup-completed')[0]
+    wait_for(lambda: jobs.get(completed['id'])['status'] == 'completed')
+    run_id = jobs.get(completed['id'])['run_id']
+    assert service.runs.get(run_id)['id'] == run_id
+    jobs.delete(completed['id'])
+    with pytest.raises(ValueError, match='Job not found'):
+        jobs.get(completed['id'])
+    assert service.runs.get(run_id)['id'] == run_id
+
+    failed = jobs.enqueue([{'symbols': ['MSFT'], 'fail': True}], 'cleanup-failed')[0]
+    wait_for(lambda: jobs.get(failed['id'])['status'] == 'failed')
+    cancelled = jobs.enqueue([{'symbols': ['NVDA']}], 'cleanup-cancelled')[0]
+    # The worker may start immediately; cancellation is cooperative in either state.
+    jobs.cancel(cancelled['id'])
+    wait_for(lambda: jobs.get(cancelled['id'])['status'] in ('cancelled', 'completed'))
+    result = jobs.clear_finished()
+    assert result['deleted'] >= 2
+    assert not jobs.list()
+
 def test_duplicate_submission_and_conflicting_key(queue):
     jobs, _, _ = queue
     payload = [{'symbols': ['AAPL']}]
@@ -210,6 +233,9 @@ def test_queue_api_validates_independent_jobs_and_deduplicates(queue):
         assert client.get('/strategy-lab/jobs').json()['max_workers'] == 2
         assert client.post(f'/strategy-lab/jobs/{job_id}/cancel').status_code == 200
         assert client.post('/strategy-lab/jobs/missing/cancel').status_code == 404
+        # Active jobs cannot be deleted; terminal queue history can be cleared without touching saved runs.
+        active_delete = client.delete(f'/strategy-lab/jobs/{job_id}')
+        assert active_delete.status_code in (200, 409)
         invalid = {**payload, 'symbols': ['AAPL', 'MSFT']}
         assert client.post('/strategy-lab/jobs', json=dict(request_key='bad', runs=[invalid])).status_code == 400
 

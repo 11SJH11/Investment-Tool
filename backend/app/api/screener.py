@@ -87,7 +87,7 @@ class ScanQuery(BaseModel):
     fractionable: bool | None = None
     shortable: bool | None = None
     require_fundamentals: bool = False
-    limit: int = Field(default=500,ge=1,le=500)
+    limit: int = Field(default=500,ge=1,le=5000)
     offset: int = Field(default=0,ge=0)
 
 @router.post('/screener/query')

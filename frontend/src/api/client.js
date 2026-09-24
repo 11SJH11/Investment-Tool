@@ -39,6 +39,8 @@ export const api = {
   queueBacktests: (runs, request_key) => request('/strategy-lab/jobs', {method:'POST', body:JSON.stringify({runs,request_key})}),
   cancelBacktestJob: id => request(`/strategy-lab/jobs/${id}/cancel`, {method:'POST'}),
   retryBacktestJob: (id, key) => request(`/strategy-lab/jobs/${id}/retry?request_key=${encodeURIComponent(key)}`, {method:'POST'}),
+  deleteBacktestJob: id => request(`/strategy-lab/jobs/${id}`, {method:'DELETE'}),
+  clearFinishedBacktestJobs: () => request('/strategy-lab/jobs', {method:'DELETE'}),
   workspaceFiles: () => request("/strategy-workspace/files"),
   workspaceRead: filename => request(`/strategy-workspace/files/${encodeURIComponent(filename)}`),
   workspaceSave: payload => request("/strategy-workspace/files", {method:"PUT", body:JSON.stringify(payload)}),

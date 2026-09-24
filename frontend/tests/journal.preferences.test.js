@@ -16,7 +16,7 @@ test('column selections survive storage, with invalid keys removed', () => {
   assert.deepEqual(loadColumns(storage), DEFAULT_COLUMNS);
   saveColumns(storage,['ticker','environment','ticker','unknown']);
   assert.deepEqual(loadColumns(storage), ['ticker','environment']);
-  assert.equal(TABLE_COLUMNS.length,21);
+  assert.equal(TABLE_COLUMNS.length,22);
   value='malformed'; assert.deepEqual(loadColumns(storage),DEFAULT_COLUMNS);
   value='[]'; assert.deepEqual(loadColumns(storage),DEFAULT_COLUMNS);
 });

@@ -198,7 +198,7 @@ export default function ReplayChart({
 
   useEffect(() => { if (jumpToken && chartRef.current) chartRef.current.timeScale().scrollToRealTime(); }, [jumpToken]);
 
-  return <div className={expanded ? "relative h-[calc(100vh-150px)] min-h-[650px] w-full" : "relative h-[600px] w-full"}>
+  return <div className={expanded ? "relative h-full min-h-0 w-full" : "relative h-full min-h-[420px] w-full"}>
     <div ref={ref} className="h-full w-full" />
     {crosshairInfo && <div className="chart-crosshair-readout">
       {crosshairInfo.candle && <span><b>O</b> {Number(crosshairInfo.candle.open).toFixed(2)} <b>H</b> {Number(crosshairInfo.candle.high).toFixed(2)} <b>L</b> {Number(crosshairInfo.candle.low).toFixed(2)} <b>C</b> {Number(crosshairInfo.candle.close).toFixed(2)}</span>}

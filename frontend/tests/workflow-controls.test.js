@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workflowContext} from '../src/app/workflow.js';
-import {replayShortcut,jumpCursor} from '../src/features/strategy-lab/replayControls.js';
+import {replayShortcut,jumpCursor,replayStepSize} from '../src/features/strategy-lab/replayControls.js';
 import {scalar,serializeScan,blankScan,saveScan} from '../src/features/screener/scanModel.js';
 import {saveDrawingDefault,drawingStyle,resetDrawingDefault} from '../src/components/chart/drawings/defaults.js';
 test('handoff preserves ticker and New York date across UTC midnight',()=>{
@@ -13,6 +13,10 @@ test('Replay shortcuts focus orders and cannot fire while typing or on repeat',(
  assert.equal(replayShortcut({key:'b'},{}),'buy');assert.equal(replayShortcut({key:'ArrowRight',shiftKey:true},{}),'five');
  for(const el of [{tagName:'INPUT'},{tagName:'TEXTAREA'},{tagName:'SELECT'},{tagName:'BUTTON'},{isContentEditable:true}])assert.equal(replayShortcut({key:'c'},el),null);
  assert.equal(replayShortcut({key:'b',repeat:true},{}),null);assert.equal(replayShortcut({key:'b',ctrlKey:true},{}),null);
+});
+
+test('Replay stepping is relative to the selected timeframe while preserving canonical 1m evaluation',()=>{
+ assert.equal(replayStepSize('1m'),1);assert.equal(replayStepSize('5m'),5);assert.equal(replayStepSize('15m'),15);assert.equal(replayStepSize('1h'),60);assert.equal(replayStepSize('4h',5),1200);
 });
 test('Replay jump returns timeline count without reading unrevealed OHLC',()=>{
  const bars=[0,1,2,3].map(n=>({timestamp:`2026-09-01T14:0${n}:00Z`,get close(){throw Error('future price read');}}));

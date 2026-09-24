@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RUN_TYPES,parseSymbols,independentRuns,runSummary,filterRuns,queueCounts,configurationError} from '../src/features/strategy-lab/backtest-workflow.js';
+import {RUN_TYPES,parseSymbols,independentRuns,runSummary,filterRuns,queueCounts,configurationError,nextRunName} from '../src/features/strategy-lab/backtest-workflow.js';
 import {readUI,writeUI} from '../src/app/uiPreferences.js';
 
 test('run modes retain single, validation and sensitivity workflows',()=>assert.deepEqual(RUN_TYPES,['Single backtest','Validation suite','Sensitivity test']));
 test('invalid or zero sizing cannot silently queue engine fallback amounts',()=>{
-  const p={symbols:['AAPL'],start_date:'2026-01-01',end_date:'2026-01-02',starting_balance:10000,risk_value:1,max_leverage:1,max_open_positions:1,commission_per_order:0,slippage_bps:0,spread_bps:0,trading_weekdays:[0]};
-  assert.equal(configurationError(p),'');assert.match(configurationError({...p,risk_value:0}),/positive/);assert.match(configurationError({...p,starting_balance:NaN}),/positive/);assert.match(configurationError({...p,symbols:[]}),/symbol/);
+  const p={run_name:'Run 1',symbols:['AAPL'],start_date:'2026-01-01',end_date:'2026-01-02',starting_balance:10000,risk_value:1,max_leverage:1,max_open_positions:1,commission_per_order:0,slippage_bps:0,spread_bps:0,trading_weekdays:[0]};
+  assert.equal(configurationError(p),'');assert.match(configurationError({...p,run_name:''}),/Run name/);assert.match(configurationError({...p,risk_value:0}),/positive/);assert.match(configurationError({...p,starting_balance:NaN}),/positive/);assert.match(configurationError({...p,symbols:[]}),/symbol/);
 });
 test('paste parses common delimiters, normalises symbols and removes duplicates',()=>assert.deepEqual(parseSymbols('aapl, MSFT\nNVDA;aapl NQ1!'),['AAPL','MSFT','NVDA','NQ1!']));
+test('next run name follows the highest saved run id',()=>{assert.equal(nextRunName([]),'Run 1');assert.equal(nextRunName([{id:13},{id:7}]),'Run 14');});
 test('batch snapshots isolate symbols and capital, preserve settings and do not mutate input',()=>{
   const base={symbols:['AAPL','MSFT'],starting_balance:10000,risk_value:1,strategy_params:{x:2},experiment_group:'holdout',run_name:'test'};
   const snapshot=JSON.stringify(base),runs=independentRuns(base);
@@ -17,8 +18,8 @@ test('batch snapshots isolate symbols and capital, preserve settings and do not 
   assert.deepEqual(runs.map(r=>r.experiment_group),['holdout-AAPL','holdout-MSFT']);assert.equal(JSON.stringify(base),snapshot);
 });
 test('ready summary reflects costs, sizing, dates and per-symbol sessions',()=>{
-  const p={symbols:['AAPL','NQ1!'],primary_timeframe:'1m',start_date:'2026-01-01',end_date:'2026-01-31',starting_balance:10000,sizing_mode:'cash_risk',risk_value:25,commission_per_order:2,slippage_bps:3,spread_bps:4,session:'auto',test_role:'out_of_sample',same_bar_policy:'stop_first',max_leverage:1};
-  const s=runSummary(p);assert.equal(s.Session,'regular / 24h (per instrument)');assert.equal(s.Sizing,'cash risk · 25');assert.match(s.Costs,/2\/order.*3 bps.*4 bps/);assert.equal(s.Role,'out of sample');assert.match(s.Balance,/10,000 per independent run/);
+  const p={run_name:'Run 8',symbols:['AAPL','NQ1!'],primary_timeframe:'1m',start_date:'2026-01-01',end_date:'2026-01-31',starting_balance:10000,sizing_mode:'cash_risk',risk_value:25,commission_per_order:2,slippage_bps:3,spread_bps:4,session:'auto',test_role:'out_of_sample',same_bar_policy:'stop_first',max_leverage:1};
+  const s=runSummary(p);assert.equal(s.Run,'Run 8');assert.equal(s.Session,'regular / 24h (per instrument)');assert.equal(s.Sizing,'cash risk · 25');assert.match(s.Costs,/2\/order.*3 bps.*4 bps/);assert.equal('Role' in s,false);assert.match(s.Balance,/10,000 per independent run/);
 });
 const runs=[{id:1,name:'Alpha',symbols:['AAPL'],strategy_name:'VWAP',test_role:'development',trades:5,total_r:-1,created_at:'2026-01-02'},{id:2,name:'Beta',symbols:['MSFT'],strategy_name:'VWAP',test_role:'validation',trades:10,total_r:3,created_at:'2026-02-02'},{id:3,name:'Gamma',symbols:['AAPL'],strategy_name:'ORB',test_role:'out_of_sample',trades:0,total_r:null,created_at:'2026-03-02'}];
 test('categorical filters combine checkbox selections without mutating snapshots',()=>{assert.deepEqual(filterRuns(runs,{symbols:['AAPL'],strategy_name:['VWAP','ORB']}).map(r=>r.id),[3,1]);assert.equal(runs[0].id,1);});

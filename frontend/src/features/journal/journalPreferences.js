@@ -10,12 +10,12 @@ export function moveOption(options, index, delta) {
 }
 export const TABLE_COLUMNS = [
   ['opened_at','Date/time'],['ticker','Instrument'],['direction','Direction'],['quantity','Quantity / size'],
-  ['entry_price','Entry'],['exit_price','Exit'],['pnl_amount','P&L'],['currency','Currency'],['r_multiple','R'],
+  ['entry_price','Entry'],['exit_price','Exit'],['result','Result'],['pnl_amount','P&L'],['currency','Currency'],['r_multiple','R'],
   ['source','Source'],['external_provider','Broker'],['account','Account'],['environment','Environment'],
   ['playbook_title','Playbook'],['setup','Setup'],['setup_grade','Grade'],['plan_followed','Plan adherence'],
   ['session_time','Session'],['market_condition','Market regime'],['duration','Duration (min)'],['exit_reason','Exit reason'],
 ];
-export const DEFAULT_COLUMNS = ['opened_at','ticker','direction','quantity','entry_price','exit_price','pnl_amount','currency','r_multiple','source','account','setup_grade'];
+export const DEFAULT_COLUMNS = ['opened_at','ticker','direction','quantity','entry_price','exit_price','result','pnl_amount','currency','r_multiple','source','account','setup_grade'];
 const KEY = 'ledger.journal.tableColumns.v1';
 export function loadColumns(storage) {
   try {

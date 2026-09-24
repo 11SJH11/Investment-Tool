@@ -1,5 +1,4 @@
 import {resetUI} from '../../app/uiPreferences.js';
-import {Section} from '../../components/ui.jsx';
 import {useUIPreference} from '../../app/useUIPreference.js';
 import {useTableView} from '../../components/table/useTableView.js';
 import {journalColumns} from './journalTable.js';
@@ -13,7 +12,6 @@ import PlaybookView from './PlaybookView';
 import TradesView from './TradesView';
 import AnalysisView from './AnalysisView';
 import JournalFilters, { emptyFilters } from './JournalFilters';
-import BrokerSyncPanel from './BrokerSyncPanel';
 const tabs=['Trades','Analysis','Calendar','Daily Review','Playbook'];
 export default function JournalPage({onDirtyChange}) {
   const [tab,setTab]=useUIPreference('journal.tab','Trades'),[zone,setZone]=useState(null),[filters,setFilters]=useUIPreference('journal.filters',{...emptyFilters});
@@ -33,10 +31,10 @@ export default function JournalPage({onDirtyChange}) {
   const controller={...table,reset:resetView,setView:change=>navigate(()=>table.setView(change))};
   const shared={filters:query,timeZone:zone,playbooks,options,revision,onChanged:changed,onDirtyChange:setDirty,...data,columns,table:controller};
 
-  return <div className="max-w-[1550px]"><p className="text-xs uppercase tracking-widest text-stone-500">Trading journal</p><h2 className="mt-1 text-3xl font-semibold">Journal</h2><p className="mt-2 text-sm text-stone-600">Execution facts, your trading plan, and what you learned.</p><Section id="journal-connections" title="Broker connections"><BrokerSyncPanel onSynced={changed}/></Section>
+  return <div className="dense-page max-w-[1550px]"><p className="text-xs uppercase tracking-widest text-stone-500">Trading journal</p><h2 className="mt-1 text-3xl font-semibold">Journal</h2><p className="mt-2 text-sm text-stone-600">Execution facts, your trading plan, and what you learned.</p>
     {error&&<p role="alert" className="my-3 text-sm text-red-700">{error}</p>}
     {zone&&<div className="my-4 flex flex-wrap items-center gap-3"><label className="text-sm">Journal timezone <select className="input ml-2 inline-block w-60" value={zone} onChange={e=>{const next=resolvedZone(e.target.value);navigate(()=>{api.saveJournalSettings(next).then(()=>setZone(next)).catch(e=>setError(e.message));});}}>{[...new Set([...TIMEZONE_OPTIONS.filter(x=>x.value!=='local').map(x=>x.value),resolvedZone('local'),zone])].map(z=><option key={z}>{z}</option>)}</select></label><span className="text-xs text-stone-500">Days use entry time. Calendar, Analysis and Daily Review share this timezone.</span></div>}
     <div className="feature-nav" aria-label="Journal navigation">{tabs.map(t=><button key={t} aria-current={tab===t?'page':undefined} onClick={()=>navigate(()=>setTab(t))} className={`border-b-2 px-4 py-2 text-sm ${tab===t?'border-stone-900 font-semibold':'border-transparent text-stone-500'}`}>{t}</button>)}</div>
-    {!zone?<p className="py-8 text-stone-500">Loading Journal settings...</p>:<div className="mt-5 space-y-5">{['Trades','Analysis','Calendar'].includes(tab)&&<JournalFilters value={filters} onChange={f=>navigate(()=>setFilters(f))} options={options} playbooks={playbooks} search={table.view.search} onSearch={search=>controller.setView({search})} table={controller} onReset={resetView}/>}{tab==='Trades'&&<TradesView key={zone} {...shared}/ >}{tab==='Analysis'&&<AnalysisView {...shared}/ >}{tab==='Calendar'&&<CalendarView {...shared} onOpenDay={openDay}/ >}{tab==='Daily Review'&&<DailyReviewView {...shared} initialDay={day}/ >}{tab==='Playbook'&&<PlaybookView {...shared}/ >}</div>}
+    {!zone?<p className="py-8 text-stone-500">Loading Journal settings...</p>:<div className="mt-5 space-y-5">{['Analysis','Calendar'].includes(tab)&&<JournalFilters value={filters} onChange={f=>navigate(()=>setFilters(f))} options={options} playbooks={playbooks} search={table.view.search} onSearch={search=>controller.setView({search})} table={controller} onReset={resetView}/>}{tab==='Trades'&&<TradesView key={zone} {...shared}/ >}{tab==='Analysis'&&<AnalysisView {...shared}/ >}{tab==='Calendar'&&<CalendarView {...shared} onOpenDay={openDay}/ >}{tab==='Daily Review'&&<DailyReviewView {...shared} initialDay={day}/ >}{tab==='Playbook'&&<PlaybookView {...shared}/ >}</div>}
   </div>;
 }

@@ -14,6 +14,8 @@ async def lifespan(app: FastAPI):
     services = build_services(get_settings())
     app.state.services = services
     services.broker_scheduler.start()
+    # Keep discovery snapshots warm without blocking startup or discarding stale cache.
+    services.technical_screener.ensure_fresh()
     try:
         yield
     finally:

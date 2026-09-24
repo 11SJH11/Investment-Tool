@@ -1,7 +1,5 @@
-import {Section} from '../../components/ui.jsx';
 ﻿import {useMemo,useState} from 'react';
 import {api} from '../../api/client';
-import BrokerProfilesPanel from '../brokers/BrokerProfilesPanel';
 import {moneyCurrency} from '../journal/journalUtils';
 import {activitySemantics,brokerDate,percent,positionMetrics,returnPercent} from './brokerPortfolioUtils';
 import {usePortfolioSnapshot} from './usePortfolioSnapshot.js';
@@ -20,7 +18,7 @@ export default function BrokerPortfolioPanel() {
     return definitions.map(([key,label,kind])=>({key,label,kind,sticky:key==='name',render:r=>key==='date'?brokerDate(r.date,zone):key==='returnPct'?percent(r.returnPct):['averageCost','currentPrice','price'].includes(key)?amount(r[key],r.priceCurrency):['invested','value','pnl'].includes(key)?amount(r[key],r.walletCurrency):key==='direction'?<span className={['BUY','IN'].includes(r.direction)?'positive':['SELL','OUT'].includes(r.direction)?'negative':''}>{r.direction}</span>:r[key]??'Unavailable'}));
   },[kind,zone]);
   const metrics=[['Account value',amount(s.totalValue,currency)],['Invested / open cost',amount(s.investments?.totalCost,currency)],['Unrealised P&L',amount(s.investments?.unrealizedProfitLoss,currency)],['Unrealised return',percent(currency?returnPercent(s.investments?.unrealizedProfitLoss,s.investments?.totalCost):null)],['Realised P&L',amount(s.investments?.realizedProfitLoss,currency)],['Cash',amount(s.cash?.availableToTrade,currency)]];
-  return <section className="mt-5"><Section id="portfolio-connections" title="Broker connections and auto-sync"><BrokerProfilesPanel destination="portfolio" onSynced={()=>setRevision(v=>v+1)}/></Section>{error&&<p role="alert" className="text-red-700">{error}</p>}{!current?<p className="empty-state">Connect a read-only broker to view your Portfolio snapshot.</p>:<>
+  return <section className="mt-5">{error&&<p role="alert" className="text-red-700">{error}</p>}{!current?<p className="empty-state">No broker Portfolio snapshot is available. Manage read-only broker connections in Settings.</p>:<>
     <div className="table-toolbar"><h3 className="font-semibold">Broker Portfolio snapshot</h3><label>Account <select className="input table-density" value={account} onChange={e=>change(()=>setAccount(e.target.value))}>{accounts.map(a=><option key={a.account_key} value={a.account_key}>{a.label}</option>)}</select></label></div>
     <dl className="portfolio-metrics">{metrics.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="muted text-xs mt-2">As of {brokerDate(current.synced_at,zone)} ({zone}). Prices retain instrument currency; wallet values retain account currency. Unrealised return = P&L / open cost. Historical activity does not add to holdings.</p>
     <nav className="feature-nav" aria-label="Portfolio records">{[['position','Positions'],['orders','Orders / fills'],['dividends','Dividends'],['transactions','Cash transactions']].map(([key,label])=><button key={key} aria-current={kind===key?'page':undefined} onClick={()=>change(()=>setKind(key))}>{label}</button>)}</nav>

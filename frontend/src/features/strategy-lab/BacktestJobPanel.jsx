@@ -9,7 +9,7 @@ export default function BacktestJobPanel({queue,onOpen}) {
   const [error,setError]=useState(''),[compare,setCompare]=useState([]);
   const action=async fn=>{try{setError('');await fn();}catch(e){setError(e.message);}};
   const groups=Object.groupBy(queue.jobs,j=>j.batch_id);
-  return <Panel aria-label="Backtest queue"><PageToolbar><h3 className="font-semibold">Backtest jobs</h3><span className="text-xs">{Object.entries(queueCounts(queue.jobs)).map(([k,v])=>`${v} ${k}`).join(" \u00b7 ")}</span><Button onClick={()=>setExpanded(!expanded)} aria-expanded={expanded}>{expanded?"Collapse jobs":"Show jobs"}</Button><span className="text-xs text-stone-500">Up to {queue.workers} workers · independent capital per symbol</span></PageToolbar>
+  return <Panel aria-label="Backtest queue"><PageToolbar><h3 className="font-semibold">Backtest jobs</h3><span className="text-xs">{Object.entries(queueCounts(queue.jobs)).map(([k,v])=>`${v} ${k}`).join(" \u00b7 ")}</span><Button onClick={()=>setExpanded(!expanded)} aria-expanded={expanded}>{expanded?"Collapse jobs":"Show jobs"}</Button>{queue.jobs.some(j=>['completed','failed','cancelled'].includes(j.status))&&<Button onClick={()=>action(()=>queue.clearFinished())}>Clear finished</Button>}<span className="text-xs text-stone-500">Up to {queue.workers} workers · independent capital per symbol</span></PageToolbar>
     {(error||queue.error)&&<p role="alert">{error||queue.error}</p>}
     {!expanded&&queue.jobs.filter(j=>["running","preparing data"].includes(j.status)).map(j=><p key={j.id} role="status" className="text-xs muted mt-2">{j.payload.symbols.join(", ")} {j.status}{j.total?` ${j.processed}/${j.total} (${Math.floor(100*j.processed/j.total)}%)`:""}</p>)}
     {!queue.jobs.length&&<p className="mt-2 text-sm text-stone-500">Queue a run and keep configuring your next test.</p>}
@@ -21,6 +21,7 @@ export default function BacktestJobPanel({queue,onOpen}) {
         {job.status==='completed'&&<Button onClick={()=>onOpen(job.run_id)}>Open result #{job.run_id}</Button>}
         {['queued','running','preparing data'].includes(job.status)&&<Button disabled={!!job.cancel_requested} onClick={()=>action(()=>queue.cancel(job.id))}>Cancel</Button>}
         {job.status==='failed'&&<><span>{job.error}</span><Button onClick={()=>action(()=>queue.retry(job.id))}>Retry failed</Button></>}
+        {['completed','failed','cancelled'].includes(job.status)&&<Button onClick={()=>action(()=>queue.remove(job.id))}>Delete job</Button>}
       </div>)}
     </div>)}</div>
     {compare.length>1&&<Section id="queue-comparison" title="Batch comparison"><RunComparison ids={compare}/></Section>}

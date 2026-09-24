@@ -244,7 +244,7 @@ def build_services(settings: Settings) -> AppServices:
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,
-        technical_screener=TechnicalScreener(database,market_data),
+        technical_screener=TechnicalScreener(database,market_data,screener),
         broker_sync=broker_sync,
         broker_connections=broker_connections,
         broker_scheduler=BrokerScheduler(broker_connections, database),

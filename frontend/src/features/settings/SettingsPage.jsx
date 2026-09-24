@@ -13,7 +13,7 @@ export default function SettingsPage({ preferences, onChange }) {
   const set=(patch)=>onChange({ ...preferences, ...patch });
   const move=(index,delta)=>{ const list=[...(preferences.navOrder||DEFAULT_NAV)]; const j=index+delta; if(j<0||j>=list.length)return; [list[index],list[j]]=[list[j],list[index]]; set({navOrder:list}); };
   const refresh=async()=>{ setRefreshing(true); setError(""); setMessage(""); try{ const r=await api.refreshSymbols(); setMessage(`Loaded ${Number(r.symbols||0).toLocaleString()} symbols from ${r.source}.`); setStatus(await api.dataStatus()); } catch(e){setError(e.message)} finally{setRefreshing(false)} };
-  return <div className="max-w-5xl">
+  return <div className="dense-page max-w-5xl">
     <p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">Settings</h2><p className="mt-2 text-sm text-stone-600">Appearance, chart defaults, navigation and local data maintenance.</p>
     {error&&<div className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{message&&<div className="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
     <p className="muted text-xs mt-3">Charts powered by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer" className="underline">TradingView Lightweight Charts</a> (TradingView, Inc.; Apache-2.0).</p>

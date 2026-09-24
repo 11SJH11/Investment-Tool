@@ -30,21 +30,49 @@ def technical_snapshot(frame, now=None):
     return {**result,'snapshot_at':frame.timestamp.iloc[-1].isoformat(),'history_bars':len(frame)}
 
 class TechnicalScreener:
-    def __init__(self,database,market_data):
-        self.database=database;self.market_data=market_data;self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='screener-cache');self.lock=Lock();self.future=None
-        self.state={'status':'idle','processed':0,'stored':0,'failed':0,'total':0}
+    def __init__(self,database,market_data,screener=None):
+        self.database=database;self.market_data=market_data;self.screener=screener;self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='screener-cache');self.lock=Lock();self.future=None
+        self.state={'status':'idle','phase':'idle','automatic':False,'processed':0,'stored':0,'failed':0,'total':0,'price_stored':0,'price_failed':0}
     def close(self):self.pool.shutdown(wait=True,cancel_futures=True)
     def status(self):
         with self.lock:return dict(self.state)
-    def start(self):
+    def ensure_fresh(self):
+        """Start safe cache maintenance in the background without hiding cached results.
+
+        Technicals are rebuilt from local daily-bar files only. Price snapshots use
+        Alpaca's batch endpoint when configured and are throttled across restarts.
+        SEC bulk fundamentals remain explicit because the archive is comparatively
+        large and should not be downloaded merely because the app opened.
+        """
+        now=pd.Timestamp.now(tz='UTC')
+        last=self.database.get_setting('screener.maintenance.last_started_at')
+        if last:
+            try:
+                stamp=pd.Timestamp(last);stamp=stamp.tz_localize('UTC') if stamp.tzinfo is None else stamp.tz_convert('UTC')
+                if (now-stamp).total_seconds()<1800:return self.status()
+            except Exception:pass
+        with self.database.connect() as con:
+            tech=con.execute('SELECT COUNT(*) AS n,MAX(updated_at) AS updated_at FROM technical_snapshots').fetchone()
+            prices=con.execute('SELECT COUNT(*) AS n,MAX(updated_at) AS updated_at FROM market_snapshots').fetchone()
+        def due(row,hours):
+            if not row or not int(row['n'] or 0) or not row['updated_at']:return True
+            stamp=pd.Timestamp(row['updated_at']);stamp=stamp.tz_localize('UTC') if stamp.tzinfo is None else stamp.tz_convert('UTC')
+            return (now-stamp).total_seconds()>hours*3600
+        demo_mode=str(self.database.get_setting('demo_mode') or '').lower()=='true'
+        technical_due=due(tech,12) and not demo_mode
+        price_due=bool(not demo_mode and self.screener and self.screener.alpaca is not None and due(prices,4))
+        if not technical_due and not price_due:return self.status()
+        self.database.set_setting('screener.maintenance.last_started_at',now.isoformat())
+        return self.start(include_prices=price_due,automatic=True)
+    def start(self,include_prices=False,automatic=False):
         with self.lock:
             if self.future and not self.future.done():return dict(self.state)
-            self.state={'status':'queued','processed':0,'stored':0,'failed':0,'total':0};self.future=self.pool.submit(self._refresh)
+            self.state={'status':'queued','phase':'queued','automatic':bool(automatic),'processed':0,'stored':0,'failed':0,'total':0,'price_stored':0,'price_failed':0};self.future=self.pool.submit(self._refresh,bool(include_prices))
             return dict(self.state)
-    def _refresh(self):
+    def _refresh(self,include_prices=False):
         try:
             with self.database.connect() as con:tickers=[r[0] for r in con.execute("SELECT ticker FROM securities WHERE tradable=1 ORDER BY ticker")]
-            with self.lock:self.state.update(status='running',total=len(tickers))
+            with self.lock:self.state.update(status='running',phase='technicals',total=len(tickers))
             for ticker in tickers:
                 try:
                     provider=self.market_data.provider_for(ticker) if self.market_data else None
@@ -60,9 +88,18 @@ class TechnicalScreener:
                     with self.lock:self.state['failed']+=1
                 finally:
                     with self.lock:self.state['processed']+=1
-            with self.lock:self.state['status']='completed'
+            if include_prices and self.screener and self.screener.alpaca is not None:
+                with self.lock:self.state['phase']='prices'
+                try:
+                    outcome=self.screener.refresh_price_snapshots()
+                    with self.lock:
+                        self.state['price_stored']=int(outcome.get('stored') or 0)
+                        self.state['price_failed']=int(outcome.get('failed') or 0)
+                except Exception:
+                    with self.lock:self.state['price_failed']=-1
+            with self.lock:self.state.update(status='completed',phase='idle')
         except Exception:
-            with self.lock:self.state['status']='failed'
+            with self.lock:self.state.update(status='failed',phase='idle')
     def query(self,conditions,match='all',security_type='stock',text='',limit=500,offset=0,exchange='',tradable=True,fractionable=None,shortable=None,require_fundamentals=False):
         if match not in {'all','any'} or len(conditions)>30:raise ValueError('Choose ALL or ANY and at most 30 conditions')
         clauses=[];params=[]

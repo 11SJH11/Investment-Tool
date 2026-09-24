@@ -18,6 +18,7 @@ export default function PortfolioPage({ onOpenTicker }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
 
   const load = async (refresh = false) => {
     setLoading(true); setError("");
@@ -62,7 +63,7 @@ export default function PortfolioPage({ onOpenTicker }) {
   const hasManualRecords = data.transactions.length > 0 || data.holdings.length > 0;
 
   return (
-    <div className="max-w-[1450px]">
+    <div className="dense-page max-w-[1450px]">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-xs uppercase tracking-widest text-stone-500">Long-term investing</p><h2 className="mt-1 text-3xl font-semibold">Investment Portfolio</h2><p className="mt-2 text-sm text-stone-600">Enter what you invested; Ledger can estimate the historical share price and calculate fractional quantity. Exact broker fills can always be overridden.</p></div>
         <div className="flex gap-2">
@@ -115,8 +116,8 @@ export default function PortfolioPage({ onOpenTicker }) {
       </section>
 
       <section className="mt-6 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-        <div className="border-b border-stone-100 px-5 py-4"><h3 className="font-semibold">Transaction history</h3></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Date","Account","Ticker","Action","Amount / input","Shares bought / sold","Transaction share price","Price source","Fees","Note",""] .map((x, i) => <th key={`${x}-${i}`} className="px-4 py-3 text-left">{x}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{(data.transactions || []).map((t) => <tr key={t.id}><td className="px-4 py-3 whitespace-nowrap">{new Date(t.occurred_at).toLocaleString("en-GB")}</td><td className="px-4 py-3">{t.account}</td><td className="px-4 py-3 font-mono">{t.ticker}</td><td className={`px-4 py-3 font-medium ${t.action === "BUY" ? "text-emerald-700" : "text-red-700"}`}>{t.action}</td><td className="px-4 py-3">{t.input_mode === "amount" && t.input_amount != null ? money(t.input_amount, t.base_currency || "GBP") : "Entered as shares"}</td><td className="px-4 py-3">{Number(t.quantity).toFixed(8)}</td><td className="px-4 py-3">{money(t.price, t.asset_currency || "USD")}</td><td className="px-4 py-3 text-xs text-stone-500">{t.price_overridden ? "Manual fill" : (t.price_source || "Legacy")}</td><td className="px-4 py-3">{money(t.fees, t.fees_currency || t.base_currency || "GBP")}</td><td className="px-4 py-3 max-w-xs truncate">{t.note || "—"}</td><td className="px-4 py-3"><button onClick={() => remove(t.id)} className="text-xs text-stone-400 hover:text-red-700">Delete</button></td></tr>)}</tbody></table></div>
+        <div className="border-b border-stone-100 px-5 py-4 flex items-center justify-between gap-3"><h3 className="font-semibold">Transaction history</h3>{data.transactions.length>20&&<button className="mini-btn" onClick={()=>setShowAllTransactions(v=>!v)}>{showAllTransactions?"Show 20":"Expand all"}</button>}</div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Date","Account","Ticker","Action","Amount / input","Shares bought / sold","Transaction share price","Price source","Fees","Note",""] .map((x, i) => <th key={`${x}-${i}`} className="px-4 py-3 text-left">{x}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{(showAllTransactions ? (data.transactions || []) : (data.transactions || []).slice(0,20)).map((t) => <tr key={t.id}><td className="px-4 py-3 whitespace-nowrap">{new Date(t.occurred_at).toLocaleString("en-GB")}</td><td className="px-4 py-3">{t.account}</td><td className="px-4 py-3 font-mono">{t.ticker}</td><td className={`px-4 py-3 font-medium ${t.action === "BUY" ? "text-emerald-700" : "text-red-700"}`}>{t.action}</td><td className="px-4 py-3">{t.input_mode === "amount" && t.input_amount != null ? money(t.input_amount, t.base_currency || "GBP") : "Entered as shares"}</td><td className="px-4 py-3">{Number(t.quantity).toFixed(8)}</td><td className="px-4 py-3">{money(t.price, t.asset_currency || "USD")}</td><td className="px-4 py-3 text-xs text-stone-500">{t.price_overridden ? "Manual fill" : (t.price_source || "Legacy")}</td><td className="px-4 py-3">{money(t.fees, t.fees_currency || t.base_currency || "GBP")}</td><td className="px-4 py-3 max-w-xs truncate">{t.note || "—"}</td><td className="px-4 py-3"><button onClick={() => remove(t.id)} className="text-xs text-stone-400 hover:text-red-700">Delete</button></td></tr>)}</tbody></table></div>
       </section>
       </>}
     </div>

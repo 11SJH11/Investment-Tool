@@ -8,7 +8,7 @@ import math
 
 DIMENSIONS = ("ticker", "account", "external_provider", "environment", "source", "playbook_id",
               "setup", "setup_grade", "plan_followed", "direction", "session_time", "market_condition",
-              "structure_alignment", "entry_relativity", "shift", "confluences", "mistakes", "emotions",
+              "structure_alignment", "context_timeframe", "entry_relativity", "shift", "confluences", "mistakes", "emotions",
               "weekday", "entry_hour", "month", "result")
 
 
@@ -19,7 +19,7 @@ def dimension_values(trade, key, zone):
         value = local.strftime(formats[key]) if local else None
     elif key == "environment":
         value = trade.get("source_metadata", {}).get("environment")
-    elif key in ("structure_alignment", "entry_relativity", "shift", "confluences", "mistakes", "emotions"):
+    elif key in ("structure_alignment", "context_timeframe", "entry_relativity", "shift", "confluences", "mistakes", "emotions"):
         value = trade.get("review_data", {}).get(key)
     else:
         value = trade.get(key)
@@ -41,7 +41,7 @@ def parse_dimensions(filters):
 def filter_options(rows, timezone_name):
     zone = journal_zone(timezone_name)
     result = {key: sorted({v for t in rows for v in dimension_values(t, key, zone)}) for key in DIMENSIONS}
-    for key in ('currency','playbook_title','exit_reason'):
+    for key in ('currency','playbook_title','exit_reason','trade_type','entry_timeframe','timeframe_alignment','dxy','tf_type','wick'):
         result[key] = sorted({str(table_value(t,key) or '') for t in rows})
     return result
 
@@ -105,7 +105,7 @@ def filter_trades(trades, filters):
 
 
 TABLE_FIELDS = {'opened_at','ticker','direction','quantity','entry_price','exit_price','pnl_amount','currency',
-    'r_multiple','source','external_provider','account','environment','playbook_title','setup','setup_grade',
+    'r_multiple','result','source','external_provider','account','environment','playbook_title','setup','setup_grade',
     'plan_followed','session_time','market_condition','duration','exit_reason','notes','entry_notes','learning'}
 NUMERIC_FIELDS = {'quantity','entry_price','exit_price','pnl_amount','r_multiple','duration'}
 

@@ -98,6 +98,25 @@ class BacktestJobs:
                 self._update(job_id, cancel_requested=1)
             return self.get(job_id)
 
+
+    def delete(self, job_id):
+        """Delete one terminal queue record without deleting its saved backtest run."""
+        with self.lock:
+            job = self.get(job_id)
+            if job['status'] not in ('completed', 'failed', 'cancelled'):
+                raise ValueError('Only completed, failed or cancelled jobs can be deleted')
+            with self.database.connect() as db:
+                db.execute('DELETE FROM backtest_jobs WHERE id=?', (job_id,))
+        return {'ok': True, 'job_id': job_id, 'run_id': job.get('run_id')}
+
+    def clear_finished(self):
+        """Remove terminal queue history only; immutable saved runs remain untouched."""
+        with self.lock:
+            with self.database.connect() as db:
+                row = db.execute("SELECT COUNT(*) AS n FROM backtest_jobs WHERE status IN ('completed','failed','cancelled')").fetchone()
+                count = int(row['n'] or 0)
+                db.execute("DELETE FROM backtest_jobs WHERE status IN ('completed','failed','cancelled')")
+        return {'ok': True, 'deleted': count}
     def retry(self, job_id, request_key):
         job = self.get(job_id)
         if job['status'] != 'failed':

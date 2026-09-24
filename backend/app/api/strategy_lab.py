@@ -85,6 +85,20 @@ def cancel_job(job_id: str, services: AppServices = Depends(get_services)):
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.delete('/jobs')
+def clear_finished_jobs(services: AppServices = Depends(get_services)):
+    return services.backtest_jobs.clear_finished()
+
+
+@router.delete('/jobs/{job_id}')
+def delete_job(job_id: str, services: AppServices = Depends(get_services)):
+    try:
+        return services.backtest_jobs.delete(job_id)
+    except ValueError as exc:
+        message = str(exc)
+        raise HTTPException(404 if message == 'Job not found' else 409, message) from exc
+
+
 @router.post('/jobs/{job_id}/retry')
 def retry_job(job_id: str, request_key: str, services: AppServices = Depends(get_services)):
     try:

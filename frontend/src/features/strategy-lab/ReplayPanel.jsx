@@ -2,7 +2,7 @@ import ReplayOrderTicket from "./ReplayOrderTicket.jsx";
 import {loadPreferences} from "../../app/preferences.js";
 import ReplayToolbar from "./ReplayToolbar.jsx";
 import {useReplayPlayback} from "./useReplayPlayback.js";
-import {jumpCursor} from "./replayControls.js";
+import {jumpCursor,replayStepSize} from "./replayControls.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
 import { replayEconomics, replaySource, replayRollAction } from "./futures-utils";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,6 +42,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const [playing, setPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(Number(preferences.replaySpeed)||1);
   const [expanded, setExpanded] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(true);
   const [followReplay, setFollowReplay] = useState(Boolean(preferences.replayFollow));
   const [jumpToken, setJumpToken] = useState(0);
   const [integrityCompromised, setIntegrityCompromised] = useState(false);
@@ -115,7 +116,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
         activeSymbol, config.replayDate, config.replayEndDate, config.startTime,
         config.timeframe, config.session, config.contextBars, config.contextDays, restore?.anchorTimestamp || null,
       );
-      setSymbol(activeSymbol); setSymbolInput(activeSymbol); setTimeframe(config.timeframe); setSession(config.session); setDataset({...response, config: {...config, symbol: activeSymbol}}); setIndicatorData({});
+      setSymbol(activeSymbol); setSymbolInput(activeSymbol); setTimeframe(config.timeframe); setSession(config.session); setDataset({...response, config: {...config, symbol: activeSymbol}}); setIndicatorData({}); setSetupOpen(false);
       const initial = response.initial_visible_count || 1;
       const restoredVisible = restore?.anchorTimestamp
         ? countThroughTimestamp(response.timeline.map(timestamp => ({timestamp})), restore.anchorTimestamp, initial)
@@ -250,7 +251,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     return { closed: false, position: updated };
   };
 
-  const advance = async (count = 1) => {
+  const advanceSourceBars = async (count = 1) => {
     if (!dataset || count <= 0 || busy.current) return;
     busy.current = true; setLoading(true);
     try {
@@ -319,7 +320,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const rewindOne = async () => {
     if (!dataset || visibleCount <= (dataset.initial_visible_count || 1)) return;
     if (position || pendingOrder || pendingClose) { onError?.("Close/cancel the active replay trade or order before rewinding."); return; }
-    const cursor = Math.max(dataset.initial_visible_count || 1, visibleCount - 1);
+    const cursor = Math.max(dataset.initial_visible_count || 1, visibleCount - replayStepSize(timeframe,1));
     await fetchReplay(dataset.config, {
       anchorTimestamp: bars[cursor-1].timestamp, frontierTimestamp: bars[furthestVisibleCount-1].timestamp,
       integrityCompromised: true, followReplay: false, preserveViewport: true,
@@ -330,7 +331,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     if (!currentBar) return;
     const currentDate = nyDate(currentBar.timestamp);
     const nextIndex = bars.findIndex((bar, index) => index >= visibleCount && nyDate(bar.timestamp) !== currentDate);
-    if (nextIndex >= 0) await advance(nextIndex - visibleCount + 1);
+    if (nextIndex >= 0) await advanceSourceBars(nextIndex - visibleCount + 1);
   };
 
   const placeOrder = (direction) => {
@@ -408,26 +409,26 @@ export default function ReplayPanel({ indicators = [], onError }) {
     const cursor=jumpCursor(bars,stamp,dataset.initial_visible_count||1);
     if(cursor==null){onError?.('Choose a time inside the loaded replay period.');return;}
     setPlaying(false);
-    if(cursor>=visibleCount){await advance(cursor-visibleCount);return;}
+    if(cursor>=visibleCount){await advanceSourceBars(cursor-visibleCount);return;}
     if(position||pendingOrder||pendingClose){onError?.('Close/cancel the active replay trade or order before rewinding.');return;}
     await fetchReplay(dataset.config,{anchorTimestamp:bars[cursor-1].timestamp,frontierTimestamp:bars[furthestVisibleCount-1].timestamp,integrityCompromised:true,followReplay:false,preserveViewport:true});
   };
   useReplayPlayback({playing,speed:playbackSpeed,ready:Boolean(dataset),finished,actions:{
-    next:()=>advance(1),five:()=>advance(5),previous:rewindOne,play:()=>setPlaying(v=>!v),
+    next:()=>advanceSourceBars(replayStepSize(timeframe,1)),five:()=>advanceSourceBars(replayStepSize(timeframe,5)),previous:rewindOne,play:()=>setPlaying(v=>!v),
     buy:()=>document.querySelector('[data-replay-buy]')?.focus(),sell:()=>document.querySelector('[data-replay-sell]')?.focus(),
     limit:()=>setOrderType('limit'),close:()=>{if(position&&nextBar)setPendingClose(true);},
     escape:()=>{setDrawingTool('cursor');setSelectedDrawingId(null);setExpanded(false);}
   }});
-  const workspace = dataset && <div className={expanded ? "fixed inset-0 z-50 overflow-auto bg-stone-100 p-3" : "mt-4"}>
-    <div className={`rounded-xl border border-stone-200 bg-white ${expanded ? "min-h-[calc(100vh-24px)] p-3 shadow-2xl" : "p-4"}`}>
-      <ReplayToolbar busy={loading} help={preferences.replayHelp!==false} title={`${symbol} ${timeframe} / ${fmt(currentBar?.timestamp,timeZone)}`} canPrevious={visibleCount>(dataset.initial_visible_count||1)&&!position&&!pendingOrder&&!pendingClose} canNext={Boolean(nextBar)} playing={playing} speed={playbackSpeed} setSpeed={setPlaybackSpeed} follow={followReplay} expanded={expanded} previous={rewindOne} next={()=>advance(1)} five={()=>advance(5)} togglePlay={()=>setPlaying(v=>!v)} nextSession={jumpNextSession} toggleFollow={()=>{setFollowReplay(v=>!v);setJumpToken(v=>v+1);}} current={()=>setJumpToken(v=>v+1)} save={saveCheckpoint} restart={()=>fetchReplay({symbol,replayDate,replayEndDate,startTime,timeframe,session,...context})} objects={()=>setObjectsOpen(v=>!v)} toggleExpanded={()=>setExpanded(v=>!v)} jump={jumpTo}/>
-      {expanded&&<div className="ui-toolbar">{TIMEFRAMES.map(tf=><button key={tf} className="mini-btn" onClick={()=>switchTimeframe(tf)}>{tf}</button>)}</div>}
-      <div className={`mt-3 rounded-md px-3 py-2 text-xs ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
+  const workspace = dataset && <div className={`replay-workspace ${expanded ? "replay-workspace-expanded" : "replay-workspace-inline"}`}>
+    <div className="replay-workspace-card">
+      <ReplayToolbar busy={loading} help={preferences.replayHelp!==false} title={`${symbol} ${timeframe} / ${fmt(currentBar?.timestamp,timeZone)}`} canPrevious={visibleCount>(dataset.initial_visible_count||1)&&!position&&!pendingOrder&&!pendingClose} canNext={Boolean(nextBar)} playing={playing} speed={playbackSpeed} setSpeed={setPlaybackSpeed} follow={followReplay} expanded={expanded} previous={rewindOne} next={()=>advanceSourceBars(replayStepSize(timeframe,1))} five={()=>advanceSourceBars(replayStepSize(timeframe,5))} togglePlay={()=>setPlaying(v=>!v)} nextSession={jumpNextSession} toggleFollow={()=>{setFollowReplay(v=>!v);setJumpToken(v=>v+1);}} save={saveCheckpoint} restart={()=>fetchReplay({symbol,replayDate,replayEndDate,startTime,timeframe,session,...context})} objects={()=>setObjectsOpen(v=>!v)} toggleExpanded={()=>setExpanded(v=>!v)} jump={jumpTo}/>
+      <div className="replay-timeframes mt-1" aria-label="Replay timeframe">{TIMEFRAMES.map(tf=><button key={tf} disabled={loading} className={`chart-toolbar-btn ${timeframe===tf?"active":""}`} onClick={()=>switchTimeframe(tf)}>{tf}</button>)}</div>
+      <div className={`replay-integrity ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
         Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.provider ? `${dataset.provider} · ` : ""}{dataset.source_timeframe || timeframe}{String(dataset.aggregation||"").includes("aligned_from_1m") ? ` → ${timeframe}` : ""}{dataset.effective_session==="24h" ? " · 24h market" : ""}.</span>
         <FuturesProvenance bars={dataset.source_bars}/>
       </div>
-      <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="min-w-0">
+      <div className="replay-main-grid">
+        <div className="replay-chart-column">
           <div className="chart-stage replay-chart-stage">
             <ChartDrawingToolbar tool={drawingTool} onToolChange={setDrawingTool} magnet={drawingMagnet} onMagnetChange={setDrawingMagnet} onUndo={undoDrawing} onRedo={redoDrawing} canDelete={Boolean(selectedDrawingId)} onDelete={() => deleteDrawing(selectedDrawingId)} />
             <div className="chart-canvas-wrap"><ReplayChart bars={visibleBars} overlays={visibleIndicators} timeframe={timeframe} timeZone={timeZone} position={position} closedTrade={closedTrade} pendingOrder={pendingOrder} expanded={expanded} followReplay={followReplay} jumpToken={jumpToken} showVolume={showVolume} volumeStyle={volumeStyle} drawingTool={drawingTool} magnet={drawingMagnet} drawings={drawings} selectedDrawingId={selectedDrawingId} onSelectDrawing={setSelectedDrawingId} onDrawingsChange={applyDrawings} onDrawingToolChange={setDrawingTool} onPositionDrawing={usePositionDrawing} onUndoDrawing={undoDrawing} onRedoDrawing={redoDrawing} onDeleteDrawing={deleteDrawing} drawingMeta={{ created_at_replay_timestamp: currentBar?.timestamp || null, created_timeframe: timeframe }} /></div>
@@ -435,8 +436,8 @@ export default function ReplayPanel({ indicators = [], onError }) {
           </div>
           {paneIndicators.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{paneIndicators.map((item) => { const value = currentBar ? currentValue(item, currentBar.timestamp) : null; return <span key={item.id} className="rounded bg-stone-100 px-2 py-1 text-xs"><span style={{ color: item.color }}>●</span> {indicatorLabel(item, indicators, symbol)}: <strong>{value == null ? "—" : value.toFixed(3)}</strong></span>; })}</div>}
         </div>
-        <div className="space-y-3">
-          <div className="rounded-lg border border-stone-200 p-4">
+        <div className="replay-side-panel">
+          <div className="replay-side-card">
             <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Indicators</h4><select className="rounded-md border border-stone-300 px-2 py-1 text-xs" defaultValue="" onChange={(e) => { addIndicator(e.target.value); e.target.value = ""; }}><option value="">+ Add indicator</option>{indicators.filter((item) => item.causal).map((item) => <option key={item.key} value={item.key}>{item.key === "volume" && symbol === "XAUUSD" ? "Tick Volume · OANDA activity" : item.name}</option>)}</select></div>
             <div className="mt-3 space-y-2">{selectedIndicators.map((item) => {
               const data = indicatorData[item.id]; const value = currentBar && data ? currentValue(data, currentBar.timestamp) : null;
@@ -453,25 +454,30 @@ export default function ReplayPanel({ indicators = [], onError }) {
           <Field label="Display timezone"><select className="input" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>{TIMEZONE_OPTIONS.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select></Field>
         </div>
       </div>
-      <p className="mt-3 text-xs text-stone-500">Shortcuts: Space play/pause · → next bar · Shift+→ +5 · ← review one previously revealed bar. With a drawing selected: Ctrl/Cmd+C copy · Ctrl/Cmd+V paste · Delete remove · Ctrl/Cmd+Z/Y undo/redo. Rewinding marks the session as review mode and order entry stays disabled until you return to the reveal frontier.</p>
+      <p className="replay-shortcuts-note">Shortcuts: Space play/pause · → next bar · Shift+→ +5 · ← review one previously revealed bar. With a drawing selected: Ctrl/Cmd+C copy · Ctrl/Cmd+V paste · Delete remove · Ctrl/Cmd+Z/Y undo/redo. Rewinding marks the session as review mode and order entry stays disabled until you return to the reveal frontier.</p>
     </div>
   </div>;
 
-  return <section className="replay-page-section mt-4 rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-    <div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Historical Replay · workspace</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Replay can span days or months while future bars remain hidden. Context and replay horizon are separate: load as much prior structure as you need, then move continuously through later sessions.</p></div><button onClick={resumeCheckpoint} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Resume saved replay</button></div>
-    <div className="mt-3"><WatchlistBar compact onSelect={(ticker) => { setSymbol(ticker); setSymbolInput(ticker); if (String(ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} /></div>
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-      <Field label="Symbol"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => { setSymbol(item.ticker); setSymbolInput(item.ticker); if (String(item.ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} placeholder="AAPL" /></Field>
-      <Field label="Replay starts"><input type="date" className="input" value={replayDate} onChange={(e) => { setReplayDate(e.target.value); if (replayEndDate < e.target.value) setReplayEndDate(addDays(e.target.value, 7)); }} /></Field>
-      <Field label="Replay through"><input type="date" className="input" value={replayEndDate} onChange={(e) => setReplayEndDate(e.target.value)} /></Field>
-      <Field label="Start time · ET"><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
-      <Field label="Timeframe"><select className="input" value={timeframe} onChange={(e) => switchTimeframe(e.target.value)}>{TIMEFRAMES.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
-      <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="regular">Regular</option><option value="extended">Extended</option><option value="24h">24h / full market</option></select></Field>
-      <Field label="Historical context"><select className="input" value={contextMode} onChange={(e) => setContextMode(e.target.value)}><option value="1d">1 calendar day</option><option value="5d">~5 trading days</option><option value="1m">1 month</option><option value="3m">3 months</option><option value="custom">Custom bars</option></select></Field>
-      <div className="flex items-end"><button disabled={loading} onClick={load} className="w-full rounded-md bg-stone-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Loading…" : "Load replay"}</button></div>
-    </div>
-    {contextMode === "custom" && <div className="mt-3 max-w-xs"><Field label="Custom context bars"><input type="number" min="0" max="50000" className="input" value={contextBars} onChange={(e) => setContextBars(e.target.value)} /></Field></div>}
-    {checkpointStatus && <p className="mt-3 text-xs text-stone-600">{checkpointStatus}</p>}
+  return <section className="replay-page-section replay-shell rounded-xl border border-stone-200 bg-white shadow-sm">
+    <div className="replay-shell-header"><div><h3 className="font-semibold">Historical Replay · workspace</h3><p className="max-w-4xl text-xs text-stone-500">Future bars remain hidden while you move candle-by-candle through the loaded period.</p></div><button onClick={resumeCheckpoint} className="mini-btn">Resume saved replay</button></div>
+    <details className="replay-setup" open={setupOpen} onToggle={e=>{if(e.currentTarget.open!==setupOpen)setSetupOpen(e.currentTarget.open);}}>
+      <summary>Replay setup · {symbol} · {timeframe} · {replayDate} → {replayEndDate}</summary>
+      <div className="replay-setup-body">
+        <WatchlistBar compact onSelect={(ticker) => { setSymbol(ticker); setSymbolInput(ticker); if (String(ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} />
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <Field label="Symbol"><SymbolSearch value={symbolInput} onChange={setSymbolInput} onSelect={(item) => { setSymbol(item.ticker); setSymbolInput(item.ticker); if (String(item.ticker).toUpperCase() === "XAUUSD") setSession("24h"); else if (session === "24h") setSession("regular"); }} placeholder="AAPL" /></Field>
+          <Field label="Replay starts"><input type="date" className="input" value={replayDate} onChange={(e) => { setReplayDate(e.target.value); if (replayEndDate < e.target.value) setReplayEndDate(addDays(e.target.value, 7)); }} /></Field>
+          <Field label="Replay through"><input type="date" className="input" value={replayEndDate} onChange={(e) => setReplayEndDate(e.target.value)} /></Field>
+          <Field label="Start time · ET"><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
+          <Field label="Timeframe"><select className="input" value={timeframe} onChange={(e) => switchTimeframe(e.target.value)}>{TIMEFRAMES.map((tf) => <option key={tf}>{tf}</option>)}</select></Field>
+          <Field label="Session"><select className="input" value={session} onChange={(e) => setSession(e.target.value)}><option value="regular">Regular</option><option value="extended">Extended</option><option value="24h">24h / full market</option></select></Field>
+          <Field label="Historical context"><select className="input" value={contextMode} onChange={(e) => setContextMode(e.target.value)}><option value="1d">1 calendar day</option><option value="5d">~5 trading days</option><option value="1m">1 month</option><option value="3m">3 months</option><option value="custom">Custom bars</option></select></Field>
+          <div className="flex items-end"><button disabled={loading} onClick={load} className="mini-btn ledger-primary w-full text-white">{loading ? "Loading…" : "Load replay"}</button></div>
+        </div>
+        {contextMode === "custom" && <div className="mt-2 max-w-xs"><Field label="Custom context bars"><input type="number" min="0" max="50000" className="input" value={contextBars} onChange={(e) => setContextBars(e.target.value)} /></Field></div>}
+      </div>
+    </details>
+    {checkpointStatus && <p className="mt-2 text-xs text-stone-600">{checkpointStatus}</p>}
     {workspace}
   </section>;
 }

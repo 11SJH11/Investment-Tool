@@ -1,7 +1,7 @@
 import {drawingStyle} from "./drawings/defaults.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {useDrawingViewport} from "./drawings/useDrawingViewport.js";
-import {nearestOHLC,translatePoints,constrainPoint} from "./drawings/geometry.js";
+import {nearestOHLC,translatePointsLogical,constrainPoint,marketTimeToLogical,logicalToMarketTime,logicalToCoordinateInterpolated} from "./drawings/geometry.js";
 import { drawingId } from "./drawingStore";
 
 import Drawing from "./drawings/Drawing.jsx";
@@ -27,11 +27,6 @@ function medianStep(times) {
   }
   if (!sample.length) return 60;
   sample.sort((a, b) => a - b); return sample[Math.floor(sample.length / 2)] || 60;
-}
-function lowerBound(values, target) {
-  let lo = 0, hi = values.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (values[mid] < target) lo = mid + 1; else hi = mid; }
-  return lo;
 }
 function drawingDefaults(type, color, point, barStep) {
   const base = { color, lineWidth: 2, lineStyle: "solid", opacity: 1 };
@@ -72,33 +67,22 @@ export default function DrawingOverlay({
   },[container,tool,onSelect]);
   const dimensions = useMemo(() => ({ width: container?.clientWidth || 0, height: container?.clientHeight || 0 }), [container, renderToken]);
 
-  const logicalForTime = (time) => {
-    if (!chart || !barTimes.length || !Number.isFinite(Number(time))) return null;
-    const target = Number(time), index = lowerBound(barTimes, target);
-    if (index < barTimes.length && barTimes[index] === target) return index;
-    if (index <= 0) return (target - barTimes[0]) / Math.max(1, barStep);
-    if (index >= barTimes.length) return (barTimes.length - 1) + (target - barTimes[barTimes.length - 1]) / Math.max(1, barStep);
-    const leftTime = barTimes[index - 1], rightTime = barTimes[index];
-    return (index - 1) + (target - leftTime) / Math.max(1, rightTime - leftTime);
-  };
-  const timeForLogical = (logical) => {
-    if (!barTimes.length || !Number.isFinite(Number(logical))) return null;
-    const value = Number(logical);
-    if (clampToBars) { if (value <= 0) return barTimes[0]; if (value >= barTimes.length - 1) return barTimes[barTimes.length - 1]; }
-    if (value <= 0) return Math.round(barTimes[0] + value * barStep);
-    if (value >= barTimes.length - 1) return Math.round(barTimes[barTimes.length - 1] + (value - (barTimes.length - 1)) * barStep);
-    const left = Math.floor(value), right = Math.ceil(value), fraction = value - left;
-    return Math.round(barTimes[left] + (barTimes[right] - barTimes[left]) * fraction);
-  };
+  const logicalForTime = (time) => marketTimeToLogical(barTimes, Number(time), barStep);
+  const timeForLogical = (logical) => logicalToMarketTime(barTimes, logical, barStep, { clamp: clampToBars });
   const toScreen = (point) => {
     if (!chart || !series || !point) return null;
-    // Always project stored market timestamps through the current bar lattice first.
-    // This keeps non-exact timestamps (for example a 10:17 anchor on a 15m chart)
-    // stable and avoids Lightweight Charts treating synthetic timestamps inconsistently.
-    let x = null;
-    const logical = logicalForTime(Number(point.time));
-    if (logical != null) x = chart.timeScale().logicalToCoordinate(logical);
-    if (x == null) x = chart.timeScale().timeToCoordinate(Number(point.time));
+    const timeScale = chart.timeScale();
+    const marketTime = Number(point.time);
+    // Exact current-timeframe anchors should use the library's native mapping.
+    // Off-grid anchors (for example 10:17 drawn on 1m but viewed on 15m) have
+    // no native time coordinate, so interpolate between the surrounding *integer*
+    // logical bar coordinates. Passing a fractional logical directly to
+    // logicalToCoordinate resolves to the left edge in Lightweight Charts 5.x.
+    let x = timeScale.timeToCoordinate(marketTime);
+    if (x == null) {
+      const logical = logicalForTime(marketTime);
+      x = logicalToCoordinateInterpolated(logical, (index) => timeScale.logicalToCoordinate(index));
+    }
     const y = series.priceToCoordinate(Number(point.price));
     if (x == null || y == null || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return null;
     return { x: Number(x), y: Number(y) };
@@ -186,7 +170,10 @@ export default function DrawingOverlay({
           updated = { ...item, points: item.points.map((p, i) => i === drag.index ? { ...point } : p) };
         }
       } else {
-        updated = { ...item, points: translatePoints(drag.originPoints,drag.originMarket,point) };
+        const logical = chart.timeScale().coordinateToLogical(event.clientX - container.getBoundingClientRect().left);
+        const deltaLogical = Number(logical) - Number(drag.originLogical);
+        const priceDelta = Number(point.price) - Number(drag.originMarket.price);
+        updated = { ...item, points: translatePointsLogical(drag.originPoints, drag.originLogicals, deltaLogical, priceDelta, timeForLogical) };
       }
       onChange?.(drawings.map((x) => x.id === item.id ? updated : x), { transient: true });
       if (POSITION.has(item.type)) onPositionDrawing?.(updated);
@@ -219,8 +206,11 @@ export default function DrawingOverlay({
     focusOverlay(); event.preventDefault(); event.stopPropagation(); onSelect?.(item.id);
     if(item.locked)return;
     const market = rawMarketPoint(event); if (!market) return;
+    const rect = container.getBoundingClientRect();
+    const originLogical = chart.timeScale().coordinateToLogical(event.clientX - rect.left);
+    if (!Number.isFinite(Number(originLogical))) return;
     onChange?.(drawings, { checkpoint: true });
-    setDrag({ id: item.id, kind, index, originMarket: market, originPoints: item.points.map((p) => ({ ...p })) });
+    setDrag({ id: item.id, kind, index, originMarket: market, originLogical: Number(originLogical), originLogicals: item.points.map((p) => logicalForTime(Number(p.time))), originPoints: item.points.map((p) => ({ ...p })) });
     try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* ignored */ }
   };
   const copySelected = () => {
