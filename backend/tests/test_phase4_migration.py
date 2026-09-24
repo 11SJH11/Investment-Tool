@@ -36,6 +36,6 @@ def test_phase41_adds_columns_to_existing_phase4_tables(tmp_path):
         pcols = {row[1] for row in c.execute("PRAGMA table_info(portfolio_transactions)")}
         jcols = {row[1] for row in c.execute("PRAGMA table_info(journal_trades)")}
         assert {"input_mode","input_amount","base_currency","fx_rate","price_source"} <= pcols
-        assert {"pnl_override","override_reason","pnl_source"} <= jcols
+        assert {"pnl_override","override_reason","pnl_source","practised_at"} <= jcols
         assert c.execute("SELECT note FROM portfolio_transactions WHERE ticker='NVDA'").fetchone()[0] == "legacy"
         assert c.execute("SELECT ticker FROM journal_trades").fetchone()[0] == "NVDA"

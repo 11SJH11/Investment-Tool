@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS journal_trades (
     status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')),
     opened_at TEXT,
     closed_at TEXT,
+    practised_at TEXT,
     entry_price REAL,
     exit_price REAL,
     quantity REAL,
@@ -361,6 +362,7 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
         "external_order_id": "TEXT",
         "source_metadata": "TEXT NOT NULL DEFAULT '{}'",
         "imported_at": "TEXT",
+        "practised_at": "TEXT",
     }
     for column, ddl in journal_additions.items():
         if column not in journal_columns:
@@ -381,7 +383,7 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
                 source TEXT NOT NULL CHECK(source IN ('live_manual','paper_manual','replay','backtest') OR source LIKE 'broker_%'),
                 name TEXT NOT NULL DEFAULT 'Trade', account TEXT NOT NULL DEFAULT 'Main', ticker TEXT NOT NULL,
                 direction TEXT NOT NULL DEFAULT 'long' CHECK(direction IN ('long','short')),
-                status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')), opened_at TEXT, closed_at TEXT,
+                status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')), opened_at TEXT, closed_at TEXT, practised_at TEXT,
                 entry_price REAL, exit_price REAL, quantity REAL, position_amount REAL, position_currency TEXT NOT NULL DEFAULT 'USD',
                 stop_loss REAL, take_profit REAL, fees REAL NOT NULL DEFAULT 0,
                 result TEXT CHECK(result IN ('win','loss','breakeven') OR result IS NULL),

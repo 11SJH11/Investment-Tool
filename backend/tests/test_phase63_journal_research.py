@@ -131,7 +131,7 @@ def test_phase63_migrates_old_journal_without_losing_rows(tmp_path):
         row = migrated.execute("SELECT ticker, entry_price FROM journal_trades WHERE id=1").fetchone()
         assert tuple(row) == ("XAUUSD", 4400)
         columns = {r[1] for r in migrated.execute("PRAGMA table_info(journal_trades)")}
-        assert {"external_provider", "external_id", "external_order_id", "source_metadata", "imported_at"} <= columns
+        assert {"external_provider", "external_id", "external_order_id", "source_metadata", "imported_at", "practised_at"} <= columns
         migrated.execute(
             "INSERT INTO journal_trades(source,ticker,external_provider,external_id) VALUES ('broker_oanda','XAUUSD','oanda','legacy-test')"
         )

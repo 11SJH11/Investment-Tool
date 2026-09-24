@@ -52,7 +52,7 @@ class JournalService:
     def _prepare_trade(self, payload: dict, *, creating: bool) -> dict:
         data = dict(payload)
         self._validate_review(data)
-        for key in ("opened_at", "closed_at"):
+        for key in ("opened_at", "closed_at", "practised_at"):
             if data.get(key):
                 try:
                     stamp = datetime.fromisoformat(str(data[key]).replace("Z", "+00:00"))

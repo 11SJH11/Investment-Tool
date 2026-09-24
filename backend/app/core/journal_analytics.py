@@ -90,7 +90,9 @@ def filter_trades(trades, filters):
             continue
         if filters.get("date_to") and (not day or day > filters["date_to"]):
             continue
-        enriched = {**trade, "journal_date": day or None}
+        practised = timestamp(trade.get('practised_at'))
+        practised_day = practised.astimezone(zone).date().isoformat() if practised else None
+        enriched = {**trade, "journal_date": day or None, "practised_date": practised_day}
         if any(not table_match(table_value(enriched, key), rule) for key, rule in table_filters.items()):
             continue
         if filters.get('search') and str(filters['search']).casefold() not in ' '.join(str(table_value(enriched,k) if table_value(enriched,k) is not None else '') for k in TABLE_FIELDS).casefold():
@@ -100,11 +102,11 @@ def filter_trades(trades, filters):
         key = table_sort['key']
         present = [t for t in output if table_value(t,key) is not None]
         missing = [t for t in output if table_value(t,key) is None]
-        output = sorted(present, key=lambda t: timestamp(t.get('opened_at')) if key=='opened_at' else table_value(t,key), reverse=table_sort.get('direction')=='desc') + missing
+        output = sorted(present, key=lambda t: timestamp(t.get('opened_at')) if key=='opened_at' else timestamp(t.get('practised_at')) if key=='practised_at' else table_value(t,key), reverse=table_sort.get('direction')=='desc') + missing
     return output
 
 
-TABLE_FIELDS = {'opened_at','ticker','direction','quantity','entry_price','exit_price','pnl_amount','currency',
+TABLE_FIELDS = {'opened_at','practised_at','ticker','direction','quantity','entry_price','exit_price','pnl_amount','currency',
     'r_multiple','result','source','external_provider','account','environment','playbook_title','setup','setup_grade',
     'plan_followed','session_time','market_condition','duration','exit_reason','notes','entry_notes','learning'}
 NUMERIC_FIELDS = {'quantity','entry_price','exit_price','pnl_amount','r_multiple','duration'}
@@ -112,6 +114,7 @@ NUMERIC_FIELDS = {'quantity','entry_price','exit_price','pnl_amount','r_multiple
 
 def table_value(trade, key):
     if key == 'opened_at': return trade.get('journal_date')
+    if key == 'practised_at': return trade.get('practised_date')
     if key == 'currency': return trade.get('account_currency') or trade.get('position_currency') or 'USD'
     if key in {'environment','exit_reason'}: return (trade.get('source_metadata') or {}).get(key)
     if key == 'duration':
@@ -130,13 +133,13 @@ def table_rules(filters):
             if rule is None or isinstance(rule,str): continue
             if isinstance(rule,list) and all(isinstance(v,str) for v in rule): continue
             if not isinstance(rule,dict) or set(rule)-{'kind','operator','min','max'}: raise ValueError()
-            if rule.get('kind') != ('number' if key in NUMERIC_FIELDS else 'date' if key=='opened_at' else None): raise ValueError()
+            if rule.get('kind') != ('number' if key in NUMERIC_FIELDS else 'date' if key in {'opened_at','practised_at'} else None): raise ValueError()
             if rule.get('operator','between') not in {'between','greater','less'}: raise ValueError()
             for bound in ('min','max'):
                 value=rule.get(bound)
                 if value not in ('',None):
                     if key in NUMERIC_FIELDS and not math.isfinite(float(value)): raise ValueError()
-                    if key=='opened_at': datetime.strptime(value,'%Y-%m-%d')
+                    if key in {'opened_at','practised_at'}: datetime.strptime(value,'%Y-%m-%d')
         return rules,sort
     except (ValueError,TypeError):
         raise ValueError('Invalid Journal table filter or sort') from None

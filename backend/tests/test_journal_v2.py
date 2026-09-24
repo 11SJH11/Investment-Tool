@@ -55,6 +55,20 @@ def test_all_journal_views_use_entry_day(journal, zone, day, hour):
     assert repo.daily('2026-06-03','Main')['summary']['trades'] == 0
 
 
+def test_replay_practised_at_is_separate_from_market_time_and_filterable(journal):
+    _, repo, service = journal
+    replay = trade(service, source='replay', opened_at='2025-03-14T09:42:00Z', closed_at='2025-03-14T10:03:00Z', practised_at='2026-09-24T15:30:00Z')
+    assert replay['opened_at'].startswith('2025-03-14T09:42:00')
+    assert replay['practised_at'].startswith('2026-09-24T15:30:00')
+    report = repo.report({
+        'timezone':'Europe/London',
+        'table_filters_json':'{"practised_at":{"kind":"date","operator":"between","min":"2026-09-24","max":"2026-09-24"}}',
+    })
+    assert [row['id'] for row in report['trades']] == [replay['id']]
+    assert report['trades'][0]['journal_date'] == '2025-03-14'
+    assert report['trades'][0]['practised_date'] == '2026-09-24'
+
+
 def test_dst_boundaries_and_mixed_currency_denominators(journal):
     _, repo, service = journal
     for stamp, exit_price, currency in [('2026-03-29T00:30:00Z',102,'USD'),('2026-03-29T01:30:00Z',99,'GBP'),('2026-03-29T02:30:00Z',100,'USD')]:

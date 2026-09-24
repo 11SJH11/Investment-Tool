@@ -8,7 +8,7 @@ from app.storage.database import Database
 
 
 TRADE_COLUMNS = (
-    "source", "name", "account", "ticker", "direction", "status", "opened_at", "closed_at",
+    "source", "name", "account", "ticker", "direction", "status", "opened_at", "closed_at", "practised_at",
     "entry_price", "exit_price", "quantity", "position_amount", "position_currency", "stop_loss", "take_profit", "fees", "result",
     "result_source", "pnl_amount", "pnl_pct", "r_multiple", "planned_rr", "pnl_override", "override_reason", "pnl_source", "trade_type", "setup", "market_condition",
     "entry_timeframe", "timeframe_alignment", "dxy", "session_time", "tf_type", "wick", "analysis",

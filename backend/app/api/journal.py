@@ -32,6 +32,7 @@ class TradeCreate(ReviewFields):
     direction: str = "long"
     opened_at: str | None = None
     closed_at: str | None = None
+    practised_at: str | None = None
     entry_price: float | None = None
     exit_price: float | None = None
     quantity: float | None = None
@@ -77,6 +78,7 @@ class TradeUpdate(ReviewFields):
     direction: str | None = None
     opened_at: str | None = None
     closed_at: str | None = None
+    practised_at: str | None = None
     entry_price: float | None = None
     exit_price: float | None = None
     quantity: float | None = None
