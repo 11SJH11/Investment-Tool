@@ -7,7 +7,7 @@ from app.data.providers.autochartist import AutochartistProvider
 from app.services.journal import JournalService
 from app.storage.database import Database
 from app.storage.journal_repository import JournalRepository
-from app.storage.research_repository import ResearchRepository
+from app.storage.research_item_repository import ResearchItemRepository
 from app.backtesting.strategies.xau_liquidity_type3 import XauLiquiditySweepType3Baseline
 
 
@@ -69,7 +69,7 @@ def test_broker_import_source_is_supported_and_requires_identity(tmp_path):
 def test_research_external_source_item_upserts_instead_of_duplicates(tmp_path):
     db = Database(tmp_path / "ledger.db")
     db.initialize()
-    repo = ResearchRepository(db)
+    repo = ResearchItemRepository(db)
 
     first = repo.upsert_item({
         "source": "autochartist",

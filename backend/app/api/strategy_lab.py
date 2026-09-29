@@ -195,8 +195,8 @@ def backtest_experiment(experiment_group: str, services: AppServices = Depends(g
 
 @router.get('/research-experiments')
 def list_research(services: AppServices = Depends(get_services)):
-    from app.storage.research_repository import ResearchRepository
-    return {'experiments': ResearchRepository(services.backtest_jobs.database).list()}
+    from app.storage.research_experiment_repository import ResearchExperimentRepository
+    return {'experiments': ResearchExperimentRepository(services.backtest_jobs.database).list()}
 
 
 @router.get("/runs/{run_id}")

@@ -20,8 +20,8 @@ class BacktestJobs:
         self.closed = False
         saved_mode = database.get_setting('backtest_worker_mode')
         self.worker_mode = saved_mode or ('auto_conservative' if int(workers) == 2 else str(max(1,min(int(workers),8))))
-        from app.storage.research_repository import ResearchRepository
-        self.research = ResearchRepository(database)
+        from app.storage.research_experiment_repository import ResearchExperimentRepository
+        self.research = ResearchExperimentRepository(database)
         self.executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest')
         with database.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS backtest_jobs (
@@ -65,7 +65,7 @@ class BacktestJobs:
         if mode == 'auto':
             mode = 'auto_conservative'
         if mode not in {'auto_conservative','auto_performance','1','2','3','4','5','6','7','8'}:
-            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1–8 workers')
+            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1â€“8 workers')
         worker_count(mode)  # validate on this host
         self.worker_mode = mode
         self.database.set_setting('backtest_worker_mode', mode)

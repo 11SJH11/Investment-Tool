@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.services.fundamentals import FundamentalsService
 from app.services.screener import ScreenerService
-from app.storage.research_repository import ResearchRepository
+from app.storage.research_item_repository import ResearchItemRepository
 from app.storage.screener_repository import ScreenerRepository
 from app.storage.symbol_repository import SymbolRepository
 
@@ -14,7 +14,7 @@ class ResearchService:
         screener_repository: ScreenerRepository,
         screener: ScreenerService,
         fundamentals: FundamentalsService | None,
-        items: ResearchRepository | None = None,
+        items: ResearchItemRepository | None = None,
     ):
         self.symbols = symbols
         self.screener_repository = screener_repository

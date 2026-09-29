@@ -8,6 +8,11 @@ BACKEND = Path(__file__).resolve().parents[1]
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+# Never even parse a developer's dotenv file during automated verification.
+# Environment credential overrides alone still let Pydantic read that file.
+from app.core.config import Settings
+Settings.model_config['env_file'] = None
+
 # App imports create upload storage and lifespan initializes SQLite. Never let
 # endpoint tests use a developer's real data directory or provider credentials.
 _test_data = tempfile.TemporaryDirectory(prefix="ledger-test-app-", ignore_cleanup_errors=True)

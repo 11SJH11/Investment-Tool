@@ -34,7 +34,7 @@ from app.storage.database import Database
 from app.storage.json_cache import JsonCacheRepository
 from app.storage.market_cache_repository import MarketCacheRepository
 from app.storage.market_store import MarketStore
-from app.storage.research_repository import ResearchRepository
+from app.storage.research_item_repository import ResearchItemRepository
 from app.storage.portfolio_repository import PortfolioRepository
 from app.storage.journal_repository import JournalRepository
 from app.storage.screener_repository import ScreenerRepository
@@ -229,7 +229,7 @@ def build_services(settings: Settings) -> AppServices:
     market_warmup = MarketWarmupManager(market_data) if market_data is not None else None
 
     screener = ScreenerService(screener_repository, symbols, alpaca=alpaca_provider, sec=sec_provider)
-    research_repository = ResearchRepository(database)
+    research_repository = ResearchItemRepository(database)
     research = ResearchService(symbols, screener_repository, screener, fundamentals_service, research_repository)
     portfolio_repository = PortfolioRepository(database)
     journal_repository = JournalRepository(database)

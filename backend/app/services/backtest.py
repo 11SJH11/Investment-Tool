@@ -299,8 +299,8 @@ class BacktestService:
         if not group:
             raise ValueError("experiment_group is required")
         runs = self.runs.list_by_experiment(group)
-        from app.storage.research_repository import ResearchRepository
-        experiment = ResearchRepository(self.runs.database).get(group)
+        from app.storage.research_experiment_repository import ResearchExperimentRepository
+        experiment = ResearchExperimentRepository(self.runs.database).get(group)
         if not runs and experiment is None:
             raise ValueError(f"Validation experiment '{group}' was not found")
         return {"experiment_group": group, "runs": runs, "experiment": experiment}

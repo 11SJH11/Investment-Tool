@@ -6,7 +6,7 @@ import pytest
 from app.services.research_experiments import children
 from app.services.backtest_jobs import BacktestJobs, JobCancelled
 from app.services.research_runner import run_experiment
-from app.storage.research_repository import ResearchRepository
+from app.storage.research_experiment_repository import ResearchExperimentRepository
 from tests.test_research_infrastructure import services,base,axes,facts
 
 
@@ -54,7 +54,7 @@ def test_one_parent_prepare_once_exact_children_and_persistence(tmp_path,workers
 
 
 def test_partial_failure_and_resume_without_duplicate_saved_cells(tmp_path,monkeypatch):
-    service,_,_=services(tmp_path);repository=ResearchRepository(service.runs.database)
+    service,_,_=services(tmp_path);repository=ResearchExperimentRepository(service.runs.database)
     import app.services.research_runner as runner
     real=runner.execute_cell;fail=[True]
     def execute(payload,*a,**kw):
@@ -73,7 +73,7 @@ def test_partial_failure_and_resume_without_duplicate_saved_cells(tmp_path,monke
 
 
 def test_cancel_preserves_saved_cells_and_changed_source_cannot_mix(tmp_path):
-    service,market,provider=services(tmp_path);repository=ResearchRepository(service.runs.database)
+    service,market,provider=services(tmp_path);repository=ResearchExperimentRepository(service.runs.database)
     cancelled=[False]
     def check():
         if cancelled[0]:raise JobCancelled()
@@ -118,7 +118,7 @@ def test_saved_outputs_cannot_mutate_shared_inputs(tmp_path):
 
 
 def test_recover_child_saved_before_parent_reference(tmp_path):
-    service,_,_=services(tmp_path);repository=ResearchRepository(service.runs.database)
+    service,_,_=services(tmp_path);repository=ResearchExperimentRepository(service.runs.database)
     kw=dict(progress=lambda *a:None,cancelled=lambda:None,commit=lambda f:f())
     first=run_experiment(service,repository,parent(),**kw)
     expected=[c['run_id'] for c in first['cells']]
