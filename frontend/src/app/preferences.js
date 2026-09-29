@@ -6,6 +6,7 @@ export const DEFAULT_PREFS = {
   chartGridVisible: true, chartVolumeVisible: true, chartCrosshair: true, chartAutoScale: true, chartVisibleBars: 180,
   replayContext: "5d", replaySpeed: 1, replayFollow: false, replayAutoJournal: true, replayConfirm: false, replayHelp: true,
   backtestSizing: "risk_pct", backtestSession: "auto", backtestCapital: 10000, backtestRisk: 1, backtestCommission: 0,
+  keepFavouritesUpdated: true, favouriteCacheLookbackDays: 730,
   timeZone: "America/New_York",
   chartSession: "regular",
   chartTimeframe: "5m",

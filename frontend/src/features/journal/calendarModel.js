@@ -1,8 +1,20 @@
 ﻿export function calendarTone(day) {
+  // R is unitless, so it is the safest performance signal when a day mixes currencies.
+  // Prefer it whenever recorded instead of turning mixed-sign GBP/USD P&L days grey.
+  if(Number.isFinite(day?.total_r))return day.total_r>0?'positive':day.total_r<0?'negative':'neutral';
   const values=(day?.pnl_by_currency||[]).map(r=>r.total_pnl).filter(v=>v!==0);
   if(values.length)return values.every(v=>v>0)?'positive':values.every(v=>v<0)?'negative':'neutral';
-  return day?.total_r>0?'positive':day?.total_r<0?'negative':'neutral';
+  return 'neutral';
 }
+export function calendarStrength(day) {
+  // Keep the calendar restrained: a small positive/negative day should be visible
+  // without looking alarming, while unusually large R days get progressively
+  // stronger shading. R is capped at 4 so one outlier cannot dominate the UI.
+  if(!Number.isFinite(day?.total_r)||day.total_r===0)return 0;
+  const scaled=Math.min(Math.abs(day.total_r),4)/4;
+  return Number((4+scaled*14).toFixed(2));
+}
+
 export function weeklySummary(days) {
   const money={};let trades=0,wins=0,losses=0,total=0,rCount=0;
   for(const day of days){trades+=day.trades||0;wins+=day.wins||0;losses+=day.losses||0;if(day.total_r!=null){total+=day.total_r;rCount++;}for(const p of day.pnl_by_currency||[])money[p.currency]=(money[p.currency]||0)+p.total_pnl;}

@@ -1,6 +1,9 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 from dataclasses import asdict
+from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -9,7 +12,7 @@ from app.backtesting.models import BacktestConfig
 from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
 from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as MOMENTUM_KEY
 from app.backtesting.strategies import strategy_registry
-from app.backtesting.strategies.intraday_baselines import KEYS as INTRADAY_KEYS, validate_market
+from app.backtesting.strategies.intraday_baselines import KEYS as INTRADAY_KEYS, ORB_DIAGNOSTIC_KEYS, validate_market
 from app.backtesting.intraday_reporting import annotate_intraday
 from app.backtesting.strategies.gold_experiments import KEYS as GOLD_EXPERIMENT_KEYS
 from app.backtesting.gold_reporting import annotate_gold
@@ -65,7 +68,8 @@ class BacktestService:
     def indicators(self) -> list[dict]:
         return [asdict(spec) for spec in indicator_registry.specs()]
 
-    def run(self, payload: dict, *, progress=None, persist=None) -> dict:
+    @timed('shared_preparation')
+    def prepare(self, payload: dict, *, progress=None) -> dict:
         progress = progress or (lambda *args: None)
         progress('preparing data', None, None)
         if self.market_data is None:
@@ -124,17 +128,74 @@ class BacktestService:
         additional = [str(tf) for tf in (payload.get("additional_timeframes") or []) if str(tf) in SUPPORTED_TIMEFRAMES]
         requested_timeframes = list(dict.fromkeys([primary, *strategy_spec.timeframes, *additional]))
         frames_by_symbol: dict[str, dict] = {}
+        diagnostic_warnings = []
         for symbol in symbols:
             frames: dict = {}
             for timeframe in requested_timeframes:
                 progress('preparing data', None, None)
+                if strategy_key in ORB_DIAGNOSTIC_KEYS and timeframe == "1d":
+                    try:
+                        daily = self._load_timeframe(symbol, timeframe, start-timedelta(days=200), end, session)
+                        if self._instrument(symbol).asset_type == "equity":
+                            daily = completed_daily_frame(daily, end)
+                        else:
+                            # Retain provider daily session completion and label;
+                            # do not invent an equity daily session for futures.
+                            import pandas as pd
+                            daily = daily.copy()
+                            completion = pd.to_datetime(daily["available_at"],utc=True) if "available_at" in daily else pd.to_datetime(daily.timestamp,utc=True)+pd.Timedelta(days=1)
+                            daily["session_date"] = completion.dt.tz_convert(NY).dt.date.astype(str)
+                        frames[timeframe] = daily
+                    except Exception:
+                        diagnostic_warnings.append(f"{symbol}: ORB research daily history unavailable; daily ATR and historical-volume diagnostics are null and enabled filters reject missing values.")
+                    continue
                 frames[timeframe] = self._load_timeframe(symbol, timeframe, start, end, session)
                 if momentum:
                     frames[timeframe] = completed_daily_frame(frames[timeframe], end)
             frames_by_symbol[symbol] = frames
 
-        params = dict(payload.get("strategy_params") or {})
+        diagnostic_history = {}
+        if strategy_key in ORB_DIAGNOSTIC_KEYS:
+            # Diagnostic-only warmup: never insert these bars into the engine's
+            # primary timeline, or trade before the requested start date.
+            for symbol in symbols:
+                try:
+                    diagnostic_history[symbol] = self._load_timeframe(symbol,"1m",start-timedelta(days=60),start,session)
+                except Exception:
+                    diagnostic_warnings.append(f"{symbol}: ORB research intraday warmup unavailable; same-minute volume diagnostics require sufficient history inside the requested period.")
+        providers = {
+                    symbol: {
+                        "provider": getattr(self._provider(symbol), "key", None),
+                        "feed": getattr(self._provider(symbol), "historical_feed", None),
+                        "adjustment": 'unadjusted' if self._instrument(symbol).asset_type == 'future' else getattr(self._provider(symbol), "adjustment", None),
+                        'roll_schedule_versions': sorted(set(str(v) for frame in frames_by_symbol[symbol].values() if 'roll_schedule_version' in frame for v in frame.roll_schedule_version)),
+                        "instrument": self._instrument(symbol).as_dict(),
+                    } for symbol in symbols
+                }
+        return dict(strategy_key=strategy_key, symbols=symbols, primary=primary,
+                    additional=additional, session=session, requested_session=requested_session,
+                    start=start, end=end, delay=delay, frames_by_symbol=frames_by_symbol,
+                    diagnostic_history=diagnostic_history, diagnostic_warnings=diagnostic_warnings,
+                    providers=providers,
+                    source_namespaces={symbol:getattr(self._provider(symbol),'cache_namespace',None) for symbol in symbols})
+
+    @profiled
+    @timed('backtest_total')
+    def run(self, payload: dict, *, progress=None, persist=None, prepared=None) -> dict:
+        progress = progress or (lambda *args: None)
+        inputs = prepared if prepared is not None else self.prepare(payload, progress=progress)
+        strategy_key, symbols, primary = inputs['strategy_key'], list(inputs['symbols']), inputs['primary']
+        strategy_spec = next(s for s in strategy_registry.specs() if s.key == strategy_key)
+        additional, session = list(inputs['additional']), inputs['session']
+        requested_session, start, end, delay = (inputs[k] for k in ('requested_session','start','end','delay'))
+        frames_by_symbol = {symbol: {tf: frame.copy(deep=True) for tf, frame in frames.items()}
+                            for symbol, frames in inputs['frames_by_symbol'].items()}
+        diagnostic_warnings = list(inputs['diagnostic_warnings'])
+        momentum = strategy_key == MOMENTUM_KEY
+        params = dict(payload.get('strategy_params') or {})
         strategies = {symbol: strategy_registry.create(strategy_key, **params) for symbol in symbols}
+        for symbol, frame in inputs['diagnostic_history'].items():
+            strategies[symbol].diagnostic_history = frame.copy(deep=True)
         workspace = getattr(strategies[symbols[0]], 'workspace_provenance', None)
         if workspace:
             payload = {**payload, 'workspace': dict(workspace)}
@@ -179,15 +240,7 @@ class BacktestService:
             "end": end.isoformat(),
             "data": {
                 "historical_delay_minutes": delay,
-                "providers": {
-                    symbol: {
-                        "provider": getattr(self._provider(symbol), "key", None),
-                        "feed": getattr(self._provider(symbol), "historical_feed", None),
-                        "adjustment": 'unadjusted' if self._instrument(symbol).asset_type == 'future' else getattr(self._provider(symbol), "adjustment", None),
-                        'roll_schedule_versions': sorted(set(str(v) for frame in frames_by_symbol[symbol].values() if 'roll_schedule_version' in frame for v in frame.roll_schedule_version)),
-                        "instrument": self._instrument(symbol).as_dict(),
-                    } for symbol in symbols
-                },
+                "providers": deepcopy(inputs["providers"]),
                 "bar_counts": {
                     symbol: {timeframe: len(frame) for timeframe, frame in frames.items()}
                     for symbol, frames in frames_by_symbol.items()
@@ -204,6 +257,10 @@ class BacktestService:
         if strategy_key in GOLD_EXPERIMENT_KEYS or strategy_key == "xau_liquidity_type3_baseline_v1":
             annotate_gold(result, frames_by_symbol, config, strategies[symbols[0]].params)
             payload = {**payload, "strategy_params": dict(strategies[symbols[0]].params)}
+        if diagnostic_warnings:
+            result.setdefault("data", {}).setdefault("warnings", []).extend(diagnostic_warnings)
+        from app.performance import snapshot
+        result['performance'] = {**snapshot(), 'scope': 'through reporting; persistence/total available to caller profiler'}
         if self.runs is not None and bool(payload.get("save_run", True)):
             if workspace:
                 result['workspace'] = dict(workspace)
@@ -242,9 +299,11 @@ class BacktestService:
         if not group:
             raise ValueError("experiment_group is required")
         runs = self.runs.list_by_experiment(group)
-        if not runs:
+        from app.storage.research_repository import ResearchRepository
+        experiment = ResearchRepository(self.runs.database).get(group)
+        if not runs and experiment is None:
             raise ValueError(f"Validation experiment '{group}' was not found")
-        return {"experiment_group": group, "runs": runs}
+        return {"experiment_group": group, "runs": runs, "experiment": experiment}
 
 
     def update_run(self, run_id: int, *, name=None, notes=None, test_role=None, tags=None) -> dict:
@@ -678,7 +737,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
-        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace",
+        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

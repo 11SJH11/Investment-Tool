@@ -50,6 +50,7 @@ class BacktestRequest(BaseModel):
     test_role: str = "development"
     experiment_group: str = ""
     run_tags: list[str] = Field(default_factory=list)
+    research_experiment: dict[str, Any] | None = None
 
 
 class BacktestRunUpdate(BaseModel):
@@ -64,9 +65,75 @@ class JobSubmission(BaseModel):
     runs: list[BacktestRequest] = Field(min_length=1, max_length=100)
 
 
+class ResearchExperimentRequest(BaseModel):
+    base: BacktestRequest
+    axes: list[dict[str, Any]] = Field(min_length=1, max_length=2)
+    request_key: str = Field(min_length=1, max_length=80)
+    name: str = Field(default='', max_length=200)
+    notes: str = Field(default='', max_length=10000)
+    tags: list[str] = Field(default_factory=list)
+    role: str = 'development'
+    workers: str | int = 'global'
+
+
+@router.post('/research-experiments/preview')
+def preview_research(payload: ResearchExperimentRequest):
+    from app.services.research_experiments import preview
+    try:
+        return preview(payload.base.model_dump(), payload.axes)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/research-experiments')
+def submit_research(payload: ResearchExperimentRequest, services: AppServices = Depends(get_services)):
+    from app.services.research_experiments import children
+    try:
+        plan, runs = children(payload.base.model_dump(), payload.axes, payload.request_key,
+                              payload.name, payload.notes, payload.tags, payload.role)
+        from app.research_runtime import worker_count
+        if payload.workers != 'global':
+            worker_count(payload.workers)
+        parent = {**payload.base.model_dump(), 'experiment_group': runs[0]['experiment_group'],
+                  'run_name': payload.name or 'Research experiment', 'run_notes': payload.notes,
+                  'run_tags': payload.tags, 'test_role': payload.role, 'experiment_type': plan['kind'],
+                  'research_workers': payload.workers, 'research_plan': plan,
+                  'research_base': payload.base.model_dump(), 'research_children': runs}
+        return {**plan, 'experiment_group': runs[0]['experiment_group'],
+                'jobs': services.backtest_jobs.enqueue([parent], payload.request_key)}
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/futures-preflight')
+def futures_preflight(payload: BacktestRequest, services: AppServices = Depends(get_services)):
+    from app.services.futures_preflight import preflight
+    try:
+        return preflight(services.backtest, payload.model_dump())
+    except (ValueError, KeyError):
+        raise HTTPException(400, 'Unsupported futures symbol, strategy, timeframe, session or date configuration')
+
+
 @router.get('/jobs')
 def jobs(services: AppServices = Depends(get_services)):
-    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers}
+    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers, 'worker_mode': services.backtest_jobs.worker_mode}
+
+
+class ComputeSettingsRequest(BaseModel):
+    mode: str
+
+
+@router.get('/compute-settings')
+def compute_settings(services: AppServices = Depends(get_services)):
+    return services.backtest_jobs.compute_settings()
+
+
+@router.put('/compute-settings')
+def update_compute_settings(payload: ComputeSettingsRequest, services: AppServices = Depends(get_services)):
+    try:
+        return services.backtest_jobs.set_worker_mode(payload.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post('/jobs')
@@ -114,10 +181,22 @@ def backtest_runs(limit: int = Query(default=100, ge=1, le=500), services: AppSe
 
 @router.get("/experiments/{experiment_group}")
 def backtest_experiment(experiment_group: str, services: AppServices = Depends(get_services)):
+    parent = next((j for j in services.backtest_jobs.list() if j['payload'].get('research_children') and j['payload'].get('experiment_group') == experiment_group), None)
     try:
-        return services.backtest.get_experiment(experiment_group)
+        result = services.backtest.get_experiment(experiment_group)
+        result['parent_job'] = parent
+        return result
     except ValueError as exc:
+        if parent:
+            return {'experiment_group':experiment_group,'runs':[],'parent_job':parent,
+                    'experiment':{'plan':parent['payload']['research_plan'],'cells':[],'status':parent['status']}}
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get('/research-experiments')
+def list_research(services: AppServices = Depends(get_services)):
+    from app.storage.research_repository import ResearchRepository
+    return {'experiments': ResearchRepository(services.backtest_jobs.database).list()}
 
 
 @router.get("/runs/{run_id}")

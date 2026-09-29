@@ -17,6 +17,19 @@ export function percent(value) {
   return Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value.toFixed(2)}%` : 'Unavailable';
 }
 
+export function performanceTone(value) {
+  if (!Number.isFinite(value)) return '';
+  return value > 0 ? 'positive' : value < 0 ? 'negative' : 'flat';
+}
+
+export function performanceStrength(returnPct) {
+  // Return percentage is comparable across position sizes, unlike raw P&L.
+  // Cap at 25% so an extreme holding never becomes visually overpowering.
+  if (!Number.isFinite(returnPct) || returnPct === 0) return 0;
+  const scaled = Math.min(Math.abs(returnPct), 25) / 25;
+  return Number((7 + scaled * 11).toFixed(2));
+}
+
 export function brokerDate(value, timeZone = 'UTC') {
   if (!value || !Number.isFinite(new Date(value).getTime())) return 'Unavailable';
   return new Intl.DateTimeFormat('en-GB', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone}).format(new Date(value));

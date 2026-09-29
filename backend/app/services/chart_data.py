@@ -1,8 +1,11 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from app.frame_cache import frames, fingerprint
 
 
 NEW_YORK = ZoneInfo("America/New_York")
@@ -10,7 +13,29 @@ VALID_SESSIONS = {"regular", "extended", "24h"}
 _INTRADAY_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240}
 
 
+@timed('chart_preparation')
 def prepare_chart_bars(
+    frame: pd.DataFrame,
+    timeframe: str,
+    session: str,
+    *,
+    session_profile: str = "us_equity",
+) -> tuple[pd.DataFrame, str]:
+    # Exact content identity includes source contracts, roll versions and adjustment.
+    # Aggregated subsets are deliberately not sliced: boundary buckets may differ.
+    key = ('prepared-v1', fingerprint(frame), timeframe, session, session_profile)
+    cached = frames.get(key)
+    if cached is not None:
+        label = cached.attrs.pop('_preparation_method')
+        return cached, label
+    result, label = _prepare_chart_bars(frame, timeframe, session, session_profile=session_profile)
+    stored = result.copy()
+    stored.attrs['_preparation_method'] = label
+    frames.put(key, stored)
+    return result, label
+
+
+def _prepare_chart_bars(
     frame: pd.DataFrame,
     timeframe: str,
     session: str,
@@ -70,6 +95,7 @@ def prepare_chart_bars(
     return result, f"session_aligned_from_{source_minutes}m"
 
 
+@timed('timeframe_aggregation')
 def _aggregate(working: pd.DataFrame) -> pd.DataFrame:
     from app.data.futures import PROVENANCE_COLUMNS
     keys = ["_session_date", "_slot"]

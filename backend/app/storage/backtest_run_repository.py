@@ -1,4 +1,6 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 import json
 from typing import Any
@@ -21,6 +23,7 @@ class BacktestRunRepository:
     def __init__(self, database: Database):
         self.database = database
 
+    @timed('persistence')
     def create(
         self, *, config: dict[str, Any], result: dict[str, Any], name: str = "", notes: str = "",
         test_role: str = "development", experiment_group: str = "", tags: list[str] | None = None,
@@ -72,6 +75,7 @@ class BacktestRunRepository:
                        , json_extract(result_json, '$.metrics.win_rate_pct') AS win_rate_pct
                        , json_extract(result_json, '$.metrics.profit_factor_r') AS profit_factor_r
                 FROM backtest_runs
+                WHERE json_extract(config_json, '$.research_parent_id') IS NULL
                 ORDER BY id DESC
                 LIMIT ?
                 """,

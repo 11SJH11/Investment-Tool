@@ -1,4 +1,6 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 from datetime import datetime, timezone
 
@@ -9,6 +11,7 @@ class MarketCacheRepository:
     def __init__(self, database: Database):
         self.database = database
 
+    @timed('coverage_check')
     def get(self, namespace: str, ticker: str, timeframe: str) -> tuple[datetime, datetime] | None:
         with self.database.connect() as connection:
             row = connection.execute(

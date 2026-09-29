@@ -1,4 +1,6 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -195,6 +197,7 @@ class MassiveFuturesProvider(MarketDataProvider):
             return self.contract_loader(ticker,timeframe,start,end).copy()
         return self._contract_bars(ticker,resolution,start,end,source_contract=ticker)
 
+    @timed('continuous_reconstruction')
     def _scheduled_front(self, root, resolution, start, end):
         contracts = self._range_contracts(root, start, end)
         if not contracts:
@@ -222,7 +225,7 @@ class MassiveFuturesProvider(MarketDataProvider):
             rolls.append(roll)
         if any(pd.Timestamp(a['effective_at']) >= pd.Timestamp(b['effective_at']) for a,b in zip(rolls,rolls[1:])):
             raise ValueError('Continuous roll evidence is not chronological; refusing overlapping source contracts')
-        segments = []
+        planned = []
         for i, contract in enumerate(contracts):
             prior = contracts[i-1] if i else None
             prior_roll = boundaries.get(prior.ticker) if prior else None
@@ -233,6 +236,26 @@ class MassiveFuturesProvider(MarketDataProvider):
             lo, hi = max(pd.Timestamp(start),effective,pd.Timestamp(datetime.combine(contract.first_trade_date,time.min,timezone.utc))),min(pd.Timestamp(end),until)
             if lo >= hi:
                 continue
+            planned.append((contract, prior_roll, effective, lo, hi))
+        # Revalidate current reference/roll evidence before consulting derived data.
+        # The source callback checks durable coverage and dated Parquet fingerprints.
+        from app.frame_cache import frames
+        def cache_key():
+            identify = getattr(self, 'source_identity', None)
+            if identify is None or getattr(self, 'refresh_schedule', False):
+                return None
+            sources = tuple(identify(c.ticker, resolution, lo.to_pydatetime(), hi.to_pydatetime())
+                            for c, _, _, lo, hi in planned)
+            if not sources or any(s is None for s in sources):
+                return None
+            return ('continuous-v1', self.cache_namespace, self.base_url, root, resolution,
+                    str(start), str(end), repr(contracts), repr(rolls), sources)
+        key = cache_key()
+        cached = frames.get(key) if key is not None else None
+        if cached is not None:
+            return cached, rolls
+        segments = []
+        for contract, prior_roll, effective, lo, hi in planned:
             frame = self._segment_bars(contract.ticker,resolution,lo.to_pydatetime(),hi.to_pydatetime())
             frame['roll_method'] = prior_roll['method'] if prior_roll else 'initial-contract'
             frame['roll_schedule_version'] = VERSION
@@ -241,7 +264,11 @@ class MassiveFuturesProvider(MarketDataProvider):
             segments.append(frame)
         if not segments:
             return _empty(include_contract=True),rolls
-        return pd.concat(segments,ignore_index=True).sort_values('timestamp').reset_index(drop=True),rolls
+        result = pd.concat(segments,ignore_index=True).sort_values('timestamp').reset_index(drop=True)
+        key = cache_key()
+        if key is not None:
+            frames.put(key, result)
+        return result, rolls
 
     def _continuous_front(self, root: str, resolution: str, start: datetime, end: datetime) -> pd.DataFrame:
         contracts = self._range_contracts(root, start, end)
@@ -289,6 +316,7 @@ class MassiveFuturesProvider(MarketDataProvider):
             .reset_index(drop=True)
         )
 
+    @timed('provider_fetch')
     def _contract_bars(
         self,
         ticker: str,

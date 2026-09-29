@@ -1,25 +1,24 @@
+from app.performance import timed, profiled, measure
 """Post-simulation diagnostics; never an input to strategy eligibility."""
 import pandas as pd
+from .excursion_reporting import excursion_diagnostics
 
 
+@timed('excursion_reporting')
 def annotate_intraday(result, frames):
     outcomes = {}
     for trade in result["trades"]:
-        entry, exit_price = float(trade["entry_price"]), float(trade["exit_price"])
-        risk = abs(entry - float(trade["stop_loss"]))
-        bars = frames[trade["symbol"]]["1m"]
-        stamps = pd.to_datetime(bars.timestamp, utc=True)
+        bars = frames.get(trade["symbol"], {}).get("1m")
+        stamps = pd.to_datetime(bars.timestamp, utc=True) if bars is not None else pd.Series([], dtype="datetime64[ns, UTC]")
         start, end = pd.Timestamp(trade["entry_time"]), pd.Timestamp(trade["exit_time"])
-        held = bars.loc[(stamps >= start) & (stamps < end)]
-        high = max(entry, exit_price, float(held.high.max()) if len(held) else entry)
-        low = min(entry, exit_price, float(held.low.min()) if len(held) else entry)
-        long = trade["direction"] == "long"
-        outcome = dict(entry=entry, stop=trade["stop_loss"], target=trade["take_profit"],
-            exit=exit_price, result_r=trade["r_multiple"], exit_reason=trade["exit_reason"],
-            mfe_r=(high-entry if long else entry-low)/risk if risk else None,
-            mae_r=(entry-low if long else high-entry)/risk if risk else None,
-            excursion_measurement="lower_bound_excluding_exit_bar", bars_in_trade=len(held),
+        held = (stamps >= start) & (stamps < end)
+        outcome = dict(entry=trade["entry_price"], stop=trade["stop_loss"], target=trade["take_profit"],
+            exit=trade["exit_price"], result_r=trade["r_multiple"], exit_reason=trade["exit_reason"],
+            excursion_measurement="lower_bound_excluding_exit_bar", bars_in_trade=int(held.sum()),
             minutes_in_trade=(end-start).total_seconds()/60)
+        setup = next((s for s in result.get("setups", []) if s.get("symbol") == trade["symbol"] and s.get("entry_time") == trade["entry_time"]), None)
+        outcome.update(excursion_diagnostics(trade, bars, entry_at_open=bool(setup and setup.get("order_type") == "market")))
+        outcome["excursion_timing"] = "completed_1m_bar_bound_or_exact_fill"
         trade["metadata"].update(outcome)
         outcomes[(trade["symbol"], trade["metadata"].get("confirmed_at"))] = outcome
     for setup in result["setups"]:

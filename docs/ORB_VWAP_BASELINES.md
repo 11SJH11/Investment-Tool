@@ -2,6 +2,14 @@
 
 Formulas fixed before implementation; no historical performance tuning.
 
+The separate ORB research variant now supports [causal volatility/participation
+diagnostics and optional filters](ORB_RESEARCH_DIAGNOSTICS.md). These do not
+modify the frozen baseline or its defaults.
+
+The separate ORB research variant now supports [causal volatility/participation
+diagnostics and optional filters](ORB_RESEARCH_DIAGNOSTICS.md). These do not
+modify the frozen baseline or its defaults.
+
 Both strategies require completed one-minute bars, US equities or supported
 dated futures, and every minute from 09:30 America/New_York to the decision.
 Missing minutes disable signals for that session. Prices remain UTC internally.

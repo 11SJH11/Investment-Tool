@@ -1,3 +1,5 @@
+import {downloadCsv} from '../../utils/csv.js';
+import {journalExportRow} from '../../utils/researchExports.js';
 import {useMemo,useState} from 'react';
 import {useUIPreference} from '../../app/useUIPreference.js';
 import {Summary} from './JournalShared';
@@ -23,7 +25,7 @@ export default function AnalysisView({report,loading,error,playbooks=[]}) {
   const dimensions=Array.isArray(storedDimensions)&&storedDimensions.length?storedDimensions.slice(0,4):['playbook'];
   const [detailSort,setDetailSort]=useUIPreference('journal.analysisDetailSort','sample');
   const [showAllBreakdown,setShowAllBreakdown]=useState(false);
-  const exportCsv=()=>{const cols=['opened_at','closed_at','journal_date','ticker','direction','source','account','account_currency','position_currency','playbook_title','setup','setup_grade','plan_followed','entry_price','stop_loss','take_profit','exit_price','quantity','planned_rr','r_multiple','pnl_amount','broker_realized_pnl','pnl_source','costs_complete'];const esc=v=>{let s=String(v??'');if(/^[=+@\t\r]/.test(s)||(/^-.+/.test(s)&&!Number.isFinite(Number(s))))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};const csv=[cols.join(','),...(report?.trades||[]).map(t=>cols.map(c=>esc(t[c])).join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='ledger-journal-filtered.csv';a.click();URL.revokeObjectURL(a.href);};
+  const exportCsv=()=>downloadCsv((report?.trades||[]).map(journalExportRow),'ledger-journal-filtered.csv');
   const groups=report?.breakdowns||{};
   const customDimensions=Object.keys(groups).filter(k=>k.startsWith('playbook_field:')).map(k=>[k,customLabel(k,playbooks,report)]);
   const availableDimensions=[...analysisDimensions,...customDimensions];

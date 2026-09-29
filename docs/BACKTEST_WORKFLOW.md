@@ -2,6 +2,9 @@
 
 ## Configure a backtest
 
+For Run Viewer excursion measurements, analysis and CSV/JSON exports, see
+[Research diagnostics and exports](RESEARCH_DIAGNOSTICS.md).
+
 The primary tabs are **Backtest, Runs, Strategies, Workspace**. Indicators remain
 available from Strategies. The standalone Replay workspace is unchanged.
 

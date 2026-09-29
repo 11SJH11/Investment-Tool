@@ -18,6 +18,7 @@ from app.services.backtest import BacktestService
 from app.services.backtest_jobs import BacktestJobs
 from app.services.macro import MacroService
 from app.services.market_data import MarketDataService
+from app.services.market_warmup import MarketWarmupManager
 from app.services.portfolio import PortfolioService
 from app.services.execution_price import ExecutionPriceService
 from app.services.fx import FxRateService
@@ -49,6 +50,7 @@ class AppServices:
     symbols: SymbolRepository
     symbol_universe: SymbolUniverseService | None
     market_data: MarketDataService | None
+    market_warmup: MarketWarmupManager | None
     fundamentals: FundamentalsService | None
     macro: MacroService | None
     autochartist: AutochartistProvider
@@ -75,6 +77,8 @@ class AppServices:
             self.broker_scheduler.close()
         if self.backtest_jobs:
             self.backtest_jobs.close()
+        if self.market_warmup:
+            self.market_warmup.close()
         self.http.close()
 
     def provider_status(self) -> dict:
@@ -222,6 +226,7 @@ def build_services(settings: Settings) -> AppServices:
         MarketDataService(default_market_provider, market_store, coverage, provider_resolver=resolve_market_provider)
         if default_market_provider is not None else None
     )
+    market_warmup = MarketWarmupManager(market_data) if market_data is not None else None
 
     screener = ScreenerService(screener_repository, symbols, alpaca=alpaca_provider, sec=sec_provider)
     research_repository = ResearchRepository(database)
@@ -240,7 +245,7 @@ def build_services(settings: Settings) -> AppServices:
     broker_connections = BrokerConnections(settings, database, legacy_oanda=broker_sync)
     return AppServices(
         settings=settings, database=database, providers=providers, symbols=symbols,
-        symbol_universe=symbol_universe, market_data=market_data,
+        symbol_universe=symbol_universe, market_data=market_data, market_warmup=market_warmup,
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,
         research=research, portfolio=portfolio, journal=journal, journal_repository=journal_repository, backtest=backtest, backtest_runs=backtest_runs, http=http,

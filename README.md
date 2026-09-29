@@ -5,6 +5,12 @@ Portfolio. Checkpoint 12 is the release-candidate workflow foundation.
 
 ## Run locally
 
+### One-command Windows launcher
+
+After the one-time setup below, run `Start-Ledger.bat` (double-click is fine) or `./Start-Ledger.ps1`. It starts both local services and opens the app. See [Running Ledger](docs/RUNNING_LEDGER.md) for private always-on and hosting notes.
+
+### First-time/manual setup
+
 Use Python 3.11+ and Node compatible with the installed Vite version. From `backend`,
 create `.venv`, install `requirements.txt` (plus `pytest` for tests), copy `.env.example`
 to `.env` and configure only the providers you use. Run:
@@ -16,6 +22,10 @@ to `.env` and configure only the providers you use. Run:
 From `frontend`, run `npm ci`, then `npm run dev`. Use one backend process per data
 directory; queue ownership, broker scheduling and provider quotas are process-local.
 This is a trusted local application, not a hardened multi-user internet service.
+
+## Start Ledger on Windows
+
+After the one-time Python/Node setup, run `Start-Ledger.bat`. Ledger starts the backend and frontend as hidden background processes and opens the browser. Use `Stop-Ledger.bat` to shut them down. For a completely hidden launcher, use `Start-Ledger-Hidden.vbs` and `Stop-Ledger-Hidden.vbs`. Logs are written to `.ledger-runtime`. See [Running Ledger](docs/RUNNING_LEDGER.md).
 
 ## Preserve your data
 
@@ -42,7 +52,7 @@ for exact results, browser setup and remaining limitations.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md), [data sources](docs/DATA_SOURCES.md)
+- [Architecture](docs/ARCHITECTURE.md), [data sources](docs/DATA_SOURCES.md), [running Ledger](docs/RUNNING_LEDGER.md)
 - [Charts and drawings](docs/CHART_WORKSPACE.md), [Journal](docs/JOURNAL.md)
 - [Backtest workflow](docs/BACKTEST_WORKFLOW.md), [Strategy Workspace](docs/STRATEGY_WORKSPACE.md)
 - [Broker connections](docs/BROKER_CONNECTIONS.md), [extension contract](docs/BROKER_EXTENSION_CONTRACT.md)

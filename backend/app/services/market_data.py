@@ -1,6 +1,8 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
 
-from datetime import datetime, timezone
+
+from datetime import datetime, timezone, timedelta
 from typing import Callable
 from threading import RLock
 from collections import defaultdict
@@ -96,17 +98,12 @@ class MarketDataService:
 
         provider = self.provider_for(ticker)
         # Backward adjustment depends on later rolls in the requested range.
+        if force_refresh:
+            from app.frame_cache import frames
+            frames.clear()
         spec = instrument_spec(ticker)
         if spec.security_type == 'continuous_future' and hasattr(provider,'raw_execution_provider'):
-            from copy import copy
-            continuous = copy(provider)
-            continuous.refresh_schedule = force_refresh
-            raw = MarketDataService(provider.raw_execution_provider(),self.store,self.coverage)
-            continuous.contract_loader = lambda symbol,tf,a,b: raw.get_bars(symbol,tf,a,b,force_refresh=force_refresh)
-            # Cache dated OHLCV, then restitch against the current versioned
-            # schedule. Never leave an old contract in cached alias history when
-            # delayed provider roll evidence becomes available.
-            return continuous.get_bars(ticker,timeframe,start,end)
+            return self._continuous_bars(provider, ticker, timeframe, start, end, force_refresh=force_refresh)
         # Never merge independently adjusted segments into a shared cache.
         if instrument_spec(ticker).security_type == "continuous_future" and getattr(provider, "back_adjust", False):
             return provider.get_bars(ticker, timeframe, start, end)
@@ -126,6 +123,150 @@ class MarketDataService:
 
         return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
 
+    def _continuous_bars(self, provider, ticker, timeframe, start, end, *, force_refresh=False):
+        """Reconstruct a continuous alias from durable dated contracts.
+
+        A derived Parquet snapshot is persisted for fast replay/backtests, but it
+        is accepted only while the source contract files/reference cache still
+        match the manifest and the manifest was validated recently.  Dated raw
+        contract Parquet remains the authoritative cache/provenance.
+        """
+        from copy import copy
+        continuous = copy(provider)
+        continuous.refresh_schedule = force_refresh
+        raw_provider = provider.raw_execution_provider()
+        raw = MarketDataService(raw_provider, self.store, self.coverage)
+        continuous.contract_loader = lambda symbol,tf,a,b: raw.get_bars(symbol,tf,a,b,force_refresh=force_refresh)
+        def source_identity(symbol, tf, a, b):
+            namespace = raw.provider.cache_namespace
+            covered = self.coverage.get(namespace, symbol, tf)
+            if covered is None or covered[0] > a or covered[1] < b:
+                return None
+            path = self.store._path(namespace, symbol, tf)
+            if not path.exists():
+                return None
+            stat = path.stat()
+            return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+        continuous.source_identity = source_identity
+
+        derived_namespace = f"derived-continuous-v1-{provider.cache_namespace}"
+        manifest = self.store.read_metadata('continuous', derived_namespace, ticker, timeframe)
+        now = datetime.now(timezone.utc)
+        if not force_refresh and self._continuous_manifest_valid(manifest, provider, raw_provider, ticker, timeframe, start, end, now):
+            cached = self.store.read_bars(derived_namespace, ticker, timeframe, start=start, end=end)
+            if not cached.empty:
+                return cached
+
+        union_start, union_end = start, end
+        if manifest:
+            try:
+                union_start = min(start, _utc(datetime.fromisoformat(manifest['covered_start'])))
+                union_end = max(end, _utc(datetime.fromisoformat(manifest['covered_end'])))
+            except (KeyError, ValueError, TypeError):
+                pass
+        # The reconstruction itself loads only missing dated-contract ranges via
+        # the normal persistent MarketDataService cache.
+        result = continuous.get_bars(ticker, timeframe, union_start, union_end)
+        if not result.empty:
+            self.store.replace_bars(derived_namespace, ticker, timeframe, result)
+            sources = {}
+            if 'source_contract' in result.columns:
+                for contract in sorted(set(str(v) for v in result.source_contract.dropna() if str(v))):
+                    path = self.store._path(raw_provider.cache_namespace, contract, timeframe)
+                    if path.exists():
+                        stat = path.stat(); sources[contract] = [str(path.resolve()), stat.st_mtime_ns, stat.st_size]
+            reference_path = getattr(getattr(provider, 'reference_cache', None), 'path', None)
+            reference_identity = None
+            if reference_path and reference_path.exists():
+                stat=reference_path.stat(); reference_identity=[str(reference_path.resolve()),stat.st_mtime_ns,stat.st_size]
+            self.store.write_metadata('continuous', derived_namespace, ticker, timeframe, {
+                'version':'continuous-derived-v1','ticker':ticker,'timeframe':timeframe,
+                'provider_namespace':provider.cache_namespace,'raw_namespace':raw_provider.cache_namespace,
+                'roll_policy':getattr(provider,'roll_policy',None),'adjustment':getattr(provider,'adjustment',None),
+                'covered_start':union_start.isoformat(),'covered_end':union_end.isoformat(),
+                'validated_at':now.isoformat(),'sources':sources,'reference_identity':reference_identity,
+            })
+        stamps = pd.to_datetime(result.timestamp, utc=True) if not result.empty else pd.Series([],dtype='datetime64[ns, UTC]')
+        return result.loc[(stamps>=pd.Timestamp(start))&(stamps<=pd.Timestamp(end))].reset_index(drop=True) if not result.empty else result
+
+    def _continuous_manifest_valid(self, manifest, provider, raw_provider, ticker, timeframe, start, end, now):
+        if not manifest or manifest.get('version') != 'continuous-derived-v1':
+            return False
+        if manifest.get('provider_namespace') != provider.cache_namespace or manifest.get('raw_namespace') != raw_provider.cache_namespace:
+            return False
+        if manifest.get('roll_policy') != getattr(provider,'roll_policy',None) or manifest.get('adjustment') != getattr(provider,'adjustment',None):
+            return False
+        try:
+            covered_start=_utc(datetime.fromisoformat(manifest['covered_start']));covered_end=_utc(datetime.fromisoformat(manifest['covered_end']))
+            validated=_utc(datetime.fromisoformat(manifest['validated_at']))
+        except (KeyError,ValueError,TypeError):
+            return False
+        # A fully covered historical snapshot stays valid across restarts until an
+        # authoritative source-contract/reference fingerprint changes.  New tail
+        # requests naturally miss covered_end and rebuild only the extended union;
+        # force_refresh also bypasses this path.  Avoid a wall-clock TTL here: it
+        # made NQ1! reconstruct months of already-cached history every few hours.
+        if covered_start>start or covered_end<end:
+            return False
+        path=self.store._path(f"derived-continuous-v1-{provider.cache_namespace}",ticker,timeframe)
+        if not path.exists():
+            return False
+        for contract,identity in (manifest.get('sources') or {}).items():
+            source=self.store._path(raw_provider.cache_namespace,contract,timeframe)
+            if not source.exists(): return False
+            stat=source.stat()
+            if [str(source.resolve()),stat.st_mtime_ns,stat.st_size] != identity: return False
+        reference_path=getattr(getattr(provider,'reference_cache',None),'path',None)
+        recorded=manifest.get('reference_identity')
+        if recorded:
+            if not reference_path or not reference_path.exists(): return False
+            stat=reference_path.stat()
+            if [str(reference_path.resolve()),stat.st_mtime_ns,stat.st_size] != recorded: return False
+        return True
+
+    def continuous_cache_status(self, ticker: str, timeframe: Timeframe = '1m') -> dict | None:
+        """Safe diagnostic summary for a persisted continuous-futures snapshot."""
+        ticker = normalize_symbol(ticker)
+        if instrument_spec(ticker).security_type != 'continuous_future':
+            return None
+        provider = self.provider_for(ticker)
+        if not hasattr(provider, 'raw_execution_provider'):
+            return None
+        namespace = f"derived-continuous-v1-{provider.cache_namespace}"
+        manifest = self.store.read_metadata('continuous', namespace, ticker, timeframe)
+        if not manifest:
+            return None
+        sources = sorted((manifest.get('sources') or {}).keys())
+        return {
+            'ticker': ticker,
+            'timeframe': timeframe,
+            'covered_start': manifest.get('covered_start'),
+            'covered_end': manifest.get('covered_end'),
+            'validated_at': manifest.get('validated_at'),
+            'provider_cache': manifest.get('provider_namespace'),
+            'raw_provider_cache': manifest.get('raw_namespace'),
+            'roll_policy': manifest.get('roll_policy'),
+            'adjustment': manifest.get('adjustment'),
+            'source_contract_count': len(sources),
+            'source_contracts': sources,
+            'status': 'ready' if self.store._path(namespace, ticker, timeframe).exists() else 'metadata_only',
+        }
+
+    def continuous_cache_entries(self) -> list[dict]:
+        entries=[]
+        for manifest in self.store.list_metadata('continuous'):
+            ticker=manifest.get('ticker'); timeframe=manifest.get('timeframe')
+            if not ticker or not timeframe:
+                continue
+            try:
+                status=self.continuous_cache_status(str(ticker), str(timeframe))
+            except Exception:
+                status=None
+            if status:
+                entries.append(status)
+        entries.sort(key=lambda row: (str(row.get('ticker')), str(row.get('timeframe'))))
+        return entries
+
     def get_execution_bars(self, ticker, timeframe, start, end):
         provider = self.provider_for(ticker)
         if hasattr(provider, 'raw_execution_provider'):
@@ -133,6 +274,7 @@ class MarketDataService:
             return MarketDataService(raw,self.store,self.coverage).get_bars(ticker,timeframe,start,end)
         return self.get_bars(ticker,timeframe,start,end)
 
+    @timed('fetch_and_store')
     def _fetch_and_store(
         self,
         provider: MarketDataProvider,
@@ -143,7 +285,8 @@ class MarketDataService:
     ) -> None:
         if start >= end:
             return
-        bars = provider.get_bars(ticker, timeframe, start, end)
+        with measure('provider_fetch'):
+            bars = provider.get_bars(ticker, timeframe, start, end)
         if not bars.empty:
             self.store.write_bars(provider.cache_namespace, ticker, timeframe, bars)
         # Mark requested coverage even when the market was closed/no bars were returned.

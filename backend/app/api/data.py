@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
 from app.data.providers.base import Timeframe
@@ -133,3 +134,30 @@ def cache_diagnostics(services: AppServices = Depends(get_services)):
     with services.database.connect() as con:
         rows=[dict(row) for row in con.execute("SELECT ticker,timeframe AS source_timeframe,namespace AS provider_cache,covered_start,covered_end,updated_at FROM market_cache_coverage ORDER BY updated_at DESC,ticker LIMIT 500")]
     return {"items":rows,"limit":500,"note":"Coverage is the requested source range, including possible empty market sessions; it is not proof of uninterrupted bars. Refresh a chart to request newer history. Futures source contracts remain attached to each bar."}
+
+
+class CacheWarmRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1, max_length=50)
+    timeframe: Timeframe = "1m"
+    lookback_days: int = Field(default=730, ge=1, le=3650)
+    refresh: bool = False
+
+
+@router.post("/data/cache/warm")
+def warm_market_cache(payload: CacheWarmRequest, services: AppServices = Depends(get_services)):
+    if services.market_warmup is None:
+        raise HTTPException(503, "No market data provider is configured")
+    try:
+        return services.market_warmup.start(payload.symbols,timeframe=payload.timeframe,lookback_days=payload.lookback_days,refresh=payload.refresh)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400 if isinstance(exc,ValueError) else 503,str(exc)) from exc
+
+
+@router.get("/data/cache/warm/{job_id}")
+def market_cache_warm_status(job_id: str, services: AppServices = Depends(get_services)):
+    if services.market_warmup is None:
+        raise HTTPException(503, "No market data provider is configured")
+    try:
+        return services.market_warmup.get(job_id)
+    except ValueError as exc:
+        raise HTTPException(404,str(exc)) from exc

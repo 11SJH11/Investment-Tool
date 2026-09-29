@@ -19,6 +19,8 @@ class ParameterSpec:
     step: float | None = None
     choices: tuple[str, ...] = ()
     help: str = ""
+    paired_max_key: str = ""
+    bound_semantics: str = ""
 
 
 @dataclass(frozen=True)

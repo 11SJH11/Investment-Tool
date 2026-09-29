@@ -7,8 +7,8 @@ from app.backtesting.models import BacktestConfig
 from app.backtesting.intraday_reporting import annotate_intraday
 from app.backtesting.strategies import strategy_registry
 from app.backtesting.strategies.intraday_baselines import (
-    ORB, ORB_RESEARCH, VWAP, OpeningRangeBreakout, OpeningRangeResearch,
-    VwapMeanReversion, session_bars,
+    ORB, ORB_RESEARCH, ORB_REVERSAL, VWAP, OpeningRangeBreakout, OpeningRangeResearch,
+    OpeningRangeFailedBreakoutReversal, VwapMeanReversion, session_bars,
 )
 from app.indicators.rth_vwap import RthVwapBands, session_moments
 from app.services.backtest import BacktestService
@@ -45,7 +45,7 @@ def signals(strategy, bars, symbol="AAPL"):
 
 
 def test_registry_and_frozen_parameters():
-    assert {ORB, ORB_RESEARCH, VWAP} <= {s.key for s in strategy_registry.specs()}
+    assert {ORB, ORB_RESEARCH, ORB_REVERSAL, VWAP} <= {s.key for s in strategy_registry.specs()}
     with pytest.raises(ValueError, match="frozen"):
         OpeningRangeBreakout(target_r=3)
     with pytest.raises(ValueError, match="frozen"):
@@ -345,3 +345,54 @@ def test_service_saves_canonical_parameters_and_audit_without_network(tmp_path,k
     assert saved["result"]["strategy"]["key"] == key
     assert saved["result"]["strategy"]["params"] == strategy_registry.create(key).params
     assert saved["result"]["setups"][0]["metadata"]["setup_entered"]
+
+
+
+def failed_orb_frame(day="2026-01-05"):
+    # OR = 99..101. 09:45 closes above it, 09:46 closes back inside,
+    # 09:47 is the next-bar reversal fill, then price reaches a 1R short target.
+    bars=frame([100]*15+[103,100.5,100,96],day)
+    bars.loc[:14,'high']=101;bars.loc[:14,'low']=99
+    bars.loc[15,['open','high','low','close']]=[101.2,104,101.1,103]
+    bars.loc[16,['open','high','low','close']]=[103,103.2,100.2,100.5]
+    bars.loc[17,['open','high','low','close']]=[100,100.5,98,99]
+    bars.loc[18,['open','high','low','close']]=[99,99,96,96]
+    return bars
+
+
+def test_failed_orb_reversal_arms_then_requires_completed_reentry_and_next_open():
+    bars=failed_orb_frame()
+    result=simulate(OpeningRangeFailedBreakoutReversal(target_r=1),bars)
+    trade,=result['trades']
+    assert trade['direction']=='short'
+    assert trade['entry_time']==bars.iloc[17].timestamp.isoformat()
+    assert trade['entry_price']==100
+    assert trade['stop_loss']==104
+    assert trade['take_profit']==96
+    assert trade['r_multiple']==1
+    meta=trade['metadata']
+    assert meta['original_breakout_direction']=='long'
+    assert meta['failure_speed_minutes']==1
+    assert meta['failed_breakout_extreme']==104
+    assert meta['reentry_close']==100.5
+    assert 0<meta['reentry_depth_fraction']<1
+    assert trade['signal_reason']=='failed_orb_reversal'
+
+
+def test_failed_orb_reversal_does_not_trade_breakout_or_rearm_after_timeout():
+    bars=failed_orb_frame()
+    # Delay the re-entry past a one-minute window; the same session cannot arm a
+    # second breakout after the initial hypothesis has already failed to confirm.
+    bars.loc[16,['open','high','low','close']]=[103,104.5,102,103]
+    bars.loc[17,['open','high','low','close']]=[103,104,102,103]
+    bars.loc[18,['open','high','low','close']]=[103,103,100,100.5]
+    result=simulate(OpeningRangeFailedBreakoutReversal(failure_window_minutes=1),bars)
+    assert result['trades']==[]
+    assert result['setups']==[]
+
+
+def test_failed_orb_reversal_upper_bounds_are_exclusive_and_ranges_validate():
+    with pytest.raises(ValueError):
+        OpeningRangeFailedBreakoutReversal(min_breakout_range_atr=2,max_breakout_range_atr=2)
+    assert OpeningRangeFailedBreakoutReversal._passes(1.5,1.5,2.0)
+    assert not OpeningRangeFailedBreakoutReversal._passes(2.0,1.5,2.0)

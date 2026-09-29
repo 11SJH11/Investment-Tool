@@ -1,3 +1,8 @@
+import OrbDiagnosticAnalysis from './OrbDiagnosticAnalysis.jsx';
+import ExcursionAnalysis from './ExcursionAnalysis.jsx';
+import {tradeDiagnostics,displayDiagnostic,breakdownDiagnostics} from './tradeDiagnostics.js';
+import {downloadCsv,downloadJson} from '../../utils/csv.js';
+import {backtestExportRows,runExportFilename} from '../../utils/researchExports.js';
 import {loadPreferences} from "../../app/preferences.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +12,10 @@ import { TIMEZONE_OPTIONS } from "../../utils/timezones";
 import PerformanceChart from "./PerformanceChart";
 import TradeAuditChart from "./TradeAuditChart";
 import ValidationPanel from "./ValidationPanel";
+import ResearchExperimentPanel from './ResearchExperimentPanel.jsx';
+import FuturesPreflight from './FuturesPreflight.jsx';
+import ResearchHistory from './ResearchHistory.jsx';
+import ResearchExperimentViewer from './ResearchExperimentViewer.jsx';
 import ReplayPanel from "./ReplayPanel";
 import StrategyWorkspace from "./StrategyWorkspace";
 import {useUIPreference} from "../../app/useUIPreference.js";
@@ -16,6 +25,7 @@ import useBacktestJobs from "./useBacktestJobs.js";
 import BacktestJobPanel from "./BacktestJobPanel.jsx";
 import RunsTable from "./RunsTable.jsx";
 import RunComparison from "./RunComparison.jsx";
+import ComputeControl from "./ComputeControl.jsx";
 
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
@@ -30,7 +40,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const {context}=useWorkflow();
   const appliedHandoff=useRef(null);
   const [savedTab, setSavedTab] = useUIPreference("backtest.tab", initialTab);
-  const tab=standaloneTab==="Replay"?"Replay":(["Backtest","Runs","Run Viewer","Strategies","Indicators","Workspace"].includes(savedTab)?savedTab:"Backtest");
+  const tab=standaloneTab==="Replay"?"Replay":(["Backtest","Runs","Run Viewer","Research Viewer","Strategies","Indicators","Workspace"].includes(savedTab)?savedTab:"Backtest");
   const setTab=value=>setSavedTab(value);
   const [strategies, setStrategies] = useState([]);
   const [indicators, setIndicators] = useState([]);
@@ -152,8 +162,12 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     try {
       const suite = await api.strategyLabExperiment(group);
       setSavedExperiment(suite);
-      localStorage.setItem("ledger.ui.section.validation-research", "true");
-      setTab("Backtest");
+      if (suite.experiment || suite.runs?.some(r=>r.config?.research_experiment)) {
+        setTab("Research Viewer");
+      } else {
+        localStorage.setItem("ledger.ui.section.validation-research", "true");
+        setTab("Backtest");
+      }
     } catch (e) { setError(e.message); }
   };
 
@@ -193,14 +207,15 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
   return <div className={standaloneTab === "Replay" ? "strategy-lab-root replay-root w-full max-w-none" : "dense-page strategy-lab-root min-w-0 w-full max-w-[1600px]"}>
     <div><p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">{standaloneTab === "Replay" ? "Replay" : standaloneTab === "Backtest" ? "Backtest" : "Strategy Lab"}</h2><p className="mt-2 max-w-5xl text-sm text-stone-600">{standaloneTab === "Replay" ? "Practise historical markets candle-by-candle without revealing the future; Replay trades feed directly into Journal." : "Backtest coded strategy plugins with explicit execution rules, saved reproducible runs, validation and diagnostic analysis."}</p></div>
-    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs",...(result?["Run Viewer"]:[]),"Strategies","Workspace","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
-    {standaloneTab === "Backtest" && <div className="feature-nav" aria-label="Backtest navigation">{["Backtest","Runs",...(result?["Run Viewer"]:[]),"Strategies","Workspace"].map(item=><button key={item} aria-current={tab===item?"page":undefined} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
+    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Workspace","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
+    {standaloneTab === "Backtest" && <div className="feature-nav" aria-label="Backtest navigation">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Workspace"].map(item=><button key={item} aria-current={tab===item?"page":undefined} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-    {standaloneTab !== "Replay" && ["Backtest","Runs"].includes(tab) && <BacktestJobPanel queue={queue} onOpen={openSavedRun}/>}
+    {standaloneTab !== "Replay" && ["Backtest","Runs"].includes(tab) && <BacktestJobPanel queue={queue} onOpen={openSavedRun} onOpenExperiment={openSavedExperiment}/>}
     {tab === "Strategies" && <Button onClick={()=>setTab("Indicators")}>Browse indicators</Button>}
     {tab === "Indicators" && <Button onClick={()=>setTab("Strategies")}>Back to strategies</Button>}
     {tab === "Backtest" && <>
+      <FuturesPreflight buildPayload={buildPayload}/>
 
       <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 border-b border-stone-100 pb-5 lg:grid-cols-2">
@@ -270,13 +285,17 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
         {strategy?.risk_management && Object.keys(strategy.risk_management).length > 0 && <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Strategy-owned risk management</p><p className="mt-1 text-xs text-stone-600">Reference only: stop, target and position-management rules come from strategy code, not this form.</p></div>{strategy.source_file && <code className="rounded bg-white px-2 py-1 text-[11px] text-stone-500">{strategy.source_file}</code>}</div><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(strategy.risk_management).map(([label, value]) => <div key={label} className="rounded-md bg-white px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-stone-400">{label}</div><div className="mt-1 text-xs font-medium text-stone-700">{value}</div></div>)}</div></div>}
 
+        <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><ComputeControl compact onError={setError}/></div>
+
         <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || Boolean(configurationError(buildPayload()))} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button></div>
       </section>
-      {["Validation suite","Sensitivity test"].map(mode=><Section key={mode} id={mode=== "Validation suite"?"validation-research":"sensitivity-research"} title={mode==="Validation suite"?"Validation & out-of-sample":"Sensitivity analysis"}><ValidationPanel mode={mode} submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/></Section>)}
+      <Section id="validation-research" title="Validation & out-of-sample"><ValidationPanel mode="Validation suite" submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment?.experiment||savedExperiment?.runs?.some(r=>r.config?.research_experiment)?null:savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/></Section>
+      <Section id="sensitivity-research" title="Sensitivity / spectrum & interaction grid"><ResearchExperimentPanel strategy={strategy} buildPayload={buildPayload} refresh={queue.refresh} onError={setError} onOpenExperiment={openSavedExperiment}/></Section>
     </>}
 
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
     {tab === "Run Viewer" && result && <BacktestResults result={result} onUseSettings={useSavedSettings} onBackToRuns={()=>{setTab("Runs");refreshRuns();}} />}
+    {tab === "Research Viewer" && savedExperiment?.experiment && <ResearchExperimentViewer experimentGroup={savedExperiment.experiment_group} initial={savedExperiment} jobs={queue.jobs} onOpenRun={openSavedRun} onBack={()=>{setTab("Runs");refreshRuns();}} onError={setError}/>}
     {tab === "Strategies" && <section className="mt-5 grid gap-4 lg:grid-cols-2">{strategies.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">{item.category}</p><h3 className="mt-1 font-semibold">{item.name}</h3></div><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.description}</p><p className="mt-3 text-xs text-stone-500">Default timeframe: {(item.timeframes || []).join(", ")}</p><p className="mt-2 text-xs text-stone-500">Strategy code owns entry, initial stop/target and next-bar position management (including breakeven, trailing rules and partial exits). The run screen owns account sizing, execution costs, schedule and account guardrails.</p>{item.risk_management && Object.keys(item.risk_management).length > 0 && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{Object.entries(item.risk_management).map(([label,value]) => <div key={label} className="mt-1"><strong>{label}:</strong> {value}</div>)}</div>}{(item.research_parameters || []).length > 0 && <p className="mt-3 text-xs text-stone-500"><strong>Research-only sensitivity:</strong> {(item.research_parameters || []).map((p) => p.label).join(", ")}. These do not appear on ordinary runs.</p>}</div>)}</section>}
     {tab === "Indicators" && <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{indicators.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-semibold">{item.name}</h3><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.overlay ? "Price-chart overlay" : "Separate/pane indicator"}</p><p className="mt-2 text-xs text-stone-500">Defaults: {Object.entries(item.defaults || {}).map(([k,v]) => `${k}=${v}`).join(", ") || "None"}</p></div>)}</section>}
     {standaloneTab !== "Replay" && <div hidden={tab !== "Workspace"}><StrategyWorkspace onActivation={()=>api.strategyLabStrategies().then(data=>setStrategies(data.strategies||[])).catch(e=>setError(e.message))} onDirtyChange={onWorkspaceDirty} onResult={response=>{setResult(response);refreshRuns();setTab("Run Viewer");}} /></div>}
@@ -310,9 +329,12 @@ function BacktestResults({ result, onUseSettings, onBackToRuns }) {
   }, [trades]);
   const runTitle = result.saved_run?.name || result.run_name || result.strategy?.name || "Backtest result";
   const runId = result.saved_run?.id;
+  const [exportError,setExportError]=useState('');
+  const exportFullRun=async()=>{try{setExportError('');const snapshot=runId?await api.strategyLabRun(runId):result;downloadJson(snapshot,runExportFilename(result,'full.json'));}catch(e){setExportError(e.message);}};
   const symbols = (result.symbols || []).join(" · ") || "—";
 
   return <section className="mt-5">
+    <div className="ui-toolbar mb-3"><button className="mini-btn" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" onClick={()=>downloadCsv(backtestExportRows(result),runExportFilename(result,'all-trades.csv'))}>Export all trades CSV</button><button className="mini-btn" onClick={exportFullRun}>Export full run JSON</button>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500">Run Viewer</p><h3 className="mt-1 truncate text-xl font-semibold">{runId ? `#${runId} · ` : ""}{runTitle}</h3><p className="mt-1 text-xs text-stone-500">{result.strategy?.name || result.strategy?.key || "Strategy"} · {symbols} · {result.primary_timeframe || "—"} · {result.start_date || result.data?.requested_start || "—"} → {result.end_date || result.data?.requested_end || "—"}</p></div>
@@ -347,12 +369,12 @@ function BacktestResults({ result, onUseSettings, onBackToRuns }) {
     </>}
 
     {viewerTab === "Trades" && <section className="mt-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-      <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter the complete run and open any trade on its historical chart.</p></div><div className="ui-toolbar"><span className="text-xs text-stone-500">Showing {visibleTrades.length} of {filtered.length} matching trades</span>{filtered.length>20&&<button className="mini-btn" onClick={()=>setShowAllTrades(v=>!v)}>{showAllTrades?"Show 20":"Expand all"}</button>}</div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleTrades.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`}><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td><td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
+      <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter the complete run and open any trade on its historical chart. MFE/MAE are conservative lower bounds: exit-bar OHLC ordering is unknown. Giveback = MFE minus realised R.</p></div><div className="ui-toolbar"><span className="text-xs text-stone-500">Showing {visibleTrades.length} of {filtered.length} matching trades</span>{filtered.length>20&&<button className="mini-btn" onClick={()=>setShowAllTrades(v=>!v)}>{showAllTrades?"Show 20":"Expand all"}</button>}</div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","MFE (R)","MAE (R)","Hold minutes","Giveback (R)","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleTrades.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`}><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td>{["mfe_r","mae_r","minutes_in_trade","giveback_r"].map(key=><td key={key} className="px-3 py-3">{displayDiagnostic(tradeDiagnostics(trade)[key])}</td> )}<td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
       {!filtered.length && <p className="p-8 text-center text-sm text-stone-500">No trades match these filters.</p>}
     </section>}
 
-    {viewerTab === "Analysis" && <AnalysisPanel analysis={result.analysis || {}} />}
+    {viewerTab === "Analysis" && <><AnalysisPanel analysis={result.analysis || {}} trades={trades} /><ExcursionAnalysis trades={trades}/>{result.strategy?.key==='opening_range_breakout_research_v1'&&<OrbDiagnosticAnalysis trades={trades}/>}</>}
     {auditTrade && <TradeAuditChart trade={auditTrade} timeframe={result.primary_timeframe} session={result.session} onClose={() => setAuditTrade(null)} />}
   </section>;
 }
@@ -360,6 +382,7 @@ function BacktestResults({ result, onUseSettings, onBackToRuns }) {
 function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment }) {
   const [selected, setSelected] = useState([]);
   const [view, setView] = useUIPreference("runs.view", "all");
+  useEffect(()=>{ if(view === "sensitivity") setView("research"); },[view]);
   const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 12 ? old : [...old, id]);
   const compared = selected.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
   const experimentGroups = Object.entries(runs.reduce((groups, run) => {
@@ -367,21 +390,21 @@ function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment })
     (groups[run.experiment_group] ||= []).push(run);
     return groups;
   }, {})).filter(([, items]) => new Set(items.map((item) => item.test_role)).size >= 2);
-  const sensitivityRuns = runs.filter((run) => (run.tags || []).includes("sensitivity") || String(run.experiment_group || "").startsWith("sensitivity-"));
-  const visibleRuns = view === "sensitivity" ? sensitivityRuns : runs;
+  const visibleRuns = runs.filter(r=>!String(r.experiment_group||'').startsWith('research:'));
   const remove = async (id) => { if (!window.confirm(`Delete saved backtest run #${id}?`)) return; await api.deleteStrategyLabRun(id); setSelected((old) => old.filter((x) => x !== id)); onRefresh(); };
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-    <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Runs, validation suites and sensitivity experiments are separated so validation cards do not permanently consume the Runs screen.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
+    <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Standalone runs, validation suites and parent research experiments are separated so grids remain easy to find without exposing every child cell as a top-level run.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
     {runs.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1") && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Momentum stock runs: Historical universe may contain survivorship bias.</p>}
-    <div className="mt-4 flex gap-2">{[["all","All runs"],["validation","Validation suites"],["sensitivity","Sensitivity"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
-    {compared.length >= 2 && view !== "validation" && <RunComparison ids={compared.map(run => run.id)} />}
+    <div className="mt-4 flex gap-2">{[["all","Single runs"],["validation","Validation suites"],["research","Research experiments"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
+    {compared.length >= 2 && view === "all" && <RunComparison ids={compared.map(run => run.id)} />}
     {view === "validation" && <div className="mt-5">
       {!experimentGroups.length && <p className="rounded-lg bg-stone-50 p-6 text-center text-sm text-stone-500">No saved validation suites yet.</p>}
       <div className="grid gap-3 xl:grid-cols-2">{experimentGroups.map(([group, items]) => <ExperimentSummary key={group} group={group} items={items} onOpen={onOpen} onOpenExperiment={onOpenExperiment} />)}</div>
     </div>}
-    {view !== "validation" && <RunsTable runs={visibleRuns} selected={selected} toggle={toggle} onOpen={onOpen} onUseSettings={onUseSettings} onRemove={remove}/>}
-    {view !== "validation" && !visibleRuns.length && <p className="p-8 text-center text-sm text-stone-500">{view === "sensitivity" ? "No sensitivity runs yet." : "No saved runs yet. Your next successful backtest will appear here automatically."}</p>}
+    {view === "research" && <ResearchHistory onOpen={onOpenExperiment}/>}
+    {view === "all" && <RunsTable runs={visibleRuns} selected={selected} toggle={toggle} onOpen={onOpen} onUseSettings={onUseSettings} onRemove={remove}/>}
+    {view === "all" && !visibleRuns.length && <p className="p-8 text-center text-sm text-stone-500">No saved standalone runs yet. Your next successful backtest will appear here automatically.</p>}
   </section>;
 }
 function RoleBadge({ role }) {
@@ -394,7 +417,7 @@ function ExperimentSummary({ group, items, onOpen, onOpenExperiment }) {
   return <div className="rounded-lg border border-stone-200 bg-stone-50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">Experiment</p><p className="mt-1 max-w-[420px] truncate text-sm font-semibold" title={group}>{group}</p></div><span className="text-xs text-stone-500">{items.length} runs</span></div><button onClick={() => onOpenExperiment(group)} className="mt-3 w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white">Open full validation experiment</button><div className="mt-3 space-y-2">{ordered.map((run) => <button key={run.id} onClick={() => onOpen(run.id)} className="grid w-full grid-cols-[120px_1fr_80px_80px] items-center gap-2 rounded-md bg-white px-3 py-2 text-left text-xs hover:bg-stone-100"><RoleBadge role={run.test_role} /><span>{run.start_date} → {run.end_date}</span><span className="text-right">{r(run.expectancy_r)}</span><span className="text-right">{pct(run.max_drawdown_pct)}</span></button>)}</div></div>;
 }
 
-function AnalysisPanel({ analysis }) {
+function AnalysisPanel({ analysis, trades=[] }) {
   const [breakdown, setBreakdown] = useState("entry_hour");
   const rows = analysis.breakdowns?.[breakdown] || [];
   const labelMap = { session: "Session", entry_hour: "Entry time", weekday: "Weekday", direction: "Direction", symbol: "Symbol", month: "Month", exit_reason: "Exit reason", signal_reason: "Signal reason" };
@@ -402,7 +425,7 @@ function AnalysisPanel({ analysis }) {
     <div><h3 className="font-semibold">Why is it working / not working?</h3><p className="mt-1 max-w-4xl text-xs text-stone-500">Descriptive diagnostics split the same run by time, day, direction, symbol and exit type. Use them to form hypotheses, then validate those hypotheses on unseen data.</p></div>
     {(analysis.observations || []).length > 0 && <div className="mt-4 grid gap-3 lg:grid-cols-2">{analysis.observations.map((item, index) => <div key={`${item.kind}-${index}`} className="rounded-lg bg-stone-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{item.title}</p><p className="mt-2 text-sm text-stone-700">{item.text}</p></div>)}</div>}
     <div className="mt-5 flex flex-wrap gap-2">{Object.keys(labelMap).map((key) => <button key={key} onClick={() => setBreakdown(key)} className={`rounded-md border px-3 py-2 text-xs ${breakdown === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{labelMap[key]}</button>)}</div>
-    <div className="mt-3 overflow-x-auto rounded-lg border border-stone-200"><table className="w-full min-w-[760px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr><th className="px-3 py-2 text-left">{labelMap[breakdown]}</th><th className="px-3 py-2 text-right">Trades</th><th className="px-3 py-2 text-right">Win rate</th><th className="px-3 py-2 text-right">Avg R</th><th className="px-3 py-2 text-right">Total R</th><th className="px-3 py-2 text-right">PF (R)</th><th className="px-3 py-2 text-right">Net P&L</th></tr></thead><tbody className="divide-y divide-stone-100">{rows.map((row, index) => { const key = row[breakdown]; return <tr key={`${key}-${index}`}><td className="px-3 py-2 font-medium">{String(key || "—").replaceAll("_", " ")}</td><td className="px-3 py-2 text-right">{row.trades}</td><td className="px-3 py-2 text-right">{pct(row.win_rate_pct)}</td><td className="px-3 py-2 text-right">{r(row.average_r)}</td><td className="px-3 py-2 text-right">{r(row.total_r)}</td><td className="px-3 py-2 text-right">{number(row.profit_factor_r)}</td><td className={`px-3 py-2 text-right ${Number(row.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(row.net_pnl)}</td></tr>; })}</tbody></table></div>
+    <div className="mt-3 overflow-x-auto rounded-lg border border-stone-200"><table className="w-full min-w-[760px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr><th className="px-3 py-2 text-left">{labelMap[breakdown]}</th><th className="px-3 py-2 text-right">Trades</th><th className="px-3 py-2 text-right">Win rate</th><th className="px-3 py-2 text-right">Avg R</th><th className="px-3 py-2 text-right">Total R</th><th className="px-3 py-2 text-right">PF (R)</th><th className="px-3 py-2 text-right">Net P&L</th>{["Average MFE R (N)","Average MAE R (N)","Average hold min (N)"].map(h=><th key={h} className="px-3 py-2 text-right">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{rows.map((row, index) => { const key = row[breakdown]; const diagnostics=breakdownDiagnostics(trades,breakdown,key); return <tr key={`${key}-${index}`}><td className="px-3 py-2 font-medium">{String(key || "—").replaceAll("_", " ")}</td><td className="px-3 py-2 text-right">{row.trades}</td><td className="px-3 py-2 text-right">{pct(row.win_rate_pct)}</td><td className="px-3 py-2 text-right">{r(row.average_r)}</td><td className="px-3 py-2 text-right">{r(row.total_r)}</td><td className="px-3 py-2 text-right">{number(row.profit_factor_r)}</td><td className={`px-3 py-2 text-right ${Number(row.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(row.net_pnl)}</td>{[["average_mfe","mfe_n"],["average_mae","mae_n"],["average_hold","hold_n"]].map(([value,n])=><td key={value} className="px-3 py-2 text-right">{displayDiagnostic(diagnostics?.[value])} {diagnostics&&`(N=${diagnostics[n]}${diagnostics[n]<20?"; low sample":""})`}</td>)}</tr>; })}</tbody></table></div>
     {(analysis.largest_losses || []).length > 0 && <div className="mt-5 border-t border-stone-100 pt-4"><h4 className="text-sm font-semibold">Largest realised losses</h4><p className="mt-1 text-xs text-stone-500">Useful for spotting gap risk, execution assumptions or one-off events that dominate the sample.</p><div className="mt-3 grid gap-2 lg:grid-cols-2">{(analysis.largest_losses || []).map((trade, index) => <div key={`${trade.symbol}-${trade.exit_time}-${index}`} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-xs"><span><strong>{trade.symbol}</strong> · {formatDate(trade.entry_time)} · {String(trade.exit_reason).replaceAll("_", " ")}</span><span className="font-semibold text-red-700">{r(trade.r_multiple)} · {money(trade.net_pnl)}</span></div>)}</div></div>}
     <p className="mt-3 text-xs text-amber-800">{analysis.note || "Historical breakdowns are descriptive, not validation."}</p>
   </section>;

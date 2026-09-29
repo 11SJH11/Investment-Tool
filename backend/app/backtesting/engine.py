@@ -1,4 +1,6 @@
 from __future__ import annotations
+from app.performance import timed, profiled, measure
+
 
 from collections import defaultdict
 from dataclasses import asdict, replace
@@ -12,7 +14,7 @@ import pandas as pd
 
 from app.data.futures import execution_economics, execution_contract, validate_execution_frame, PROVENANCE_COLUMNS, adverse_tick, on_tick
 
-from app.backtesting.context import StrategyContext, timeframe_delta
+from app.backtesting.context import StrategyContext, timeframe_delta, completion_indexes
 from app.backtesting.models import BacktestConfig, BacktestTrade, EntrySignal, ExitSignal, ManagePositionSignal, Position
 from app.backtesting.strategies.base import Strategy
 
@@ -40,6 +42,7 @@ class BacktestEngine:
         self._session_end = _parse_clock(config.session_end)
         self._force_close = _parse_clock(config.force_close_time) if config.force_close_time else None
 
+    @timed('simulation')
     def run(
         self,
         *,
@@ -91,6 +94,7 @@ class BacktestEngine:
         rejected_signals: list[dict[str, Any]] = []
         last_bars: dict[str, pd.Series] = {}
         indicator_caches: dict[str, dict] = {symbol: {} for symbol in prepared}
+        completed_indexes = {symbol: completion_indexes(frames) for symbol, frames in prepared.items()}
 
         entries_by_day: dict[object, int] = defaultdict(int)
         day_results: dict[object, dict[str, float | int]] = defaultdict(
@@ -277,6 +281,7 @@ class BacktestEngine:
                     position=positions.get(symbol),
                     equity=marked_equity,
                     indicator_cache=indicator_caches[symbol],
+                    completion_indexes=completed_indexes[symbol],
                 )
                 decision = strategy.on_bar(ctx)
                 if isinstance(decision, EntrySignal):
@@ -839,6 +844,7 @@ def calculate_metrics(
     }
 
 
+@timed('analysis')
 def calculate_analysis(trades: list[BacktestTrade], tz: ZoneInfo) -> dict[str, Any]:
     def symbol(t: BacktestTrade) -> str: return t.symbol
     def direction(t: BacktestTrade) -> str: return t.direction

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import RLock
+from threading import RLock, Condition
 import json
 import uuid
 
@@ -14,10 +14,15 @@ class JobCancelled(Exception):
 class BacktestJobs:
     def __init__(self, database, backtest, workers=2):
         self.database, self.backtest = database, backtest
-        self.workers = max(1, min(int(workers), 8))
         self.lock = RLock()
+        self.slot_condition = Condition(RLock())
+        self.active_workers = 0
         self.closed = False
-        self.executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix='backtest')
+        saved_mode = database.get_setting('backtest_worker_mode')
+        self.worker_mode = saved_mode or ('auto_conservative' if int(workers) == 2 else str(max(1,min(int(workers),8))))
+        from app.storage.research_repository import ResearchRepository
+        self.research = ResearchRepository(database)
+        self.executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest')
         with database.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS backtest_jobs (
                 id TEXT PRIMARY KEY, request_key TEXT NOT NULL, ordinal INTEGER NOT NULL,
@@ -29,7 +34,14 @@ class BacktestJobs:
                 UNIQUE(request_key, ordinal))''')
             # Recover a successful immutable save even if the process died before
             # recording completion. Otherwise interrupted work requires explicit retry.
-            for row in db.execute("SELECT id FROM backtest_jobs WHERE status IN ('running','preparing data')").fetchall():
+            for row in db.execute("SELECT id,payload FROM backtest_jobs WHERE status IN ('running','preparing data','preparing shared data','analysing results','saving')").fetchall():
+                payload = json.loads(row['payload'])
+                if payload.get('research_children'):
+                    document = self.research.get(payload['experiment_group'])
+                    complete = document and document.get('status') == 'completed'
+                    db.execute('UPDATE backtest_jobs SET status=?,error=? WHERE id=?',
+                               ('completed' if complete else 'failed', None if complete else 'Research interrupted. Retry resumes unsaved cells against the same data fingerprint.', row['id']))
+                    continue
                 saved = db.execute("SELECT id FROM backtest_runs WHERE json_extract(config_json, '$.queue_job_id')=? ORDER BY id DESC LIMIT 1", (row['id'],)).fetchone()
                 db.execute("UPDATE backtest_jobs SET status=?,run_id=?,error=? WHERE id=?",
                            ('completed' if saved else 'failed', saved['id'] if saved else None,
@@ -37,6 +49,47 @@ class BacktestJobs:
             pending = [row['id'] for row in db.execute("SELECT id FROM backtest_jobs WHERE status='queued' ORDER BY created_at, ordinal")]
         for job_id in pending:
             self.executor.submit(self._work, job_id)
+
+    @property
+    def workers(self):
+        from app.research_runtime import worker_count
+        return worker_count(self.worker_mode)
+
+    def compute_settings(self):
+        return {'mode': self.worker_mode, 'resolved_workers': self.workers,
+                'note': 'Independent jobs/cells can run in parallel; one causal strategy simulation remains sequential.'}
+
+    def set_worker_mode(self, mode):
+        from app.research_runtime import worker_count
+        mode = str(mode or '').strip()
+        if mode == 'auto':
+            mode = 'auto_conservative'
+        if mode not in {'auto_conservative','auto_performance','1','2','3','4','5','6','7','8'}:
+            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1–8 workers')
+        worker_count(mode)  # validate on this host
+        self.worker_mode = mode
+        self.database.set_setting('backtest_worker_mode', mode)
+        with self.slot_condition:
+            self.slot_condition.notify_all()
+        return self.compute_settings()
+
+    def _acquire_slot(self, job_id):
+        with self.slot_condition:
+            while not self.closed and self.active_workers >= self.workers:
+                try:
+                    if self.get(job_id)['cancel_requested']:
+                        raise JobCancelled()
+                except ValueError:
+                    raise JobCancelled()
+                self.slot_condition.wait(timeout=.2)
+            if self.closed:
+                raise JobCancelled()
+            self.active_workers += 1
+
+    def _release_slot(self):
+        with self.slot_condition:
+            self.active_workers = max(0, self.active_workers - 1)
+            self.slot_condition.notify_all()
 
     def list(self):
         with self.database.connect() as db:
@@ -76,6 +129,11 @@ class BacktestJobs:
                     if [json.loads(row['payload']) for row in existing] != canonical:
                         raise ValueError('Request key already belongs to a different submission')
                     return [self._decode(row) for row in existing]
+                for payload in canonical:
+                    if payload.get('research_children'):
+                        active=db.execute("SELECT id FROM backtest_jobs WHERE json_extract(payload,'$.experiment_group')=? AND status IN ('queued','preparing data','preparing shared data','running','analysing results','saving')",(payload['experiment_group'],)).fetchone()
+                        if active:
+                            raise ValueError('This research experiment is already queued or running')
                 ids = [str(uuid.uuid4()) for _ in canonical]
                 for index, (job_id, payload) in enumerate(zip(ids, canonical)):
                     db.execute("INSERT INTO backtest_jobs(id,request_key,ordinal,batch_id,payload,status) VALUES(?,?,?,?,?,'queued')",
@@ -94,7 +152,7 @@ class BacktestJobs:
             job = self.get(job_id)
             if job['status'] == 'queued':
                 self._update(job_id, status='cancelled', cancel_requested=1)
-            elif job['status'] in ('preparing data', 'running'):
+            elif job['status'] in ('preparing data', 'running', 'preparing shared data', 'analysing results', 'saving'):
                 self._update(job_id, cancel_requested=1)
             return self.get(job_id)
 
@@ -119,11 +177,21 @@ class BacktestJobs:
         return {'ok': True, 'deleted': count}
     def retry(self, job_id, request_key):
         job = self.get(job_id)
-        if job['status'] != 'failed':
+        if job['status'] != 'failed' and not (job['status']=='cancelled' and job['payload'].get('research_children')):
             raise ValueError('Only failed jobs can be retried')
         return self.enqueue([job['payload']], request_key)
 
     def _work(self, job_id):
+        acquired = False
+        try:
+            self._acquire_slot(job_id)
+            acquired = True
+            self._work_inner(job_id)
+        finally:
+            if acquired:
+                self._release_slot()
+
+    def _work_inner(self, job_id):
         try:
             with self.lock:
                 if self.closed or self.get(job_id)['status'] != 'queued':
@@ -143,6 +211,24 @@ class BacktestJobs:
                     self._update(job_id, status='completed', run_id=saved['id'])
                     return saved
             payload = {**self.get(job_id)['payload'], 'queue_job_id': job_id}
+            if payload.get('research_children') and payload.get('research_workers') == 'global':
+                payload['research_workers'] = self.worker_mode
+            if payload.get('research_children'):
+                from app.services.research_runner import run_experiment
+                def cancelled():
+                    if self.closed or self.get(job_id)['cancel_requested']:
+                        raise JobCancelled()
+                def commit(save):
+                    with self.lock:
+                        cancelled()
+                        return save()
+                document = run_experiment(self.backtest,self.research,payload,progress=progress,cancelled=cancelled,commit=commit)
+                with self.lock:
+                    cancelled()
+                    failed = sum(c['status'] != 'completed' for c in document['cells'])
+                    self._update(job_id,status='failed' if failed else 'completed',
+                                 error=f'{failed} research cells failed. Open the experiment for details; retry resumes incomplete cells.' if failed else None)
+                return
             self.backtest.run(payload, progress=progress, persist=persist)
             if self.get(job_id)['status'] != 'completed':
                 raise RuntimeError('No immutable result was saved')
@@ -152,8 +238,17 @@ class BacktestJobs:
             # Provider exceptions may contain request URLs or credentials.
             # Do not log or persist arbitrary exception text.
             self._update(job_id, status='failed', error='Backtest failed. Check strategy, dates, provider configuration and data availability, then retry.')
+            payload = self.get(job_id)['payload']
+            if payload.get('research_children'):
+                document = self.research.get(payload['experiment_group'])
+                if document:
+                    document['status']='failed'
+                    document['error']='Research interrupted or input snapshot changed. Completed cells remain saved; retry only with identical source data.'
+                    self.research.save(document)
 
     def close(self):
         with self.lock:
             self.closed = True
+        with self.slot_condition:
+            self.slot_condition.notify_all()
         self.executor.shutdown(wait=True, cancel_futures=True)

@@ -31,11 +31,13 @@ class StrategyContext:
         position: Position | None,
         equity: float,
         indicator_cache: dict | None = None,
+        completion_indexes: dict | None = None,
     ):
         self.symbol = symbol
         self.primary_timeframe = primary_timeframe
         self.decision_time = decision_time
         self._frames = frames
+        self._completion_indexes = completion_indexes
         self.position = position
         self.equity = equity
         self._indicator_cache = indicator_cache if indicator_cache is not None else {}
@@ -53,6 +55,17 @@ class StrategyContext:
             frame = self._frames[timeframe]
         except KeyError as exc:
             raise KeyError(f"Strategy requested unloaded timeframe '{timeframe}'") from exc
+        if self._completion_indexes is not None:
+            index = self._completion_indexes[timeframe]
+            cutoff = pd.Timestamp(self.decision_time)
+            cutoff = cutoff.tz_localize('UTC') if cutoff.tzinfo is None else cutoff.tz_convert('UTC')
+            if index.is_monotonic_increasing and not index.hasnans:
+                end = index.searchsorted(cutoff, side='right')
+                start = 0 if count is None else max(0, end - max(0, int(count)))
+                # Match reset_index followed by tail, including its original row labels.
+                available = frame.iloc[start:end].copy()
+                available.index = pd.RangeIndex(start, end)
+                return available
         available = _completed_bars(frame, timeframe, self.decision_time)
         if count is not None:
             available = available.tail(max(0, int(count)))
@@ -78,6 +91,14 @@ def timeframe_delta(timeframe: str) -> timedelta:
         return timedelta(minutes=_TIMEFRAME_MINUTES[timeframe])
     except KeyError as exc:
         raise ValueError(f"Unsupported timeframe '{timeframe}'") from exc
+
+
+def completion_indexes(frames):
+    """Per-simulation indexes only; never strategy, indicator or account state."""
+    return {tf: pd.DatetimeIndex(pd.to_datetime(frame['available_at'], utc=True)
+                                if 'available_at' in frame else
+                                pd.to_datetime(frame['timestamp'], utc=True) + timeframe_delta(tf))
+            for tf, frame in frames.items()}
 
 
 def _completed_bars(frame: pd.DataFrame, timeframe: str, decision_time: datetime) -> pd.DataFrame:

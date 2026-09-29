@@ -1,5 +1,6 @@
 """Frozen causal ORB/VWAP rules; see docs/ORB_VWAP_BASELINES.md."""
 from datetime import datetime, time, timedelta
+from dataclasses import replace
 from math import ceil, floor, isfinite
 from zoneinfo import ZoneInfo
 
@@ -11,12 +12,15 @@ from app.backtesting.strategies.registry import strategy_registry
 from app.data.futures import execution_economics, validate_execution_symbol, execution_contract
 from app.data.instruments import instrument_spec
 from app.indicators.rth_vwap import session_moments
+from app.backtesting.strategies.orb_participation import DEFAULTS as PARTICIPATION_DEFAULTS, FILTERS, diagnostics, rejection
 
 NY = ZoneInfo("America/New_York")
 ORB = "opening_range_breakout_baseline_v1"
 ORB_RESEARCH = "opening_range_breakout_research_v1"
+ORB_REVERSAL = "opening_range_failed_breakout_reversal_v1"
 VWAP = "vwap_mean_reversion_baseline_v1"
-KEYS = {ORB, ORB_RESEARCH, VWAP}
+KEYS = {ORB, ORB_RESEARCH, ORB_REVERSAL, VWAP}
+ORB_DIAGNOSTIC_KEYS = {ORB_RESEARCH, ORB_REVERSAL}
 ORB_DEFAULTS = dict(range_minutes=15, target_r=2.0, confirmation="close",
                     entry_mode="direct", volume_ratio=0.0, min_range_atr=0.0,
                     trend_ema_length=0)
@@ -146,8 +150,7 @@ class OpeningRangeBreakout(Strategy):
             max_wait_bars=15 if retest else None, expires_at=expires)
 
 
-@strategy_registry.register
-class OpeningRangeResearch(OpeningRangeBreakout):
+class _OpeningRangeResearchRules(OpeningRangeBreakout):
     spec = StrategySpec(key=ORB_RESEARCH, name="Opening Range Breakout · experimental research",
         description="Separate experimental identity; change one variable at a time. No optimized defaults.",
         defaults=ORB_DEFAULTS, timeframes=("1m",), category="Experimental",
@@ -159,6 +162,227 @@ class OpeningRangeResearch(OpeningRangeBreakout):
             ParameterSpec("volume_ratio", "Prior 20-bar volume multiple (0 off)", "float", 0.0, minimum=0),
             ParameterSpec("min_range_atr", "Minimum range / prior ATR14 (0 off)", "float", 0.0, minimum=0),
             ParameterSpec("trend_ema_length", "Session EMA length (0 off)", "int", 0, minimum=0, maximum=390)))
+
+
+@strategy_registry.register
+class OpeningRangeResearch(Strategy):
+    """Wrap unchanged research signal rules; disabled filters preserve executions."""
+    spec = replace(_OpeningRangeResearchRules.spec,
+        defaults={**ORB_DEFAULTS, **PARTICIPATION_DEFAULTS}, timeframes=("1m", "1d"),
+        parameters=_OpeningRangeResearchRules.spec.parameters + tuple(
+            ParameterSpec(
+                key, key.replace("_", " ").capitalize()+" (-1 off)", "float", -1.0,
+                minimum=-1, maximum=maximum,
+                help=("Research only. -1 disables. Upper breakout/range RVOL bounds are exclusive; "
+                      "the legacy ATR-regime maximum remains inclusive for saved-run compatibility."),
+                paired_max_key={
+                    "min_breakout_range_atr": "max_breakout_range_atr",
+                    "min_opening_range_rvol": "max_opening_range_rvol",
+                }.get(key, ""),
+                bound_semantics=("minimum inclusive" if key.startswith("min_") else
+                                 "maximum exclusive" if key in {"max_breakout_range_atr","max_opening_range_rvol"} else
+                                 "maximum inclusive" if key.startswith("max_") else ""),
+            )
+            for key,(_,_,maximum) in FILTERS.items()))
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        if set(self.params) != set(self.spec.defaults):
+            raise ValueError("Unknown ORB research parameter")
+        self.rules = _OpeningRangeResearchRules(**{k:self.params[k] for k in ORB_DEFAULTS})
+        self.diagnostic_history = None
+        self.params.update(self.rules.params)
+        for key,(_,_,maximum) in FILTERS.items():
+            value = float(self.params[key])
+            if not isfinite(value) or (value<0 and value!=-1) or (maximum is not None and value>maximum):
+                raise ValueError(f"Invalid {key}: use -1 (off) or a valid nonnegative threshold")
+            self.params[key] = value
+        lo,hi = self.params["min_atr_regime_percentile"],self.params["max_atr_regime_percentile"]
+        if lo>=0 and hi>=0 and lo>hi:
+            raise ValueError("ATR regime minimum exceeds maximum")
+        for lower,upper,label in (("min_breakout_range_atr","max_breakout_range_atr","Breakout ATR"),
+                                  ("min_opening_range_rvol","max_opening_range_rvol","Opening-range RVOL")):
+            lo,hi=self.params[lower],self.params[upper]
+            if lo>=0 and hi>=0 and lo>=hi:
+                raise ValueError(f"{label} band requires minimum < exclusive maximum")
+
+    def reset(self):
+        self.rules.reset()
+
+    def on_bar(self, ctx):
+        signal = self.rules.on_bar(ctx)
+        if signal is None:
+            return None
+        meta = {**signal.metadata, **diagnostics(ctx, self.params["range_minutes"], self.diagnostic_history)}
+        return replace(signal, metadata=meta,
+                       rejection_reason=signal.rejection_reason or rejection(self.params,meta))
+
+
+@strategy_registry.register
+class OpeningRangeFailedBreakoutReversal(Strategy):
+    """First mechanical failed-ORB reversal hypothesis.
+
+    A completed close first breaks the opening range. If a later completed bar
+    closes back inside the range within the configured window, enter opposite
+    the original breakout at the next bar open. The stop is the observed failed
+    breakout extreme. No claim of edge is encoded here; diagnostics are retained
+    so opening participation, impulse, penetration and failure speed can be tested.
+    """
+    spec = StrategySpec(
+        key=ORB_REVERSAL,
+        name="Failed ORB Reversal · research v1",
+        description=("Research hypothesis: unusually active/exhausted opening breakouts may fail. "
+                     "Arm on a completed OR close; reverse only after a completed close re-enters the range."),
+        defaults={
+            "range_minutes":15, "failure_window_minutes":30, "target_mode":"fixed_r", "target_r":1.5,
+            "min_opening_range_rvol":-1.0, "max_opening_range_rvol":-1.0,
+            "min_breakout_range_atr":-1.0, "max_breakout_range_atr":-1.0,
+            "min_reentry_depth":-1.0,
+        },
+        timeframes=("1m","1d"), category="Experimental",
+        parameters=(
+            ParameterSpec("range_minutes","Opening range minutes","choice",15,choices=("5","15","30")),
+            ParameterSpec("failure_window_minutes","Failure window minutes","int",30,minimum=1,maximum=180),
+            ParameterSpec("target_mode","Target","choice","fixed_r",choices=("fixed_r","or_midpoint","opposite_edge")),
+            ParameterSpec("target_r","Fixed target R","float",1.5,minimum=.1,maximum=10),
+            ParameterSpec("min_opening_range_rvol","Minimum opening-range RVOL (-1 off)","float",-1.0,minimum=-1,
+                          paired_max_key="max_opening_range_rvol",bound_semantics="minimum inclusive"),
+            ParameterSpec("max_opening_range_rvol","Maximum opening-range RVOL (-1 off)","float",-1.0,minimum=-1,
+                          bound_semantics="maximum exclusive"),
+            ParameterSpec("min_breakout_range_atr","Minimum breakout range ATR (-1 off)","float",-1.0,minimum=-1,
+                          paired_max_key="max_breakout_range_atr",bound_semantics="minimum inclusive"),
+            ParameterSpec("max_breakout_range_atr","Maximum breakout range ATR (-1 off)","float",-1.0,minimum=-1,
+                          bound_semantics="maximum exclusive"),
+            ParameterSpec("min_reentry_depth","Minimum re-entry depth fraction (-1 off)","float",-1.0,minimum=-1,maximum=1,
+                          help="0 is the broken OR edge; 1 is the opposite OR edge."),
+        ),
+        risk_management={
+            "entry":"Next-bar open after completed close back inside OR",
+            "stop":"Observed failed-breakout extreme",
+            "target":"Research choice: fixed R, OR midpoint, or opposite OR edge",
+        },
+    )
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        if set(self.params) != set(self.spec.defaults):
+            raise ValueError("Unknown failed-ORB reversal parameter")
+        p=self.params
+        p["range_minutes"]=int(p["range_minutes"])
+        p["failure_window_minutes"]=int(p["failure_window_minutes"])
+        p["target_r"]=float(p["target_r"])
+        if p["range_minutes"] not in {5,15,30} or not 1<=p["failure_window_minutes"]<=180:
+            raise ValueError("Invalid failed-ORB range/failure window")
+        if p["target_mode"] not in {"fixed_r","or_midpoint","opposite_edge"} or not 0<p["target_r"]<=10:
+            raise ValueError("Invalid failed-ORB target")
+        for key in ("min_opening_range_rvol","max_opening_range_rvol","min_breakout_range_atr","max_breakout_range_atr","min_reentry_depth"):
+            p[key]=float(p[key])
+            if not isfinite(p[key]) or (p[key]<0 and p[key]!=-1):
+                raise ValueError(f"Invalid {key}: use -1 (off) or a nonnegative value")
+        if p["min_reentry_depth"]>1:
+            raise ValueError("Re-entry depth cannot exceed 1")
+        for lower,upper in (("min_opening_range_rvol","max_opening_range_rvol"),("min_breakout_range_atr","max_breakout_range_atr")):
+            if p[lower]>=0 and p[upper]>=0 and p[lower]>=p[upper]:
+                raise ValueError("Failed-ORB research band requires minimum < exclusive maximum")
+        self.diagnostic_history=None
+        self.reset()
+
+    def reset(self):
+        self.day=None
+        self.armed=None
+        self.used=set()
+        self.seen_breakout=set()
+
+    @staticmethod
+    def _passes(value, lower, upper):
+        if lower>=0 and (value is None or not isfinite(value) or value<lower):
+            return False
+        if upper>=0 and (value is None or not isfinite(value) or value>=upper):
+            return False
+        return True
+
+    def on_bar(self, ctx):
+        bars=session_bars(ctx)
+        n=self.params["range_minutes"]
+        if len(bars)<=n:
+            return None
+        meta,expires=context_metadata(ctx,bars)
+        day=meta["session_date"]
+        if day!=self.day:
+            self.day=day;self.armed=None
+        if ctx.position is not None or day in self.used or ctx.decision_time>=expires:
+            return None
+        base,bar=bars.iloc[:n],bars.iloc[-1]
+        high,low=float(base.high.max()),float(base.low.min())
+        if high<=low:
+            return None
+        close=float(bar.close)
+        # Arm only on a completed close outside the range. The breakout itself is
+        # not traded; its point-in-time diagnostics become context for a later failure.
+        if self.armed is None:
+            if day in self.seen_breakout:
+                return None
+            original="long" if close>high else "short" if close<low else None
+            if original is None:
+                return None
+            self.seen_breakout.add(day)
+            diag=diagnostics(ctx,n,self.diagnostic_history)
+            self.armed={
+                "original_direction":original, "breakout_time":ctx.decision_time,
+                "breakout_bar_time":pd.Timestamp(bar.timestamp).isoformat(),
+                "extreme":float(bar.high if original=="long" else bar.low),
+                "or_high":high,"or_low":low,"range_width":high-low,"diagnostics":diag,
+            }
+            return None
+        armed=self.armed
+        elapsed=(ctx.decision_time-armed["breakout_time"]).total_seconds()/60
+        if elapsed>self.params["failure_window_minutes"]:
+            self.armed=None
+            return None
+        if armed["original_direction"]=="long":
+            armed["extreme"]=max(float(armed["extreme"]),float(bar.high))
+        else:
+            armed["extreme"]=min(float(armed["extreme"]),float(bar.low))
+        inside=low < close < high
+        if not inside:
+            return None
+        reversal="short" if armed["original_direction"]=="long" else "long"
+        depth=((high-close)/(high-low) if reversal=="short" else (close-low)/(high-low))
+        diag=dict(armed["diagnostics"])
+        extension=(float(armed["extreme"])-high if reversal=="short" else low-float(armed["extreme"]))
+        prior_atr=diag.get("prior_1m_atr14")
+        penetration_atr=(extension/prior_atr if prior_atr and prior_atr>0 else None)
+        meta.update(diag)
+        meta.update({
+            "hypothesis":"high opening participation / extended OR breakout may fail and rotate back through the range",
+            "failed_orb_version":"v1", "original_breakout_direction":armed["original_direction"],
+            "breakout_time":armed["breakout_time"].isoformat(), "breakout_bar_time":armed["breakout_bar_time"],
+            "failure_time":ctx.decision_time.isoformat(), "failure_speed_minutes":elapsed,
+            "or_high":high,"or_low":low,"range_width":high-low,"failed_breakout_extreme":float(armed["extreme"]),
+            "breakout_penetration":extension,"breakout_penetration_atr":penetration_atr,
+            "reentry_close":close,"reentry_depth_fraction":depth,"direction":reversal,
+        })
+        p=self.params
+        rejection_reason=None
+        if not self._passes(diag.get("opening_range_rvol"),p["min_opening_range_rvol"],p["max_opening_range_rvol"]):
+            rejection_reason="opening_range_rvol_filter"
+        elif not self._passes(diag.get("breakout_range_atr"),p["min_breakout_range_atr"],p["max_breakout_range_atr"]):
+            rejection_reason="breakout_range_atr_filter"
+        elif p["min_reentry_depth"]>=0 and depth<p["min_reentry_depth"]:
+            rejection_reason="reentry_depth_filter"
+        stop=float(armed["extreme"])
+        _,tick,_=execution_economics(execution_contract(ctx.symbol,ctx.current_bar))
+        if tick:
+            stop=(ceil(stop/tick) if reversal=="short" else floor(stop/tick))*tick
+        take_profit=None;target_r=None
+        if p["target_mode"]=="fixed_r":
+            target_r=p["target_r"]
+        else:
+            target=(high+low)/2 if p["target_mode"]=="or_midpoint" else (low if reversal=="short" else high)
+            take_profit=(ceil(target/tick) if reversal=="long" else floor(target/tick))*tick if tick else target
+        self.used.add(day);self.armed=None
+        return EntrySignal(direction=reversal,stop_loss=stop,take_profit=take_profit,target_r=target_r,
+                           reason="failed_orb_reversal",metadata=meta,rejection_reason=rejection_reason,expires_at=expires)
 
 
 @strategy_registry.register
