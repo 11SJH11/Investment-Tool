@@ -65,8 +65,22 @@ process pool handles independent CPU simulations. Auto conservatively requests t
 workers, constrained by CPU and available memory; explicit 1/2/4/6/8 selections
 are resource-capped. Two logical cores and roughly half available memory are
 reserved where possible. Workspace strategies use one parent-process worker to
-avoid changing their activation/import contract. The existing top-level thread
-queue limit is not increased.
+avoid changing their activation/import contract.
+
+One application-owned reservation budget now bounds ordinary queued runs, direct
+API simulations and all research parent pools together. Preparation/coordinator
+threads do not reserve CPU capacity; research parents reserve up to the currently
+available budget after preparing their input snapshot. Pools retain that lease
+until shutdown (including cancellation). They cannot each multiply the global
+limit. A single causal simulation remains sequential. Settings and the queue show
+the resolved budget, reserved worker slots and queued simulations.
+
+Reservations are conservative capacity bounds, not sampled CPU utilization. A
+research pool retains its reservation through its final batch and persistence;
+idle slots within that pool are not dynamically loaned to another parent. Lowering
+the limit lets existing reservations drain without killing in-flight simulations;
+new work waits until capacity is available. This is one running Ledger application
+process, not a cross-process/distributed scheduler. Resource caps still apply.
 
 A private temporary prepared-input file is written once and read once per worker
 initializer. Frames are not reserialized for every cell. Workers receive no
@@ -166,3 +180,18 @@ Benchmark scripts use synthetic, explicitly labelled OHLCV and temporary SQLite 
 Parquet directories: `benchmark_research.py`, `benchmark_futures_research.py`,
 `benchmark_parent_research.py`. Preserve a source-only pre-change app directory for
 `--app-root` comparisons; never copy credentials or production databases.
+
+
+## Global-budget verification (30 September 2026)
+
+The existing 5x5 ORB fixture (five sessions, 1,950 minute bars) ran before and after
+with a global budget of four and a research request of four. Wall time was 82.867s
+before and 80.363s after. Both runs completed all 25 cells with zero provider calls;
+all 25 SHA-256 digests of trades/metrics/setups/analysis/equity curves match exactly.
+This is one measurement while existing research remained running, not evidence of
+a statistically established speedup. [Recorded benchmark](GLOBAL_BUDGET_BENCHMARK.json).
+
+Reproduce with `backend/.venv/Scripts/python.exe -B backend/tools/benchmark_parent_research.py
+--workers 4 --global-workers 4 --output <external-output.json>` from the repository
+root. The script uses temporary data, disables dotenv parsing, and requires no live
+provider credentials. The simulation budget changes no strategy/engine rules.

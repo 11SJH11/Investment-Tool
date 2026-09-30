@@ -1,0 +1,252 @@
+{
+  "description": "Single measured 5x5 ORB fixture, 5 sessions, same host while user research remained running. Not a statistically established speedup.",
+  "before": {
+    "fixture": true,
+    "days": 5,
+    "bars": 1950,
+    "mode": "parent",
+    "requested_workers": "4",
+    "global_workers": "4",
+    "logical_cpus": 16,
+    "wall_seconds": 82.8670033999988,
+    "parent_cpu_seconds": 3.875,
+    "provider_calls": 0,
+    "queue_rows": 1,
+    "statuses": [
+      "completed"
+    ],
+    "cells": [
+      {
+        "index": 0,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 1,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 2,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 3,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 4,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 5,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 6,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 7,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 8,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 9,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 10,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 11,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 12,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 13,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 14,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 15,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 16,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 17,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 18,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 19,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 20,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 21,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 22,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 23,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 24,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      }
+    ],
+    "memory": {
+      "available_bytes": 5398704128,
+      "peak_rss_bytes": 150499328,
+      "rss_bytes": 150499328
+    },
+    "actual_workers": 4
+  },
+  "after": {
+    "fixture": true,
+    "days": 5,
+    "bars": 1950,
+    "mode": "parent",
+    "requested_workers": "4",
+    "global_workers": "4",
+    "logical_cpus": 16,
+    "wall_seconds": 80.36325840000063,
+    "parent_cpu_seconds": 3.8125,
+    "provider_calls": 0,
+    "queue_rows": 1,
+    "statuses": [
+      "completed"
+    ],
+    "cells": [
+      {
+        "index": 0,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 1,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 2,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 3,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 4,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 5,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 6,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 7,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 8,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 9,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 10,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 11,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 12,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 13,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 14,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 15,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 16,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 17,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 18,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 19,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      },
+      {
+        "index": 20,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 21,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 22,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 23,
+        "digest": "14553ba81c6688a5503274f33e5341ee4ca1f762931b8d771fbdf5b727d93f12"
+      },
+      {
+        "index": 24,
+        "digest": "b4043eb6d276456ce9683a745dddb7daaee1b1e7b3c0d5025d895d9cd50bb40d"
+      }
+    ],
+    "memory": {
+      "available_bytes": 5843566592,
+      "peak_rss_bytes": 150736896,
+      "rss_bytes": 150736896
+    },
+    "actual_workers": 4
+  },
+  "exact_parity": true
+}

@@ -1,4 +1,5 @@
 """One parent coordinates exact simulations; all persistence stays in the parent."""
+from contextlib import nullcontext
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from hashlib import sha256
 import json
@@ -77,49 +78,55 @@ def run_experiment(service, repository, payload, *, progress, cancelled, commit)
         document['status']='running';repository.save(document)
         progress('running',done,len(children))
     try:
-        progress('running',done,len(children))
-        if workers==1:
-            for i in remaining:
-                cancelled()
-                document['cells'][i]['status']='running';repository.save(document)
-                # The same cancellation contract as engine progress, including every 64 bars.
-                class Check:
-                    def is_set(self):
-                        try:cancelled();return False
-                        except Exception:return True
-                save_cell(i,execute_cell(children[i],inputs,Check()))
-                cancelled()
-        else:
-            with tempfile.TemporaryDirectory(prefix='ledger-research-input-') as directory:
-                path=Path(directory)/'prepared.pkl'
-                with path.open('wb') as stream:pickle.dump(inputs,stream,protocol=pickle.HIGHEST_PROTOCOL)
-                # One snapshot read per worker, not a DataFrame serialized for each cell.
-                with ProcessPoolExecutor(max_workers=workers,mp_context=context,initializer=initialize_worker,initargs=(str(path),event)) as pool:
-                    pending={}
-                    iterator=iter(remaining)
-                    def fill():
-                        while len(pending)<workers:
-                            i=next(iterator,None)
-                            if i is None:break
-                            document['cells'][i]['status']='running';repository.save(document)
-                            pending[pool.submit(execute_cell,children[i])]=i
-                    fill()
-                    try:
-                        while pending:
-                            cancelled()
-                            completed,_=wait(pending,timeout=.1,return_when=FIRST_COMPLETED)
-                            for future in completed:
-                                i=pending.pop(future)
-                                try:outcome=future.result()
-                                except Exception:outcome={'error':'Research worker failed; this cell can be retried.'}
-                                save_cell(i,outcome)
-                            fill()
-                    finally:
-                        event.set()
-                        for future in pending:future.cancel()
-        progress('analysing results',done,len(children))
-        document['status']='completed' if all(c['status']=='completed' for c in document['cells']) else 'failed'
-        progress('saving',done,len(children))
+        budget = getattr(service, 'simulation_budget', None)
+        requested_slots = min(workers, max(1, len(remaining)))
+        reservation = budget.reserve(requested_slots, cancelled) if budget else nullcontext(requested_slots)
+        with reservation as workers:
+            document['performance']['workers'] = workers
+            repository.save(document)
+            progress('running',done,len(children))
+            if workers==1:
+                for i in remaining:
+                    cancelled()
+                    document['cells'][i]['status']='running';repository.save(document)
+                    # The same cancellation contract as engine progress, including every 64 bars.
+                    class Check:
+                        def is_set(self):
+                            try:cancelled();return False
+                            except Exception:return True
+                    save_cell(i,execute_cell(children[i],inputs,Check()))
+                    cancelled()
+            else:
+                with tempfile.TemporaryDirectory(prefix='ledger-research-input-') as directory:
+                    path=Path(directory)/'prepared.pkl'
+                    with path.open('wb') as stream:pickle.dump(inputs,stream,protocol=pickle.HIGHEST_PROTOCOL)
+                    # One snapshot read per worker, not a DataFrame serialized for each cell.
+                    with ProcessPoolExecutor(max_workers=workers,mp_context=context,initializer=initialize_worker,initargs=(str(path),event)) as pool:
+                        pending={}
+                        iterator=iter(remaining)
+                        def fill():
+                            while len(pending)<workers:
+                                i=next(iterator,None)
+                                if i is None:break
+                                document['cells'][i]['status']='running';repository.save(document)
+                                pending[pool.submit(execute_cell,children[i])]=i
+                        fill()
+                        try:
+                            while pending:
+                                cancelled()
+                                completed,_=wait(pending,timeout=.1,return_when=FIRST_COMPLETED)
+                                for future in completed:
+                                    i=pending.pop(future)
+                                    try:outcome=future.result()
+                                    except Exception:outcome={'error':'Research worker failed; this cell can be retried.'}
+                                    save_cell(i,outcome)
+                                fill()
+                        finally:
+                            event.set()
+                            for future in pending:future.cancel()
+            progress('analysing results',done,len(children))
+            document['status']='completed' if all(c['status']=='completed' for c in document['cells']) else 'failed'
+            progress('saving',done,len(children))
     except BaseException as exc:
         from app.services.backtest_jobs import JobCancelled
         event.set();document['status']='cancelled' if isinstance(exc,JobCancelled) else 'failed'

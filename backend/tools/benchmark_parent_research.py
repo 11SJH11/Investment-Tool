@@ -20,10 +20,13 @@ def main():
     parser.add_argument('--mode',choices=['many','parent'],default='parent')
     parser.add_argument('--workers',default='1')
     parser.add_argument('--days',type=int,default=5)
+    parser.add_argument('--global-workers',default='4')
     args=parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='ledger-parent-benchmark-',ignore_cleanup_errors=True) as scratch:
         os.environ['LEDGER_DATA_DIR']=scratch
         sys.path.insert(0,args.app_root)
+        from app.core.config import Settings
+        Settings.model_config['env_file']=None
         import pandas as pd
         from app.services.backtest import BacktestService
         from app.services.backtest_jobs import BacktestJobs
@@ -72,6 +75,7 @@ def main():
             return result
         service.run=tracked
         queue=BacktestJobs(db,service,workers=2)
+        queue.set_worker_mode(args.global_workers)
         t=perf_counter();cpu=process_time()
         try:
             if args.mode=='many':jobs=queue.enqueue(runs,'grid')
@@ -92,7 +96,7 @@ def main():
                 cells.append({'index':r['config']['research_experiment']['cell_index'],
                               'digest':hashlib.sha256(json.dumps(selected,sort_keys=True,default=str).encode()).hexdigest()})
             output={'fixture':True,'days':args.days,'bars':len(p.frame),'mode':args.mode,'requested_workers':args.workers,
-                    'logical_cpus':os.cpu_count(),'wall_seconds':elapsed,'parent_cpu_seconds':cpu,
+                    'global_workers':args.global_workers,'logical_cpus':os.cpu_count(),'wall_seconds':elapsed,'parent_cpu_seconds':cpu,
                     'provider_calls':p.calls-calls,'queue_rows':len(jobs),'statuses':[j['status'] for j in current],
                     'cells':sorted(cells,key=lambda c:c['index']),'timings':timings}
             if args.mode=='parent':output['experiment']=queue.research.get('research:benchmark')

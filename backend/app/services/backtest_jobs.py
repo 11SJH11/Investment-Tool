@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import RLock, Condition
+from threading import RLock
 import json
 import uuid
 
@@ -15,11 +15,12 @@ class BacktestJobs:
     def __init__(self, database, backtest, workers=2):
         self.database, self.backtest = database, backtest
         self.lock = RLock()
-        self.slot_condition = Condition(RLock())
-        self.active_workers = 0
         self.closed = False
         saved_mode = database.get_setting('backtest_worker_mode')
         self.worker_mode = saved_mode or ('auto_conservative' if int(workers) == 2 else str(max(1,min(int(workers),8))))
+        from app.services.simulation_budget import SimulationBudget
+        self.budget = SimulationBudget(lambda: self.workers)
+        self.backtest.simulation_budget = self.budget
         from app.storage.research_experiment_repository import ResearchExperimentRepository
         self.research = ResearchExperimentRepository(database)
         self.executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest')
@@ -56,8 +57,17 @@ class BacktestJobs:
         return worker_count(self.worker_mode)
 
     def compute_settings(self):
-        return {'mode': self.worker_mode, 'resolved_workers': self.workers,
-                'note': 'Independent jobs/cells can run in parallel; one causal strategy simulation remains sequential.'}
+        with self.database.connect() as db:
+            pending = db.execute("""SELECT coalesce(sum(
+                CASE WHEN json_array_length(payload,'$.research_children') > 0
+                THEN max(0,json_array_length(payload,'$.research_children')-coalesce(processed,0))
+                ELSE 1 END),0) FROM backtest_jobs
+                WHERE status IN ('queued','preparing data','preparing shared data','running')
+                AND cancel_requested=0""").fetchone()[0]
+        snapshot = self.budget.snapshot()
+        return {'mode': self.worker_mode, 'resolved_workers': self.workers, **snapshot,
+                'queued_simulations': max(0, pending-snapshot['used_workers']),
+                'note': 'Used workers are reserved CPU slots shared by ordinary runs and research pools. Lowering the budget lets current work drain before admitting more.'}
 
     def set_worker_mode(self, mode):
         from app.research_runtime import worker_count
@@ -69,27 +79,8 @@ class BacktestJobs:
         worker_count(mode)  # validate on this host
         self.worker_mode = mode
         self.database.set_setting('backtest_worker_mode', mode)
-        with self.slot_condition:
-            self.slot_condition.notify_all()
+        self.budget.notify()
         return self.compute_settings()
-
-    def _acquire_slot(self, job_id):
-        with self.slot_condition:
-            while not self.closed and self.active_workers >= self.workers:
-                try:
-                    if self.get(job_id)['cancel_requested']:
-                        raise JobCancelled()
-                except ValueError:
-                    raise JobCancelled()
-                self.slot_condition.wait(timeout=.2)
-            if self.closed:
-                raise JobCancelled()
-            self.active_workers += 1
-
-    def _release_slot(self):
-        with self.slot_condition:
-            self.active_workers = max(0, self.active_workers - 1)
-            self.slot_condition.notify_all()
 
     def list(self):
         with self.database.connect() as db:
@@ -182,14 +173,20 @@ class BacktestJobs:
         return self.enqueue([job['payload']], request_key)
 
     def _work(self, job_id):
-        acquired = False
-        try:
-            self._acquire_slot(job_id)
-            acquired = True
+        # Parent coordinators/data preparation do not consume CPU reservations.
+        # Legacy service doubles without prepare still use one bounded run slot.
+        if hasattr(self.backtest, 'prepare'):
             self._work_inner(job_id)
-        finally:
-            if acquired:
-                self._release_slot()
+        else:
+            try:
+                with self.budget.reserve(1, lambda: self._cancelled(job_id)):
+                    self._work_inner(job_id)
+            except JobCancelled:
+                self._update(job_id, status='cancelled')
+
+    def _cancelled(self, job_id):
+        if self.closed or self.get(job_id)['cancel_requested']:
+            raise JobCancelled()
 
     def _work_inner(self, job_id):
         try:
@@ -229,7 +226,12 @@ class BacktestJobs:
                     self._update(job_id,status='failed' if failed else 'completed',
                                  error=f'{failed} research cells failed. Open the experiment for details; retry resumes incomplete cells.' if failed else None)
                 return
-            self.backtest.run(payload, progress=progress, persist=persist)
+            if hasattr(self.backtest, 'prepare'):
+                prepared = self.backtest.prepare(payload, progress=progress)
+                with self.budget.reserve(1, lambda: self._cancelled(job_id)):
+                    self.backtest.run(payload, progress=progress, persist=persist, prepared=prepared)
+            else:
+                self.backtest.run(payload, progress=progress, persist=persist)
             if self.get(job_id)['status'] != 'completed':
                 raise RuntimeError('No immutable result was saved')
         except JobCancelled:
@@ -249,6 +251,5 @@ class BacktestJobs:
     def close(self):
         with self.lock:
             self.closed = True
-        with self.slot_condition:
-            self.slot_condition.notify_all()
+        self.budget.notify()
         self.executor.shutdown(wait=True, cancel_futures=True)

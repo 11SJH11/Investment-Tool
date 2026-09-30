@@ -16,7 +16,7 @@
 | 2 | Restore green verification gate | Complete: 611 backend / 78 frontend; build and browser pass |
 | 3 | Crash-safe raw market cache | Complete: 627 backend / 78 frontend; production build passes |
 | 4 | Bounded, resumable, interactive-priority warming | Complete: 642 backend / 80 frontend; build and browser pass |
-| 5 | Global simulation budget and 5×5 parity benchmark | Pending |
+| 5 | Global simulation budget and 5x5 parity benchmark | Complete: 647 backend / 80 frontend; build/browser and exact benchmark parity pass |
 | 6 | Compact research polling | Pending |
 | 7 | Replay leave/checkpoint guard | Pending |
 | 8 | Safe actionable error categories | Pending |
@@ -215,3 +215,33 @@ logs/bytecode changes remain unstaged.
 
 **Stage 5 is next and has not been started.** No global CPU budget fix or new
 5-by-5 performance benchmark is claimed. Stages 5-18 remain pending.
+
+## Stage 5 - completed 30 September 2026
+
+One application-owned CPU reservation budget now covers ordinary queued runs,
+direct service/API simulations, validation runs, spectra and interaction parent
+pools. Input preparation and parent coordination remain separate. Reservations
+release on success, failure and cancellation; nested service calls do not double
+count. Worker pools cannot independently multiply the configured global limit.
+Settings and queue show configured/resolved budget, reserved slots and queued
+simulations. Lowering the target drains current work; it does not kill simulations.
+
+Research pools conservatively retain their lease through their final batch and
+pool shutdown. Idle capacity within a leased pool is not dynamically loaned. This
+is one application process, not distributed admission across multiple servers.
+
+Verification: **647 backend passed**, one existing warning, **72.17s**; **80 frontend
+passed**; production build passed (120 modules; existing large-chunk warning).
+**27 focused queue/research/budget tests passed**. Isolated research browser smoke
+passed budget display, spectrum/interaction, partial failures, exact run opening,
+and 1024/1440/1920 overflow/runtime checks. `git diff --check` passed.
+
+Existing five-session, 1,950-bar, 5x5 ORB benchmark: **82.867s before**, **80.363s
+after**, actual four workers in each; zero provider calls. **25/25 exact cell
+hashes match** for trades, metrics, setups, analysis and equity curves. See
+[recorded benchmark](GLOBAL_BUDGET_BENCHMARK.json). One timing sample under concurrent
+user research is not a statistically established speedup. Engine/strategy rules
+were not edited; only service admission around the existing engine call changed.
+
+No live process restart, live data access or credential read occurred. Stage 6 is
+next; Stages 6-18 remain pending at this commit.

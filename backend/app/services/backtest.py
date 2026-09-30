@@ -2,6 +2,7 @@ from __future__ import annotations
 from app.performance import timed, profiled, measure
 
 
+from contextlib import nullcontext
 from dataclasses import asdict
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
@@ -33,6 +34,7 @@ class BacktestService:
     def __init__(self, market_data: MarketDataService | None, runs: BacktestRunRepository | None = None):
         self.market_data = market_data
         self.runs = runs
+        self.simulation_budget = None
 
     def _instrument(self, symbol: str):
         if self.market_data is not None and hasattr(self.market_data, "instrument_info"):
@@ -223,12 +225,14 @@ class BacktestService:
             max_consecutive_losses=_optional_positive_int(payload.get("max_consecutive_losses")),
             cooldown_minutes=max(0, int(payload.get("cooldown_minutes") or 0)),
         )
-        result = BacktestEngine(config).run(
-            symbol_frames=frames_by_symbol,
-            strategies=strategies,
-            primary_timeframe=primary,
-            progress=lambda done, total: progress('running', done, total),
-        )
+        reservation = self.simulation_budget.reserve(1, lambda: progress('running', 0, None)) if self.simulation_budget else nullcontext()
+        with reservation:
+            result = BacktestEngine(config).run(
+                symbol_frames=frames_by_symbol,
+                strategies=strategies,
+                primary_timeframe=primary,
+                progress=lambda done, total: progress('running', done, total),
+            )
         result.update({
             "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params},
             "symbols": symbols,

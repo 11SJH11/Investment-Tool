@@ -116,7 +116,7 @@ def futures_preflight(payload: BacktestRequest, services: AppServices = Depends(
 
 @router.get('/jobs')
 def jobs(services: AppServices = Depends(get_services)):
-    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers, 'worker_mode': services.backtest_jobs.worker_mode}
+    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers, 'worker_mode': services.backtest_jobs.worker_mode, 'compute': services.backtest_jobs.compute_settings()}
 
 
 class ComputeSettingsRequest(BaseModel):

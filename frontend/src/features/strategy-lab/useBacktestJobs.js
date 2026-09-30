@@ -4,10 +4,11 @@ import {configurationError} from './backtest-workflow.js';
 
 export default function useBacktestJobs(onComplete) {
   const [jobs,setJobs]=useState([]),[workers,setWorkers]=useState(2),[error,setError]=useState('');
+  const [compute,setCompute]=useState(null);
   const completed=useRef(''), pending=useRef(null);
   const refresh=useCallback(async()=>{
     try {
-      const data=await api.backtestJobs();setJobs(data.jobs);setWorkers(data.max_workers);setError('');
+      const data=await api.backtestJobs();setJobs(data.jobs);setWorkers(data.max_workers);setCompute(data.compute||null);setError('');
       const signature=data.jobs.filter(j=>j.status==='completed').map(j=>j.id).join(',');
       if(signature!==completed.current){completed.current=signature;onComplete?.();}
     } catch(e){setError(e.message);}
@@ -27,5 +28,5 @@ export default function useBacktestJobs(onComplete) {
   const retry=async id=>{await api.retryBacktestJob(id,crypto.randomUUID());await refresh();};
   const remove=async id=>{await api.deleteBacktestJob(id);await refresh();};
   const clearFinished=async()=>{await api.clearFinishedBacktestJobs();await refresh();};
-  return {jobs,workers,error,submit,cancel,retry,remove,clearFinished,refresh};
+  return {jobs,workers,compute,error,submit,cancel,retry,remove,clearFinished,refresh};
 }

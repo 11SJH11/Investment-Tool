@@ -14,8 +14,8 @@ function fixtures(){
   requests.push({p,payload});
   if(p.endsWith('/strategies'))body={strategies:[{key:'fixture',name:'Fixture',timeframes:['1m'],parameters,defaults:{x:-1,y:-1}}]};
   else if(p.endsWith('/indicators'))body={indicators:[]};
-  else if(p.endsWith('/jobs'))body={jobs,max_workers:2};
-  else if(p.endsWith('/compute-settings'))body={mode:'auto_conservative',resolved_workers:2};
+  else if(p.endsWith('/jobs'))body={jobs,max_workers:4,compute:{configured_budget:4,used_workers:3,queued_simulations:17}};
+  else if(p.endsWith('/compute-settings'))body={mode:'4',resolved_workers:4,configured_budget:4,used_workers:3,queued_simulations:17};
   else if(p.endsWith('/runs'))body={runs:runs.map(r=>({...r,result:undefined,strategy_name:'Fixture',symbols:['SPY']}))};
   else if(/\/runs\/\d+$/.test(p))body=runs.find(r=>r.id===Number(p.split('/').pop()));
   else if(p.includes('/experiments/'))body={experiment_group:group,runs,experiment,parent_job:jobs[0]};
@@ -42,6 +42,7 @@ const select=async(label,value)=>evaluate(`(()=>{const l=[...document.querySelec
 const input=async(label,value)=>evaluate(`(()=>{const l=[...document.querySelectorAll('label')].find(l=>l.textContent.trim().startsWith(${JSON.stringify(label)}));const e=l.querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
 try{
  await waitFor(`document.body.innerText.includes('Preview exact values')`);
+ await waitFor(`document.body.innerText.includes('CPU budget 4: 3 reserved, 17 simulations waiting')`);
  await waitFor(`document.querySelector('fieldset select')?.options.length===2`);
  await waitFor(`document.querySelector('fieldset').textContent.includes('Declared default: -1')`);
  await select('Values mode','range');await waitFor(`[...document.querySelectorAll('label')].some(l=>l.textContent==='start')`);await input('start','0');await input('end','1');await input('step','.25');
