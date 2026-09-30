@@ -15,7 +15,7 @@
 | 1 | Separate research notes/items and experiments | Complete: 18 focused tests pass |
 | 2 | Restore green verification gate | Complete: 611 backend / 78 frontend; build and browser pass |
 | 3 | Crash-safe raw market cache | Complete: 627 backend / 78 frontend; production build passes |
-| 4 | Bounded, resumable, interactive-priority warming | Pending |
+| 4 | Bounded, resumable, interactive-priority warming | Complete: 642 backend / 80 frontend; build and browser pass |
 | 5 | Global simulation budget and 5×5 parity benchmark | Pending |
 | 6 | Compact research polling | Pending |
 | 7 | Replay leave/checkpoint guard | Pending |
@@ -163,4 +163,55 @@ Stage 3 final verification (30 September 2026):
 The initial verification failures were corrected, not deleted: the memory-store
 fixture needed the cache-presence interface, and production empty-appends needed
 to preserve payload dtypes/fingerprints and unrelated warm-cache entries. Final
-verification was rerun on the corrected tree. Stages 4-18 remain pending.
+verification was rerun on the corrected tree. At the Stage 3 boundary, Stages 4-18 remained pending (Stage 4 is now complete below).
+
+
+## Stage 4 - completed 30 September 2026
+
+- Replaced symbol-sized warm requests with seven-day adjacent chunks. Existing
+  canonical provider coverage guides planning so an old requested range cannot
+  cause one huge bridge download. Each successful chunk survives restart.
+- Added reentrant provider coordination that lets waiting foreground Charts,
+  Replay and explicit backtest requests precede the next background acquisition.
+- Added durable `market_warmup_jobs` job-control documents, listing, Pause/Resume,
+  interrupted-job recovery to paused state, sanitized provider categories and
+  Retry-After cooldown enforcement. This is an additive table, with no changes to
+  existing data/strategy/run schemas or the canonical Parquet store.
+- Removed silent startup/watchlist/six-hour two-year downloads. Default explicit
+  history window is 30 days. Settings owns a focused download panel with requested
+  and covered ranges, current chunk, progress and controls. Navigating away does
+  not stop the backend job.
+- Preserved NQ dated contracts, references, roll provenance, raw execution and
+  optional adjusted chart snapshots. Existing source values/rules remain unchanged.
+- Added the permanent [warming guide](MARKET_CACHE_WARMING.md) and README link.
+
+Verification on current source:
+
+- Full backend: **642 passed**, one existing Starlette deprecation warning,
+  **72.88s** (previous stage: 627; **15 new Stage 4 tests**).
+- Full frontend utility tests: **80 passed**, zero failures (previously 78).
+- Production build: **120 modules**, success, 825.24 kB JS / 245.55 kB gzip,
+  61.17 kB CSS / 12.23 kB gzip; existing large-chunk warning only.
+- `Verify-Ledger.ps1` passed with external artifacts under
+  `C:/Users/jamie/Project/reliability-stage4-verify1`; final browser build also passed
+  under `C:/Users/jamie/Project/reliability-stage4-browser/frontend`.
+- Focused backend runs: **43 passed** (warming/cache/queue/futures) and **41 passed**
+  (expanded warming/API/continuous-futures tests).
+- Isolated browser smoke passed at **1024 / 1440 / 1920 px**, with no page overflow
+  or runtime errors. It checks legacy auto-warm preference does not trigger POST,
+  explicit NQ download, ranges/chunk progress, pause/resume, Settings -> Overview ->
+  Settings persistence and provider cooldown. Initial incomplete Broker/Workspace
+  mocks were corrected; production was not changed to accommodate the mocks.
+- Protected strategy/engine/indicator sources match checkpoint `4dc3da4` after
+  newline normalization. Full deterministic research/engine fixtures pass.
+- `git diff --check` passed for Stage 4 source/docs/tests.
+
+Limits: in-flight provider calls/cooldowns are not preempted; foreground priority
+applies between acquisitions. Live Massive was not called; credentials were not
+read. The running Ledger service was not restarted and live data was not touched.
+The new code takes effect on the next normal restart after active research ends.
+Only isolated test/build/browser processes were launched. Existing generated
+logs/bytecode changes remain unstaged.
+
+**Stage 5 is next and has not been started.** No global CPU budget fix or new
+5-by-5 performance benchmark is claimed. Stages 5-18 remain pending.

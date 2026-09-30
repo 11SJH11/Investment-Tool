@@ -139,7 +139,7 @@ def cache_diagnostics(services: AppServices = Depends(get_services)):
 class CacheWarmRequest(BaseModel):
     symbols: list[str] = Field(min_length=1, max_length=50)
     timeframe: Timeframe = "1m"
-    lookback_days: int = Field(default=730, ge=1, le=3650)
+    lookback_days: int = Field(default=30, ge=1, le=3650)
     refresh: bool = False
 
 
@@ -161,3 +161,22 @@ def market_cache_warm_status(job_id: str, services: AppServices = Depends(get_se
         return services.market_warmup.get(job_id)
     except ValueError as exc:
         raise HTTPException(404,str(exc)) from exc
+
+
+@router.get("/data/cache/warm")
+def market_cache_warm_jobs(services: AppServices = Depends(get_services)):
+    return {"items": services.market_warmup.list() if services.market_warmup else []}
+
+
+@router.post("/data/cache/warm/{job_id}/{action}")
+def control_market_cache_warm(job_id: str, action: str, services: AppServices = Depends(get_services)):
+    if services.market_warmup is None:
+        raise HTTPException(503, "No market data provider is configured")
+    if action not in {'pause', 'resume'}:
+        raise HTTPException(404, "Unknown cache action")
+    try:
+        return getattr(services.market_warmup, action)(job_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc

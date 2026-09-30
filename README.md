@@ -58,3 +58,8 @@ and opt-in browser checks. Never run fixture scripts against the live database.
 NQ source/roll provenance is explicit; TradingView parity is unverified. Stock
 universes are current-only and historical analysis may contain survivorship bias.
 Autochartist remains scaffold-only; no licensed portal scraping is performed.
+
+### Background history downloads
+
+See [market-cache warming](docs/MARKET_CACHE_WARMING.md) for explicit downloads,
+Pause/Resume, restart recovery, interactive priority and provider limitations.

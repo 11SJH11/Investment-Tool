@@ -226,7 +226,7 @@ def build_services(settings: Settings) -> AppServices:
         MarketDataService(default_market_provider, market_store, coverage, provider_resolver=resolve_market_provider)
         if default_market_provider is not None else None
     )
-    market_warmup = MarketWarmupManager(market_data) if market_data is not None else None
+    market_warmup = MarketWarmupManager(market_data, database) if market_data is not None else None
 
     screener = ScreenerService(screener_repository, symbols, alpaca=alpaca_provider, sec=sec_provider)
     research_repository = ResearchItemRepository(database)

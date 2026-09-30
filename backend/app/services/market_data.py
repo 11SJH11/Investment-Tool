@@ -13,10 +13,11 @@ from app.data.instruments import InstrumentSpec, instrument_spec, normalize_symb
 from app.data.providers.base import MarketDataProvider, Timeframe
 from app.storage.market_cache_repository import MarketCacheRepository
 from app.storage.market_store import MarketStore, MarketCacheCorruption
+from app.services.market_coordination import ProviderPriorityLock
 
 
 ProviderResolver = Callable[[str, InstrumentSpec], MarketDataProvider]
-_PROVIDER_LOCKS = defaultdict(RLock)
+_PROVIDER_LOCKS = defaultdict(ProviderPriorityLock)
 _LOCK_GUARD = RLock()
 
 
@@ -72,7 +73,7 @@ class MarketDataService:
     ):
         provider = self.provider_for(ticker)
         # Shared across service copies (including continuous -> dated contracts).
-        # RLock makes that recursion safe; coverage is rechecked after waiting.
+        # Reentrancy makes recursion safe; waiting interactive work precedes warming.
         with self._provider_lock(provider):
             return self._get_bars(ticker, timeframe, start, end, force_refresh=force_refresh)
 
@@ -277,12 +278,35 @@ class MarketDataService:
         entries.sort(key=lambda row: (str(row.get('ticker')), str(row.get('timeframe'))))
         return entries
 
-    def get_execution_bars(self, ticker, timeframe, start, end):
+    def cached_coverage(self, ticker, timeframe, *, execution=False):
+        """Persisted covered interval for chunk planning; never fetches provider data."""
+        ticker = normalize_symbol(ticker)
+        provider = self.provider_for(ticker)
+        if execution and hasattr(provider, 'raw_execution_provider'):
+            provider = provider.raw_execution_provider()
+        if instrument_spec(ticker).security_type == 'continuous_future' and hasattr(provider, 'raw_execution_provider'):
+            namespace = f'derived-continuous-v1-{provider.cache_namespace}'
+            manifest = self.store.read_metadata('continuous', namespace, ticker, timeframe)
+            if manifest:
+                try:
+                    start = _utc(datetime.fromisoformat(manifest['covered_start']))
+                    end = _utc(datetime.fromisoformat(manifest['covered_end']))
+                    if self._continuous_manifest_valid(manifest, provider, provider.raw_execution_provider(),
+                                                       ticker, timeframe, start, end, datetime.now(timezone.utc)):
+                        return start, end
+                except (KeyError, TypeError, ValueError):
+                    pass
+            return None
+        if self.store.has_bars(provider.cache_namespace, ticker, timeframe):
+            return self.coverage.get(provider.cache_namespace, ticker, timeframe)
+        return None
+
+    def get_execution_bars(self, ticker, timeframe, start, end, *, force_refresh=False):
         provider = self.provider_for(ticker)
         if hasattr(provider, 'raw_execution_provider'):
             raw = provider.raw_execution_provider()
-            return MarketDataService(raw,self.store,self.coverage).get_bars(ticker,timeframe,start,end)
-        return self.get_bars(ticker,timeframe,start,end)
+            return MarketDataService(raw,self.store,self.coverage).get_bars(ticker,timeframe,start,end,force_refresh=force_refresh)
+        return self.get_bars(ticker,timeframe,start,end,force_refresh=force_refresh)
 
     @timed('fetch_and_store')
     def _fetch_and_store(

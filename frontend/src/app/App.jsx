@@ -12,8 +12,6 @@ import StrategyLabPage from "../features/strategy-lab/StrategyLabPage";
 import SettingsPage from "../features/settings/SettingsPage";
 import { sections } from "./navigation";
 import { applyPreferences, loadPreferences, savePreferences } from "./preferences";
-import {loadWatchlist} from "./watchlist.js";
-import {api} from "../api/client.js";
 
 export default function App(){
  const [active,setActive]=useUIPreference("navigation.active", "Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
@@ -24,14 +22,6 @@ export default function App(){
  const openWorkflow=(target,input)=>{const route=target==="Research"?"Charts":target;if(!selectPage(route))return;const next={...workflowContext(target,input),id:Date.now()+Math.random()};setContext(next);if(next.symbol)setSelectedTicker(next.symbol);};
 
  useEffect(()=>{applyPreferences(prefs)},[]);
- useEffect(()=>{
-   if(!prefs.keepFavouritesUpdated)return;
-   let stopped=false,timer;
-   const warm=()=>{if(stopped)return;const symbols=loadWatchlist();if(symbols.length)api.warmMarketCache({symbols,timeframe:'1m',lookback_days:Number(prefs.favouriteCacheLookbackDays||730),refresh:false}).catch(()=>{});};
-   warm();timer=setInterval(warm,6*60*60*1000);
-   const changed=()=>warm();window.addEventListener('ledger-watchlist-change',changed);
-   return()=>{stopped=true;clearInterval(timer);window.removeEventListener('ledger-watchlist-change',changed);};
- },[prefs.keepFavouritesUpdated,prefs.favouriteCacheLookbackDays]);
  const updatePrefs=(next)=>{setPrefs(next);savePreferences(next)};
  const order=(prefs.navOrder||sections).filter(x=>sections.includes(x)); const missing=sections.filter(x=>!order.includes(x)); const nav=[...order,...missing];
  const openCharts=t=>openWorkflow("Charts",{symbol:t});
