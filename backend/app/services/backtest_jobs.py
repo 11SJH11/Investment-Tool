@@ -65,7 +65,7 @@ class BacktestJobs:
         if mode == 'auto':
             mode = 'auto_conservative'
         if mode not in {'auto_conservative','auto_performance','1','2','3','4','5','6','7','8'}:
-            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1â€“8 workers')
+            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1–8 workers')
         worker_count(mode)  # validate on this host
         self.worker_mode = mode
         self.database.set_setting('backtest_worker_mode', mode)

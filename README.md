@@ -37,18 +37,12 @@ Broker sync is read-only. No real/demo order execution is implemented.
 ## Verify
 
 ```powershell
-# backend
-.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=<fresh-writable-directory>
-# frontend
-node --test tests/*.test.js
-npm.cmd run build
-# repository
- git diff --check
+powershell -ExecutionPolicy Bypass -File ./Verify-Ledger.ps1
 ```
 
-Use isolated fixture data for browser acceptance; never run test import/review scripts
-against your production database. See [release report](docs/RELEASE_CHECKPOINT_12.md)
-for exact results, browser setup and remaining limitations.
+This runs backend tests, frontend utility tests and a production build with isolated
+output and no dotenv reading. See [verification](docs/VERIFICATION.md) for details
+and opt-in browser checks. Never run fixture scripts against the live database.
 
 ## Documentation
 

@@ -31,7 +31,7 @@ SPEC = ParameterSpec('x','X','float',-1,minimum=-1,maximum=5,step=.25)
     ({'values':'-1, 0, 1.5'},[-1,0,1.5]),
 ])
 def test_decimal_generation(axis, expected):
-    got=axis_values(axis,SPEC,25)
+    got=axis_values(axis,SPEC,{SPEC.key: SPEC},25)
     assert got['values']==expected
     assert not any('999999' in v for v in got['labels'])
 
@@ -45,15 +45,15 @@ def test_decimal_generation(axis, expected):
     {'values':[]}, {'values':list(range(26))},
 ])
 def test_invalid_values_are_rejected_not_truncated(axis):
-    with pytest.raises(ValueError):axis_values(axis,SPEC,25)
+    with pytest.raises(ValueError):axis_values(axis,SPEC,{SPEC.key: SPEC},25)
 
 
 def test_integer_values_and_default_sentinel():
     integer=replace(SPEC,kind='int',step=1)
-    assert axis_values({'mode':'range','start':0,'end':3,'step':1},integer,25)['values']==[0,1,2,3]
-    with pytest.raises(ValueError):axis_values({'values':'.5'},integer,25)
-    assert axis_values({'values':'-1'},replace(SPEC,step=.3),25)['values']==[-1]
-    assert len(axis_values({'mode':'range','start':-1,'end':5,'step':.25},SPEC,25)['values'])==25
+    assert axis_values({'mode':'range','start':0,'end':3,'step':1},integer,{integer.key: integer},25)['values']==[0,1,2,3]
+    with pytest.raises(ValueError):axis_values({'values':'.5'},integer,{integer.key: integer},25)
+    assert axis_values({'values':'-1'},replace(SPEC,step=.3),{SPEC.key: replace(SPEC,step=.3)},25)['values']==[-1]
+    assert len(axis_values({'mode':'range','start':-1,'end':5,'step':.25},SPEC,{SPEC.key: SPEC},25)['values'])==25
 
 
 def base():

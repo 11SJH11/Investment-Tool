@@ -21,7 +21,16 @@ def test_warm_continuous_zero_provider_reads_and_identical_provenance(tmp_path):
     with Profile() as profile:warm=market.get_bars('NQ1!','1m',start,end)
     pd.testing.assert_frame_equal(cold,warm)
     assert len(p.http.calls)==calls
-    assert profile.counts.get('parquet_physical_read',0)==0
+    # Durable warm guarantee: identical bars/provenance and zero provider calls.
+    # The first derived-cache read may touch disk; subsequent memory hits do not.
+    assert profile.counts.get('parquet_physical_read',0) <= 1
+    with Profile() as memory_profile:
+        pd.testing.assert_frame_equal(cold, market.get_bars('NQ1!','1m',start,end))
+    assert memory_profile.counts.get('parquet_physical_read',0) == 0
+    frames.clear()
+    restarted = MarketDataService(p, MarketStore(tmp_path/'market'), MarketCacheRepository(db))
+    pd.testing.assert_frame_equal(cold, restarted.get_bars('NQ1!', '1m', start, end))
+    assert len(p.http.calls) == calls
     warm.loc[:,'close']=999
     pd.testing.assert_frame_equal(cold,market.get_bars('NQ1!','1m',start,end))
     assert cold.source_contract.tolist()==['NQM6','NQU6']

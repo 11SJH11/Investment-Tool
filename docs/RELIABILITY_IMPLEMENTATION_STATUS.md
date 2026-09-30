@@ -13,7 +13,7 @@
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Separate research notes/items and experiments | Complete: 18 focused tests pass |
-| 2 | Restore green verification gate | In progress |
+| 2 | Restore green verification gate | Complete: 611 backend / 78 frontend; build and browser pass |
 | 3 | Crash-safe raw market cache | Pending |
 | 4 | Bounded, resumable, interactive-priority warming | Pending |
 | 5 | Global simulation budget and 5×5 parity benchmark | Pending |
@@ -59,3 +59,40 @@ Validation: `test_research_items_api.py`, `test_phase63_journal_research.py`,
   experiment generation, heatmaps, cell opening, and low-sample checks remain required.
 
 No tests or documents have been deleted at this checkpoint.
+
+## Stage 2 ? completed 30 September 2026
+
+- Updated all stale `axis_values` calls to the four-argument public contract;
+  retained rejection, sentinel, decimal, integer and lattice assertions.
+- Documented durable NQ warm-cache reuse: identical bars/provenance, zero additional
+  provider requests while reference evidence is valid. Separately verifies first
+  disk read, memory hit, new-service reuse and caller-mutation isolation.
+- Browser smoke follows the dedicated Research Viewer, returning to Backtest to
+  define another experiment. Removed obsolete corner-selection UI assertions;
+  retained spectrum/grid, failure visibility, low N, default control and exact
+  run opening, and added interaction-residual view navigation.
+- `Verify-Ledger.ps1` runs all backend/frontend tests plus an isolated production
+  build. `frontend/verify-build.mjs` disables dotenv loading. No live process restart,
+  live data writes, credential reads or installed dependency changes are required.
+- Corrected one encoding-only worker-label change introduced during the repository
+  rename; no execution behaviour changed.
+
+Final verification on this tree:
+
+- Backend: **611 passed**, one existing Starlette TestClient deprecation warning,
+  73.99 seconds. Audit baseline was 589 passed / 20 failed; two API/container
+  regression tests were added in Stage 1.
+- Frontend utility tests: **78 passed**, zero failures.
+- Production build: **118 modules**, success; existing 823.81 kB JS chunk warning.
+- Isolated mocked research browser smoke: passed at **1024 / 1440 / 1920 px**, no
+  page overflow or runtime exceptions.
+- `git diff --check`: passed for changed source/docs.
+- Frozen strategies, engine and indicators: source unchanged from `4dc3da4`.
+
+Environment caveat: sandbox restrictions denied some Node source reads and caused
+spurious unresolved imports. Frontend tests passed outside those restrictions;
+the isolated build helper passed when invoked directly outside them. Do not
+modify application imports to work around this execution-environment limitation.
+
+Next stage: **3 ? crash-safe raw Parquet writes and failure-injection/recovery tests**.
+Stages 3?18 remain pending; no broker implementation or global-worker fix is claimed.

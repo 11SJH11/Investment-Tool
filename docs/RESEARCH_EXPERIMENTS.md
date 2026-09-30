@@ -43,10 +43,10 @@ with a minimum scale so tiny differences are not exaggerated. Stop/target
 percentages count realised exit-reason categories. There is no ranking, automatic
 region selection, default mutation or “winner”.
 
-For a finer follow-up, select two opposite heatmap corners and choose **Create
-focused grid from selection**. It retains the saved base configuration, proposes
-the selected bounds using declared parameter steps, and requires a new preview.
-Adjust spacing to fit the axis limits. Nothing is queued automatically.
+For a finer follow-up, return to Backtest, retain the intended base configuration,
+and enter a narrower explicit/range axis definition. Preview every new experiment
+before queuing it. The dedicated Research Viewer does not offer corner-selection
+or automatically create a follow-up grid.
 
 Existing recorded-feature buckets remain descriptive hypothesis-generation tools,
 **not exact counterfactual backtests**. A new two-dimensional descriptive explorer
