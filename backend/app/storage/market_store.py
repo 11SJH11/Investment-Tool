@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import os
+import tempfile
 
 import pandas as pd
 from app.data.futures import PROVENANCE_COLUMNS
@@ -12,6 +13,10 @@ from app.performance import count
 
 _REQUIRED_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
 _OPTIONAL_COLUMNS = PROVENANCE_COLUMNS
+
+
+class MarketCacheCorruption(RuntimeError):
+    """An unreadable cache payload; provider data remains authoritative."""
 
 
 class MarketStore:
@@ -25,43 +30,73 @@ class MarketStore:
         safe_ticker = ticker.upper().replace("/", "-")
         return self.root / "bars" / safe_namespace / timeframe / f"{safe_ticker}.parquet"
 
-    def write_bars(self, namespace: str, ticker: str, timeframe: str, bars: pd.DataFrame) -> Path:
-        import duckdb
+    def has_bars(self, namespace: str, ticker: str, timeframe: str) -> bool:
+        return self._path(namespace, ticker, timeframe).exists()
 
+    def write_bars(self, namespace: str, ticker: str, timeframe: str, bars: pd.DataFrame) -> Path:
         frame = self._normalize(bars)
         path = self._path(namespace, ticker, timeframe)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
         if path.exists():
             existing = self.read_bars(namespace, ticker, timeframe)
-            frame = self._normalize(pd.concat([existing, frame], ignore_index=True))
-
-        connection = duckdb.connect()
-        try:
-            connection.register("bars_df", frame)
-            target = str(path).replace("'", "''")
-            connection.execute(f"COPY bars_df TO '{target}' (FORMAT PARQUET, COMPRESSION ZSTD)")
-        finally:
-            connection.close()
-        return path
+            if frame.empty:
+                # A closed-market response extends coverage, not the payload.
+                # Avoid dtype coercion or invalidating a prepared input snapshot.
+                return path
+            if not existing.empty:
+                frame = self._normalize(pd.concat([existing, frame], ignore_index=True))
+        return self._atomic_write(path, frame)
 
     def replace_bars(self, namespace: str, ticker: str, timeframe: str, bars: pd.DataFrame) -> Path:
-        """Atomically replace a derived cache file without merging stale rows."""
-        import duckdb
-        frame = self._normalize(bars)
-        path = self._path(namespace, ticker, timeframe)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + '.tmp')
-        connection = duckdb.connect()
-        try:
-            connection.register('bars_df', frame)
-            target = str(tmp).replace("'", "''")
-            connection.execute(f"COPY bars_df TO '{target}' (FORMAT PARQUET, COMPRESSION ZSTD)")
-        finally:
-            connection.close()
-        os.replace(tmp, path)
+        """Replace a cache payload without merging stale or damaged rows."""
+        path = self._atomic_write(self._path(namespace, ticker, timeframe), self._normalize(bars))
         frames.clear()
         return path
+
+    def _atomic_write(self, path: Path, frame: pd.DataFrame) -> Path:
+        import duckdb
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Same directory guarantees replacement stays on the same filesystem.
+        fd, name = tempfile.mkstemp(prefix=path.name + '.', suffix='.tmp', dir=path.parent)
+        os.close(fd)
+        temporary = Path(name)
+        try:
+            connection = duckdb.connect()
+            try:
+                connection.register('bars_df', frame)
+                target = str(temporary).replace("'", "''")
+                connection.execute(f"COPY bars_df TO '{target}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+            finally:
+                connection.close()
+            self._validate_payload(temporary, list(frame.columns), len(frame))
+            with temporary.open('r+b') as handle:
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            # Raw cache entries are keyed by file mtime/size. Do not evict other
+            # symbols/timeframes and immutable prepared inputs on every append.
+            return path
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _validate_payload(path: Path, columns: list[str], expected_rows: int) -> None:
+        """Decode every column with a streaming aggregate before publishing."""
+        import duckdb
+
+        connection = duckdb.connect()
+        try:
+            description = connection.execute('SELECT * FROM read_parquet(?) LIMIT 0', [str(path)]).description
+            if [column[0] for column in description] != columns:
+                raise MarketCacheCorruption('Cache payload schema validation failed')
+            quoted = ', '.join('"' + column.replace('"', '""') + '"' for column in columns)
+            # Hash forces decoding all data pages, unlike a footer-only count.
+            rows, _ = connection.execute(
+                f'SELECT count(*), bit_xor(hash({quoted})) FROM read_parquet(?)', [str(path)]
+            ).fetchone()
+            if rows != expected_rows:
+                raise MarketCacheCorruption('Cache payload row validation failed')
+        finally:
+            connection.close()
 
     def metadata_path(self, category: str, namespace: str, ticker: str, timeframe: str) -> Path:
         safe_namespace = namespace.replace('/', '-')
@@ -145,8 +180,20 @@ class MarketStore:
         try:
             count('parquet_physical_read')
             result = connection.execute(query, params).df()
+            if any(column not in result.columns for column in _REQUIRED_COLUMNS):
+                raise MarketCacheCorruption('Cache payload is missing OHLCV columns')
             frames.put(('range', identity, begin, finish), result)
             return result
+        except duckdb.InvalidInputException as exc:
+            raise MarketCacheCorruption('Cache payload cannot be decoded') from exc
+        except duckdb.IOException as exc:
+            # Access/disk failures are not evidence of corrupt provider data.
+            message = str(exc).lower()
+            if any(marker in message for marker in ('parquet', 'magic bytes', 'corrupt', 'decompress')) and not any(
+                marker in message for marker in ('permission', 'access is denied', 'permission denied')
+            ):
+                raise MarketCacheCorruption('Cache payload cannot be decoded') from exc
+            raise
         finally:
             connection.close()
 

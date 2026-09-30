@@ -26,6 +26,9 @@ class MemoryStore:
     def __init__(self):
         self.frames = []
 
+    def has_bars(self, namespace, ticker, timeframe):
+        return bool(self.frames)
+
     def write_bars(self, namespace, ticker, timeframe, bars):
         self.frames.append(bars.copy())
 

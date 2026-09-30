@@ -12,7 +12,7 @@ import pandas as pd
 from app.data.instruments import InstrumentSpec, instrument_spec, normalize_symbol
 from app.data.providers.base import MarketDataProvider, Timeframe
 from app.storage.market_cache_repository import MarketCacheRepository
-from app.storage.market_store import MarketStore
+from app.storage.market_store import MarketStore, MarketCacheCorruption
 
 
 ProviderResolver = Callable[[str, InstrumentSpec], MarketDataProvider]
@@ -108,11 +108,11 @@ class MarketDataService:
         if instrument_spec(ticker).security_type == "continuous_future" and getattr(provider, "back_adjust", False):
             return provider.get_bars(ticker, timeframe, start, end)
         namespace = provider.cache_namespace
-        if force_refresh:
-            self._fetch_and_store(provider, ticker, timeframe, start, end)
-        else:
-            cached = self.coverage.get(namespace, ticker, timeframe)
-            if cached is None:
+        cached = self.coverage.get(namespace, ticker, timeframe)
+        try:
+            if cached is not None and not self.store.has_bars(namespace, ticker, timeframe):
+                raise MarketCacheCorruption('Covered cache payload is missing')
+            if force_refresh or cached is None:
                 self._fetch_and_store(provider, ticker, timeframe, start, end)
             else:
                 cached_start, cached_end = cached
@@ -120,8 +120,15 @@ class MarketDataService:
                     self._fetch_and_store(provider, ticker, timeframe, start, cached_start)
                 if end > cached_end:
                     self._fetch_and_store(provider, ticker, timeframe, cached_end, end)
-
-        return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
+            return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
+        except MarketCacheCorruption:
+            # Repair the entire claimed interval, not just the visible slice.
+            # Leave the old file/coverage untouched if the provider or write fails.
+            covered = self.coverage.get(namespace, ticker, timeframe)
+            repair_start = min(start, covered[0]) if covered else start
+            repair_end = max(end, covered[1]) if covered else end
+            self._fetch_and_store(provider, ticker, timeframe, repair_start, repair_end, replace=True)
+            return self.store.read_bars(namespace, ticker, timeframe, start=start, end=end)
 
     def _continuous_bars(self, provider, ticker, timeframe, start, end, *, force_refresh=False):
         """Reconstruct a continuous alias from durable dated contracts.
@@ -153,9 +160,12 @@ class MarketDataService:
         manifest = self.store.read_metadata('continuous', derived_namespace, ticker, timeframe)
         now = datetime.now(timezone.utc)
         if not force_refresh and self._continuous_manifest_valid(manifest, provider, raw_provider, ticker, timeframe, start, end, now):
-            cached = self.store.read_bars(derived_namespace, ticker, timeframe, start=start, end=end)
-            if not cached.empty:
-                return cached
+            try:
+                cached = self.store.read_bars(derived_namespace, ticker, timeframe, start=start, end=end)
+                if not cached.empty:
+                    return cached
+            except MarketCacheCorruption:
+                pass  # Reconstruct from authoritative dated-contract payloads below.
 
         union_start, union_end = start, end
         if manifest:
@@ -282,14 +292,19 @@ class MarketDataService:
         timeframe: Timeframe,
         start: datetime,
         end: datetime,
+        *,
+        replace: bool = False,
     ) -> None:
         if start >= end:
             return
         with measure('provider_fetch'):
             bars = provider.get_bars(ticker, timeframe, start, end)
-        if not bars.empty:
-            self.store.write_bars(provider.cache_namespace, ticker, timeframe, bars)
-        # Mark requested coverage even when the market was closed/no bars were returned.
+        if bars.empty:
+            bars = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        writer = self.store.replace_bars if replace else self.store.write_bars
+        writer(provider.cache_namespace, ticker, timeframe, bars)
+        # Publish coverage only after a validated atomic payload (including an empty
+        # market-closed result). A crash here leaves conservative old coverage.
         self.coverage.extend(provider.cache_namespace, ticker, timeframe, start, end)
 
 
