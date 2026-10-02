@@ -87,6 +87,18 @@ class BacktestJobs:
             rows = db.execute('SELECT * FROM backtest_jobs ORDER BY created_at DESC, rowid DESC LIMIT 500').fetchall()
         return [self._decode(row) for row in rows]
 
+    def compact_list(self):
+        with self.database.connect() as db:
+            rows=db.execute("""SELECT id,batch_id,status,processed,total,run_id,error,cancel_requested,created_at,updated_at,
+                json_object('run_name',json_extract(payload,'$.run_name'),
+                            'strategy_key',json_extract(payload,'$.strategy_key'),
+                            'symbols',json_extract(payload,'$.symbols'),
+                            'experiment_group',json_extract(payload,'$.experiment_group'),
+                            'experiment_type',json_extract(payload,'$.experiment_type'),
+                            'research_count',coalesce(json_array_length(payload,'$.research_children'),0)) AS payload
+                FROM backtest_jobs ORDER BY created_at DESC,rowid DESC LIMIT 500""").fetchall()
+        return [self._decode(row) for row in rows]
+
     @staticmethod
     def _decode(row):
         item = dict(row)

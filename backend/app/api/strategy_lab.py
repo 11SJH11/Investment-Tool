@@ -115,8 +115,8 @@ def futures_preflight(payload: BacktestRequest, services: AppServices = Depends(
 
 
 @router.get('/jobs')
-def jobs(services: AppServices = Depends(get_services)):
-    return {'jobs': services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers, 'worker_mode': services.backtest_jobs.worker_mode, 'compute': services.backtest_jobs.compute_settings()}
+def jobs(compact: bool = False, services: AppServices = Depends(get_services)):
+    return {'jobs': services.backtest_jobs.compact_list() if compact else services.backtest_jobs.list(), 'max_workers': services.backtest_jobs.workers, 'worker_mode': services.backtest_jobs.worker_mode, 'compute': services.backtest_jobs.compute_settings()}
 
 
 class ComputeSettingsRequest(BaseModel):
@@ -180,21 +180,32 @@ def backtest_runs(limit: int = Query(default=100, ge=1, le=500), services: AppSe
 
 
 @router.get("/experiments/{experiment_group}")
-def backtest_experiment(experiment_group: str, services: AppServices = Depends(get_services)):
-    parent = next((j for j in services.backtest_jobs.list() if j['payload'].get('research_children') and j['payload'].get('experiment_group') == experiment_group), None)
+def backtest_experiment(experiment_group: str, compact: bool = False, services: AppServices = Depends(get_services)):
+    parent = next((j for j in (services.backtest_jobs.compact_list() if compact else services.backtest_jobs.list()) if (j['payload'].get('research_children') or j['payload'].get('research_count')) and j['payload'].get('experiment_group') == experiment_group), None)
     try:
+        if compact:
+            from app.storage.research_experiment_repository import ResearchExperimentRepository
+            from app.services.research_status import experiment_status
+            document = ResearchExperimentRepository(services.backtest_jobs.database).get(experiment_group)
+            if document:
+                document['cells'] = experiment_status(services.backtest_jobs.database, experiment_group)['cells']
+                document['performance'] = {k:v for k,v in document.get('performance',{}).items() if k!='cells'}
+                return {'experiment_group':experiment_group,'runs':[], 'experiment':document,'parent_job':parent}
         result = services.backtest.get_experiment(experiment_group)
         result['parent_job'] = parent
         return result
     except ValueError as exc:
         if parent:
             return {'experiment_group':experiment_group,'runs':[],'parent_job':parent,
-                    'experiment':{'plan':parent['payload']['research_plan'],'cells':[],'status':parent['status']}}
+                    'experiment':{'plan':services.backtest_jobs.get(parent['id'])['payload']['research_plan'],'cells':[],'status':parent['status']}}
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get('/research-experiments')
-def list_research(services: AppServices = Depends(get_services)):
+def list_research(compact: bool = False, services: AppServices = Depends(get_services)):
+    if compact:
+        from app.services.research_status import research_history
+        return {'experiments': research_history(services.backtest_jobs.database)}
     from app.storage.research_experiment_repository import ResearchExperimentRepository
     return {'experiments': ResearchExperimentRepository(services.backtest_jobs.database).list()}
 
@@ -331,3 +342,12 @@ def run_backtest(payload: BacktestRequest, services: AppServices = Depends(get_s
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Backtest failed: {exc}") from exc
+
+
+@router.get('/experiments/{experiment_group}/status')
+def research_progress(experiment_group: str, services: AppServices = Depends(get_services)):
+    from app.services.research_status import experiment_status
+    status = experiment_status(services.backtest_jobs.database, experiment_group)
+    if status is None:
+        raise HTTPException(404, 'Research experiment not found')
+    return status

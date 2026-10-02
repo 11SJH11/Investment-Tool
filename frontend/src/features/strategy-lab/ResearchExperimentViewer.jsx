@@ -1,4 +1,5 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,useRef} from 'react';
+import {activeStatus,researchCount} from './statusPolling.js';
 import {api} from '../../api/client.js';
 import {axisDisplay,cellDisplay,cellTooltip,experimentCells,experimentMetrics,heatScale,interactionAnalysis} from './researchExperiments.js';
 
@@ -7,16 +8,22 @@ const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(
 export default function ResearchExperimentViewer({experimentGroup,initial=null,jobs=[],onOpenRun,onBack,onError}) {
   const [data,setData]=useState(initial),[metric,setMetric]=useState('expectancy_r'),[view,setView]=useState('observed');
   const group=experimentGroup||data?.experiment_group;
-  const parentJob=jobs.find(j=>j.payload?.experiment_group===group&&j.payload?.research_children);
-  const stamp=parentJob?`${parentJob.status}:${parentJob.processed}:${parentJob.total}`:'';
+  const parentJob=jobs.find(j=>j.payload?.experiment_group===group&&researchCount(j));
+  const currentParent=useRef(parentJob);currentParent.current=parentJob;
+  const errorCallback=useRef(onError);errorCallback.current=onError;
   useEffect(()=>{
     if(!group)return;
-    let live=true,timer;
-    const load=async()=>{let status=parentJob?.status;try{const next=await api.strategyLabExperiment(group);status=next?.experiment?.status||status;if(live)setData(next);}catch(e){if(live)onError?.(e.message);}
-      if(live&&!['completed','failed','cancelled'].includes(status))timer=setTimeout(load,1200);};
+    let live=true,timer,loaded=initial?.experiment_group===group;
+    const load=async()=>{let status;
+      try{
+        if(!loaded){const detail=await api.strategyLabExperiment(group);if(!live)return;setData(detail);loaded=true;}
+        const next=await api.researchExperimentStatus(group);if(!live)return;
+        status=next.status;setData(previous=>({...previous,experiment:{...previous?.experiment,...next}}));
+      }catch(e){if(live&&!activeStatus(currentParent.current?.status))errorCallback.current?.(e.message);}
+      if(live&&(activeStatus(status)||activeStatus(currentParent.current?.status)))timer=setTimeout(load,1500);
+    };
     load();return()=>{live=false;clearTimeout(timer);};
-  // stamp intentionally refreshes when queue progress changes.
-  },[group,stamp]);
+  },[group,parentJob?.id]);
   const doc=data?.experiment,plan=doc?.plan||data?.runs?.find(r=>r.config?.research_experiment)?.config?.research_experiment;
   const cells=useMemo(()=>experimentCells(plan,data?.runs||[],[],doc?.cells||[]),[plan,data?.runs,doc?.cells]);
   const relationship=useMemo(()=>interactionAnalysis(plan,cells,metric),[plan,cells,metric]);

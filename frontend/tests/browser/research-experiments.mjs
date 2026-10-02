@@ -9,15 +9,17 @@ function fixtures(){
  localStorage.setItem('ledger.ui.section.sensitivity-research','true');
  const parameters=[{key:'x',label:'ATR',kind:'float',default:-1,minimum:-1,maximum:5,step:.25},{key:'y',label:'RVOL',kind:'float',default:-1,minimum:-1,maximum:5,step:.25}];
  window.requests=[];let jobs=[],runs=[],plan=null,group='',experiment=null;
+ window.finishResearch=()=>{if(experiment)experiment.status='failed';for(const job of jobs)job.status='failed';};
  window.fetch=async(url,options={})=>{
   const p=new URL(String(url),location.href).pathname;let body={};const payload=options.body?JSON.parse(options.body):null;
-  requests.push({p,payload});
+  requests.push({p,payload,search:new URL(String(url),location.href).search});
   if(p.endsWith('/strategies'))body={strategies:[{key:'fixture',name:'Fixture',timeframes:['1m'],parameters,defaults:{x:-1,y:-1}}]};
   else if(p.endsWith('/indicators'))body={indicators:[]};
   else if(p.endsWith('/jobs'))body={jobs,max_workers:4,compute:{configured_budget:4,used_workers:3,queued_simulations:17}};
   else if(p.endsWith('/compute-settings'))body={mode:'4',resolved_workers:4,configured_budget:4,used_workers:3,queued_simulations:17};
   else if(p.endsWith('/runs'))body={runs:runs.map(r=>({...r,result:undefined,strategy_name:'Fixture',symbols:['SPY']}))};
   else if(/\/runs\/\d+$/.test(p))body=runs.find(r=>r.id===Number(p.split('/').pop()));
+  else if(p.endsWith('/status')&&p.includes('/experiments/'))body={experiment_group:group,status:experiment?.status||jobs[0]?.status,cells:(experiment?.cells||[]).map(c=>({...c,metrics:runs.find(r=>r.id===c.run_id)?.result.metrics}))};
   else if(p.includes('/experiments/'))body={experiment_group:group,runs,experiment,parent_job:jobs[0]};
   else if(p.endsWith('/research-experiments/preview')){
    const axes=payload.axes.map(a=>{const values=a.mode==='explicit'?a.values.split(',').map(Number):Array.from({length:Math.round((Number(a.end)-Number(a.start))/Number(a.step))+1},(_,i)=>Number(a.start)+i*Number(a.step));return {...parameters.find(p=>p.key===a.parameter),parameter:a.parameter,values,labels:values.map(String)};});
@@ -66,6 +68,8 @@ try{
  for(const width of [1024,1440,1920]){await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});assert(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'),`overflow at ${width}`);}
  await click('Open #103');await waitFor(`document.querySelector('[aria-label="Run viewer sections"]')`);
  assert(await evaluate(`requests.some(r=>r.p==='/api/strategy-lab/runs/103')`));
+ assert(await evaluate(`requests.some(r=>r.p.endsWith('/status')&&r.p.includes('/experiments/'))`));
+ assert(await evaluate(`requests.filter(r=>r.p.endsWith('/jobs')).every(r=>r.search==='?compact=true')`));
  assert.equal(errors.length,0,errors.join('\n'));
  console.log('PASS range preview, exact job count, partial failures, spectrum, 2D heatmap, low N/default, exact run opening, 1024/1440/1920 overflow and runtime checks');
 }finally{if(errors.length)console.error(errors);close();}

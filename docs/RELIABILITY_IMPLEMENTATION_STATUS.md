@@ -17,7 +17,7 @@
 | 3 | Crash-safe raw market cache | Complete: 627 backend / 78 frontend; production build passes |
 | 4 | Bounded, resumable, interactive-priority warming | Complete: 642 backend / 80 frontend; build and browser pass |
 | 5 | Global simulation budget and 5x5 parity benchmark | Complete: 647 backend / 80 frontend; build/browser and exact benchmark parity pass |
-| 6 | Compact research polling | Pending |
+| 6 | Compact research polling | Complete: 649 backend / 84 frontend; build and browser pass |
 | 7 | Replay leave/checkpoint guard | Pending |
 | 8 | Safe actionable error categories | Pending |
 | 9–10 | Protected scope and final acceptance | Pending final verification |
@@ -245,3 +245,31 @@ were not edited; only service admission around the existing engine call changed.
 
 No live process restart, live data access or credential read occurred. Stage 6 is
 next; Stages 6-18 remain pending at this commit.
+
+## Stage 6 - completed 2 October 2026
+
+Queue and research-history requests now opt into compact SQL projections. An open
+research viewer loads its definition once, then polls cell status and aggregate
+metrics without transferring full run trades, equity curves or configurations.
+The original full endpoints and persisted run/experiment snapshots remain intact;
+there is no schema migration. MFE/MAE and stop/target summaries retain existing
+missing-value and sample-count semantics.
+
+Queue and compute controls share one in-flight request and timer. Polling stops
+when idle/terminal and when the last subscriber unmounts. Manual refresh, focus,
+and submissions refresh status; newly queued work in another client is discovered
+on focus/refresh rather than through perpetual idle polling.
+
+Verification: **649 backend passed** (83.23s, existing Starlette warning),
+**84 frontend passed**, production build passed (122 modules; existing large-chunk
+warning). Focused queue/research/status tests: **24 passed**. Four new frontend
+polling tests cover request coalescing, terminal/unmount stopping, error recovery
+and compact metric equivalence. Isolated mocked browser research smoke passed at
+**1024/1440/1920**, including compact request routing, spectrum, interaction,
+partial failure and exact run opening. No overflow/runtime errors. Source diff
+whitespace checks passed. Artifacts: `C:/Users/jamie/Project/stage6-verified`.
+
+Limitation: SQLite still scans saved JSON to compute the small diagnostic summary;
+this reduces Python decoding and response size, not all database CPU work. Live
+research was not restarted, live data/credentials were not accessed, and unrelated
+user strategy edits remain untouched. Stage 7 and later remain pending.

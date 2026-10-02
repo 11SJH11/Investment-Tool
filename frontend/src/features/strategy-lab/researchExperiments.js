@@ -26,7 +26,7 @@ export function experimentCells(plan, runs=[], jobs=[], persistedCells=[]) {
   return (plan?.cells||[]).map((values,index)=>{
     const run=runs.find(r=>r.config?.research_experiment?.cell_index===index);
     const job=jobs.find(j=>j.payload?.research_experiment?.cell_index===index);
-    const persisted=persistedCells.find(c=>c.index===index),metrics=runMetrics(run);
+    const persisted=persistedCells.find(c=>c.index===index),metrics=persisted?.metrics??runMetrics(run);
     const control=(plan?.axes||[]).every((axis,i)=>axis.mode!=='bands'&&values[i]===axis.default);
     return {index,values,runId:run?.id??persisted?.run_id,status:run?'completed':persisted?.status||job?.status||'queued',
       progress:job?.progress,error:persisted?.error||job?.error,metrics,lowN:metrics!=null&&metrics.trades<30,
