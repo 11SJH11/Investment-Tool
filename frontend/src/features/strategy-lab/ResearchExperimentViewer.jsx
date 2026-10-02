@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState,useRef} from 'react';
-import {activeStatus,researchCount} from './statusPolling.js';
+import {activeStatus,researchCount,fetchResearchUpdate} from './statusPolling.js';
 import {api} from '../../api/client.js';
 import {axisDisplay,cellDisplay,cellTooltip,experimentCells,experimentMetrics,heatScale,interactionAnalysis} from './researchExperiments.js';
 
@@ -17,8 +17,9 @@ export default function ResearchExperimentViewer({experimentGroup,initial=null,j
     const load=async()=>{let status;
       try{
         if(!loaded){const detail=await api.strategyLabExperiment(group);if(!live)return;setData(detail);loaded=true;}
-        const next=await api.researchExperimentStatus(group);if(!live)return;
-        status=next.status;setData(previous=>({...previous,experiment:{...previous?.experiment,...next}}));
+        const update=await fetchResearchUpdate(api,group);if(!live)return;
+        if(update.detail){status=update.detail.experiment?.status;setData(update.detail);}
+        else{status=update.status.status;setData(previous=>({...previous,experiment:{...previous?.experiment,...update.status}}));}
       }catch(e){if(live&&!activeStatus(currentParent.current?.status))errorCallback.current?.(e.message);}
       if(live&&(activeStatus(status)||activeStatus(currentParent.current?.status)))timer=setTimeout(load,1500);
     };

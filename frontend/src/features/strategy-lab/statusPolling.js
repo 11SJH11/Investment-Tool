@@ -20,3 +20,9 @@ export function createStatusPoller(fetcher, isActive, delay=1500, clock=globalTh
   };
   return {subscribe,refresh};
 }
+
+// Older running servers remain usable until their next normal restart.
+export async function fetchResearchUpdate(api,group) {
+  try{return {status:await api.researchExperimentStatus(group)};}
+  catch(error){if(error.status!==404)throw error;return {detail:await api.strategyLabExperiment(group)};}
+}

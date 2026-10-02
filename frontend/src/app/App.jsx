@@ -1,3 +1,4 @@
+import ReplayLeaveGuard,{useReplayLeaveGuard} from './ReplayLeaveGuard.jsx';
 import {WorkflowContext} from "./WorkflowContext.js";
 import {workflowContext} from "./workflow.js";
 import { useEffect, useState } from "react";
@@ -13,13 +14,16 @@ import SettingsPage from "../features/settings/SettingsPage";
 import { sections } from "./navigation";
 import { applyPreferences, loadPreferences, savePreferences } from "./preferences";
 
-export default function App(){
+export default function App(){return <ReplayLeaveGuard><AppContent/></ReplayLeaveGuard>;}
+function AppContent(){
+ const replayLeave=useReplayLeaveGuard();
  const [active,setActive]=useUIPreference("navigation.active", "Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
  const [journalDirty,setJournalDirty]=useState(false);
  const [context,setContext]=useState(null);
  const [workspaceDirty,setWorkspaceDirty]=useState(false);
- const selectPage=next=>{if(active==="Backtest"&&workspaceDirty&&!confirm("Discard unsaved Strategy Workspace changes?"))return false;if(active==="Journal"&&journalDirty&&!confirm("Discard unsaved Journal changes?"))return false;setActive(next);setContext(null);return true;};
- const openWorkflow=(target,input)=>{const route=target==="Research"?"Charts":target;if(!selectPage(route))return;const next={...workflowContext(target,input),id:Date.now()+Math.random()};setContext(next);if(next.symbol)setSelectedTicker(next.symbol);};
+ const navigate=(next,context=null)=>replayLeave.request(()=>{if(active==="Backtest"&&workspaceDirty&&!confirm("Discard unsaved Strategy Workspace changes?"))return;if(active==="Journal"&&journalDirty&&!confirm("Discard unsaved Journal changes?"))return;setActive(next);setContext(context);if(context?.symbol)setSelectedTicker(context.symbol);});
+ const selectPage=next=>{if(next!==active)navigate(next);};
+ const openWorkflow=(target,input)=>navigate(target==="Research"?"Charts":target,{...workflowContext(target,input),id:Date.now()+Math.random()});
 
  useEffect(()=>{applyPreferences(prefs)},[]);
  const updatePrefs=(next)=>{setPrefs(next);savePreferences(next)};

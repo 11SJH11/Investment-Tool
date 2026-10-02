@@ -18,7 +18,7 @@
 | 4 | Bounded, resumable, interactive-priority warming | Complete: 642 backend / 80 frontend; build and browser pass |
 | 5 | Global simulation budget and 5x5 parity benchmark | Complete: 647 backend / 80 frontend; build/browser and exact benchmark parity pass |
 | 6 | Compact research polling | Complete: 649 backend / 84 frontend; build and browser pass |
-| 7 | Replay leave/checkpoint guard | Pending |
+| 7 | Replay leave/checkpoint guard | Complete: 649 backend / 88 frontend; build and browser pass |
 | 8 | Safe actionable error categories | Pending |
 | 9–10 | Protected scope and final acceptance | Pending final verification |
 | 11 | Documentation/test classification and cleanup | Pending |
@@ -273,3 +273,52 @@ Limitation: SQLite still scans saved JSON to compute the small diagnostic summar
 this reduces Python decoding and response size, not all database CPU work. Live
 research was not restarted, live data/credentials were not accessed, and unrelated
 user strategy edits remain untouched. Stage 7 and later remain pending.
+
+## Stage 7 - completed 2 October 2026
+
+Replay navigation now offers Stay, Save checkpoint and leave, or Leave/discard
+when a session has changes, an active position or a pending order. Replacement
+loads, restart and resume also use this guard. Playback pauses and shortcuts are
+suppressed while the modal is open. Browser reload/close uses the browser's native
+unsaved-state warning (browsers do not permit custom save controls there).
+
+Checkpoint writes verify browser-storage readback before allowing navigation.
+Quota/access failures leave the session open with an actionable message. In-flight
+Replay steps must settle before saving/leaving. Existing canonical visible/frontier
+timestamps, integrity state, positions and pending orders are retained; checkpoints
+now also retain contracts, the closed trade and its Journal status. Failed data
+loads no longer claim successful resume or clear the existing Journal status.
+Replay fills, sizing, causality, provider paths and broker identities are unchanged.
+
+A final compatibility check added a Stage 6 fallback for the old backend that may
+still be running research: a missing status endpoint falls back to the original
+full experiment endpoint. Real non-404 failures remain errors. Compute settings
+load once through the original endpoint if queue responses lack compute fields.
+No backend restart is needed merely to keep the frontend usable.
+
+Verification:
+
+- Full backend: **649 passed**, one existing Starlette warning, **85.03s**.
+- Final frontend suite: **88 passed** (three checkpoint tests and one legacy-server
+  compatibility test added after Stage 6).
+- Final production build: **124 modules**, success; 830.15 kB JS / 247.26 kB gzip;
+  existing large-chunk warning. Final artifact: `stage7-browser/frontend` outside
+  the repository. The full verification helper also passed in `stage7-verified`.
+- Isolated mocked browser: pending order, active position and closed trade survive
+  save/leave/resume; Stay and discard work; simulated quota failure cannot leave;
+  failed resume cannot claim success; beforeunload warning and blocked shortcuts
+  pass. Dialog/page overflow checks pass at **1024/1440/1920** with no runtime errors.
+- Research browser regression passed against both compact and legacy API fixtures
+  at all three widths. A missing Workspace fixture field and request-recording
+  order were corrected in the new browser mock, not in production.
+- Source whitespace checks pass. No tests/documents deleted or coverage relaxed.
+
+Limits: this is one browser-local checkpoint, not durable server-side Replay
+sessions or automatic crash recovery. Clearing browser storage removes it. Resume
+still needs the corresponding historical bars. Checkpoint saving is not Journal
+submission. Discard abandons current changes but retains the previous checkpoint.
+No live data/credentials were read, no running Ledger process was restarted, and
+user strategy edits/generated files remain outside these commits.
+
+Next: Stage 8 safe actionable errors. Stages 8-18 are not complete; TradeLocker,
+MT5, canonical broker imports and repository cleanup remain pending.

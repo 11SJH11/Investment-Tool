@@ -1,3 +1,5 @@
+import {useReplayLeaveGuard} from '../../app/ReplayLeaveGuard.jsx';
+import {checkpointKey,writeReplayCheckpoint,replayNeedsGuard} from './replayCheckpoint.js';
 import ReplayOrderTicket from "./ReplayOrderTicket.jsx";
 import {loadPreferences} from "../../app/preferences.js";
 import ReplayToolbar from "./ReplayToolbar.jsx";
@@ -21,6 +23,8 @@ import {INDICATOR_COLORS,daysAgo,addDays,money,fmt,nyDate,currentValue,countThro
 
 export default function ReplayPanel({ indicators = [], onError }) {
   const {context:workflow}=useWorkflow();
+  const leaveGuard=useReplayLeaveGuard();
+  const checkpointSaved=useRef(null),leaveState=useRef(null);
   const handoff=workflow?.target==="Replay"?workflow:null;
   const preferences=useMemo(()=>loadPreferences(),[]);
   const busy = useRef(false);
@@ -108,9 +112,9 @@ export default function ReplayPanel({ indicators = [], onError }) {
 
   const fetchReplay = async (config, restore = null) => {
     const activeSymbol = String(config.symbol || symbol).trim().toUpperCase();
-    if (!activeSymbol || busy.current) return;
+    if (!activeSymbol || busy.current) return false;
     busy.current = true;
-    setLoading(true); setPlaying(false); onError?.(""); setJournalStatus("");
+    setLoading(true); setPlaying(false); onError?.("");
     try {
       const response = await api.strategyLabReplayBars(
         activeSymbol, config.replayDate, config.replayEndDate, config.startTime,
@@ -126,18 +130,19 @@ export default function ReplayPanel({ indicators = [], onError }) {
         : restore ? Number(restore.furthestVisibleCount || restoredVisible) : initial;
       const restoredFurthest = Math.min(Math.max(restoredVisible, frontierCount), response.timeline.length);
       setVisibleCount(restoredVisible); setFurthestVisibleCount(restoredFurthest);
-      setPosition(restore?.position || null); setClosedTrade(null); setPendingOrder(restore?.pendingOrder || null); setPendingClose(Boolean(restore?.pendingClose));
+      setPosition(restore?.position || null); setClosedTrade(restore?.closedTrade || null); setJournalStatus(restore?.journalStatus || ""); setPendingOrder(restore?.pendingOrder || null); setPendingClose(Boolean(restore?.pendingClose));
       setIntegrityCompromised(Boolean(restore?.integrityCompromised));
       setFollowReplay(restore?.followReplay ?? false);
       if (!restore?.preserveViewport) setJumpToken((value) => value + 1);
-    } catch (error) { onError?.(error.message || String(error)); }
+      return true;
+    } catch (error) { onError?.(error.message || String(error)); return false; }
     finally { setLoading(false); busy.current = false; }
   };
 
-  const load = async () => {
+  const load = () => leaveGuard.request(async () => {
     const typed = String(symbolInput || symbol).trim().toUpperCase();
     await fetchReplay({ symbol: typed, replayDate, replayEndDate, startTime, timeframe, session, ...context });
-  };
+  });
 
   const switchTimeframe = async (nextTimeframe) => {
     if (!nextTimeframe || nextTimeframe === timeframe) return;
@@ -148,7 +153,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
       { ...dataset.config, timeframe: nextTimeframe },
       {
         visibleCount, furthestVisibleCount, anchorTimestamp, frontierTimestamp,
-        position, pendingOrder, pendingClose, integrityCompromised, followReplay, preserveViewport: true,
+        position, pendingOrder, pendingClose, closedTrade, journalStatus, integrityCompromised, followReplay, preserveViewport: true,
       },
     );
   };
@@ -378,30 +383,38 @@ export default function ReplayPanel({ indicators = [], onError }) {
   const paneIndicators = visibleIndicators.filter((item) => item.key !== "volume" && !item.overlay && item.visible !== false);
   const metrics = plannedMetrics(position);
 
+  const checkpointPayload = dataset ? {
+    config: dataset.config,
+    anchorTimestamp: currentBar?.timestamp, frontierTimestamp: bars[furthestVisibleCount-1]?.timestamp,
+    visibleCount, furthestVisibleCount, integrityCompromised, followReplay,
+    selectedIndicators, position, pendingOrder, pendingClose, closedTrade, journalStatus,
+    setup, contracts, positionAmount, orderType, entryPrice, stop, target,
+  } : null;
   const saveCheckpoint = () => {
-    if (!dataset || busy.current) return;
-    const payload = {
-      config: dataset.config,
-      anchorTimestamp: currentBar?.timestamp, frontierTimestamp: bars[furthestVisibleCount-1]?.timestamp,
-      visibleCount, furthestVisibleCount, integrityCompromised, followReplay,
-      selectedIndicators, position, pendingOrder, pendingClose, setup, positionAmount, orderType, entryPrice, stop, target,
-    };
-    localStorage.setItem("ledger.replay.checkpoint", JSON.stringify(payload)); setCheckpointStatus("Checkpoint saved in this browser.");
+    if(busy.current)throw new Error("Replay is updating. Wait for the current step to finish before saving.");
+    checkpointSaved.current=writeReplayCheckpoint(localStorage,checkpointPayload);
+    setCheckpointStatus("Checkpoint saved in this browser.");
   };
-  const resumeCheckpoint = async () => {
-    const raw = localStorage.getItem("ledger.replay.checkpoint");
-    if (!raw) { setCheckpointStatus("No saved Replay checkpoint found in this browser."); return; }
+  const saveCheckpointButton=()=>{try{saveCheckpoint();}catch(error){setCheckpointStatus(error.message);}};
+  leaveState.current={shouldGuard:Boolean(loading)||replayNeedsGuard(checkpointPayload,checkpointSaved.current),
+    busy:busy.current,pause:()=>setPlaying(false),save:saveCheckpoint};
+  useEffect(()=>leaveGuard.register(()=>({...leaveState.current,busy:busy.current})),[leaveGuard.register]);
+  const resumeCheckpoint = () => {
     try {
-      if (busy.current) return;
-      const saved = JSON.parse(raw); const cfg = saved.config || {};
-      if (!saved.anchorTimestamp) throw new Error("This older checkpoint has no canonical frontier. Start a new Replay session.");
-      setReplayDate(cfg.replayDate); setReplayEndDate(cfg.replayEndDate); setStartTime(cfg.startTime); setTimeframe(cfg.timeframe); setSession(cfg.session);
-      setContextMode(cfg.contextDays === 1 ? "1d" : cfg.contextDays === 8 ? "5d" : cfg.contextDays === 31 ? "1m" : cfg.contextDays === 93 ? "3m" : "custom");
-      if (cfg.contextBars != null) setContextBars(cfg.contextBars);
-      setSelectedIndicators(saved.selectedIndicators || []); setSetup(saved.setup || ""); setPositionAmount(String(saved.positionAmount || "1000"));
-      setOrderType(saved.orderType || "market"); setEntryPrice(saved.entryPrice || ""); setStop(saved.stop || ""); setTarget(saved.target || "");
-      await fetchReplay(cfg, saved); setCheckpointStatus("Checkpoint resumed.");
-    } catch (error) { setCheckpointStatus(`Could not resume checkpoint: ${error.message}`); }
+      const raw=localStorage.getItem(checkpointKey);
+      if(!raw){setCheckpointStatus("No saved Replay checkpoint found in this browser.");return;}
+      const saved=JSON.parse(raw),cfg=saved.config||{};
+      if(!saved.anchorTimestamp)throw new Error("This older checkpoint has no canonical frontier. Start a new Replay session.");
+      leaveGuard.request(async()=>{
+        if(!await fetchReplay(cfg,saved)){setCheckpointStatus("Could not resume checkpoint. Existing session retained; check the data error above.");return;}
+        setReplayDate(cfg.replayDate);setReplayEndDate(cfg.replayEndDate);setStartTime(cfg.startTime);
+        setContextMode(cfg.contextDays===1?"1d":cfg.contextDays===8?"5d":cfg.contextDays===31?"1m":cfg.contextDays===93?"3m":"custom");
+        if(cfg.contextBars!=null)setContextBars(cfg.contextBars);
+        setSelectedIndicators(saved.selectedIndicators||[]);setSetup(saved.setup||"");setContracts(String(saved.contracts||"1"));setPositionAmount(String(saved.positionAmount||"1000"));
+        setOrderType(saved.orderType||"market");setEntryPrice(saved.entryPrice||"");setStop(saved.stop||"");setTarget(saved.target||"");
+        checkpointSaved.current=raw;setCheckpointStatus("Checkpoint resumed.");
+      });
+    }catch(error){setCheckpointStatus(`Could not resume checkpoint: ${error.message}`);}
   };
 
   const jumpTo = async stamp => {
@@ -413,7 +426,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
     if(position||pendingOrder||pendingClose){onError?.('Close/cancel the active replay trade or order before rewinding.');return;}
     await fetchReplay(dataset.config,{anchorTimestamp:bars[cursor-1].timestamp,frontierTimestamp:bars[furthestVisibleCount-1].timestamp,integrityCompromised:true,followReplay:false,preserveViewport:true});
   };
-  useReplayPlayback({playing,speed:playbackSpeed,ready:Boolean(dataset),finished,actions:{
+  useReplayPlayback({playing,speed:playbackSpeed,ready:Boolean(dataset)&&!leaveGuard.blocked,finished,actions:{
     next:()=>advanceSourceBars(replayStepSize(timeframe,1)),five:()=>advanceSourceBars(replayStepSize(timeframe,5)),previous:rewindOne,play:()=>setPlaying(v=>!v),
     buy:()=>document.querySelector('[data-replay-buy]')?.focus(),sell:()=>document.querySelector('[data-replay-sell]')?.focus(),
     limit:()=>setOrderType('limit'),close:()=>{if(position&&nextBar)setPendingClose(true);},
@@ -421,7 +434,7 @@ export default function ReplayPanel({ indicators = [], onError }) {
   }});
   const workspace = dataset && <div className={`replay-workspace ${expanded ? "replay-workspace-expanded" : "replay-workspace-inline"}`}>
     <div className="replay-workspace-card">
-      <ReplayToolbar busy={loading} help={preferences.replayHelp!==false} title={`${symbol} ${timeframe} / ${fmt(currentBar?.timestamp,timeZone)}`} canPrevious={visibleCount>(dataset.initial_visible_count||1)&&!position&&!pendingOrder&&!pendingClose} canNext={Boolean(nextBar)} playing={playing} speed={playbackSpeed} setSpeed={setPlaybackSpeed} follow={followReplay} expanded={expanded} previous={rewindOne} next={()=>advanceSourceBars(replayStepSize(timeframe,1))} five={()=>advanceSourceBars(replayStepSize(timeframe,5))} togglePlay={()=>setPlaying(v=>!v)} nextSession={jumpNextSession} toggleFollow={()=>{setFollowReplay(v=>!v);setJumpToken(v=>v+1);}} save={saveCheckpoint} restart={()=>fetchReplay({symbol,replayDate,replayEndDate,startTime,timeframe,session,...context})} objects={()=>setObjectsOpen(v=>!v)} toggleExpanded={()=>setExpanded(v=>!v)} jump={jumpTo}/>
+      <ReplayToolbar busy={loading} help={preferences.replayHelp!==false} title={`${symbol} ${timeframe} / ${fmt(currentBar?.timestamp,timeZone)}`} canPrevious={visibleCount>(dataset.initial_visible_count||1)&&!position&&!pendingOrder&&!pendingClose} canNext={Boolean(nextBar)} playing={playing} speed={playbackSpeed} setSpeed={setPlaybackSpeed} follow={followReplay} expanded={expanded} previous={rewindOne} next={()=>advanceSourceBars(replayStepSize(timeframe,1))} five={()=>advanceSourceBars(replayStepSize(timeframe,5))} togglePlay={()=>setPlaying(v=>!v)} nextSession={jumpNextSession} toggleFollow={()=>{setFollowReplay(v=>!v);setJumpToken(v=>v+1);}} save={saveCheckpointButton} restart={()=>leaveGuard.request(()=>fetchReplay({symbol,replayDate,replayEndDate,startTime,timeframe,session,...context}))} objects={()=>setObjectsOpen(v=>!v)} toggleExpanded={()=>setExpanded(v=>!v)} jump={jumpTo}/>
       <div className="replay-timeframes mt-1" aria-label="Replay timeframe">{TIMEFRAMES.map(tf=><button key={tf} disabled={loading} className={`chart-toolbar-btn ${timeframe===tf?"active":""}`} onClick={()=>switchTimeframe(tf)}>{tf}</button>)}</div>
       <div className={`replay-integrity ${integrityCompromised ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}>
         Replay integrity: <strong>{integrityCompromised ? "review mode · future bars were previously viewed" : "clean"}</strong>. Visible {visibleCount}/{bars.length}. {finished ? "End of loaded replay range." : `Loaded through ${dataset.replay_end_date}.`} <span className="ml-2 text-stone-500">Data: {dataset.provider ? `${dataset.provider} · ` : ""}{dataset.source_timeframe || timeframe}{String(dataset.aggregation||"").includes("aligned_from_1m") ? ` → ${timeframe}` : ""}{dataset.effective_session==="24h" ? " · 24h market" : ""}.</span>

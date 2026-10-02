@@ -29,3 +29,11 @@ test('compact cells retain all metrics without trade or configuration payloads',
  assert.equal(researchCount({payload:{research_count:25}}),25);assert.equal(researchCount({payload:{research_children:[{},{}]}}),2);
  assert(activeStatus('preparing shared data'));assert(!activeStatus('failed'));
 });
+
+test('old server 404 uses the full research endpoint; real failures stay visible',async()=>{
+ const {fetchResearchUpdate}=await import('../src/features/strategy-lab/statusPolling.js');let full=0;
+ const api={researchExperimentStatus:async()=>{throw Object.assign(Error('missing'),{status:404});},strategyLabExperiment:async()=>{full++;return {runs:[{id:1}]};}};
+ assert.deepEqual(await fetchResearchUpdate(api,'g'),{detail:{runs:[{id:1}]}});assert.equal(full,1);
+ api.researchExperimentStatus=async()=>({status:'running'});assert.deepEqual(await fetchResearchUpdate(api,'g'),{status:{status:'running'}});assert.equal(full,1);
+ api.researchExperimentStatus=async()=>{throw Object.assign(Error('unavailable'),{status:503});};await assert.rejects(()=>fetchResearchUpdate(api,'g'),/unavailable/);assert.equal(full,1);
+});

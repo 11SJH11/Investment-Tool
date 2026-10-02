@@ -14,7 +14,7 @@ async function request(path, options = {}) {
     if (typeof detail === "string") message = detail;
     else if (Array.isArray(detail)) message = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
     else if (detail && typeof detail === "object") message = detail.message || JSON.stringify(detail);
-    throw new Error(message);
+    throw Object.assign(new Error(message),{status:response.status});
   }
   return body;
 }
