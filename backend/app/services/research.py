@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.core.safe_errors import safe_failure
 
 from app.services.fundamentals import FundamentalsService
 from app.services.screener import ScreenerService
@@ -61,7 +62,7 @@ class ResearchService:
             except Exception as exc:
                 # Research should still show chart/price for ETFs, unusual SEC
                 # filers, or temporary SEC failures.
-                fundamental_error = str(exc)
+                fundamental_error = safe_failure(exc,default='provider')[1]
                 metrics = self.screener_repository.get_metrics(ticker)
 
         if refresh or metrics is None or metrics.get("price") is None:

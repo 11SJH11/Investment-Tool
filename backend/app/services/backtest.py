@@ -1,5 +1,6 @@
 from __future__ import annotations
 from app.performance import timed, profiled, measure
+from app.core.safe_errors import ProviderUnavailableError, MissingHistoryParameterError
 
 
 from contextlib import nullcontext
@@ -75,7 +76,7 @@ class BacktestService:
         progress = progress or (lambda *args: None)
         progress('preparing data', None, None)
         if self.market_data is None:
-            raise RuntimeError("No market data provider is configured")
+            raise ProviderUnavailableError("No market data provider is configured")
         strategy_key = str(payload.get("strategy_key") or "").strip()
         if not strategy_key:
             raise ValueError("strategy_key is required")
@@ -328,7 +329,7 @@ class BacktestService:
     ) -> dict:
         """Load a multi-session historical replay dataset with a strict reveal boundary."""
         if self.market_data is None:
-            raise RuntimeError("No market data provider is configured")
+            raise ProviderUnavailableError("No market data provider is configured")
         symbol = str(symbol or "").strip().upper()
         if not symbol:
             raise ValueError("symbol is required")
@@ -379,7 +380,7 @@ class BacktestService:
                 before_days = min(900, max(before_days + 1, before_days * 2))
 
         if frame is None or frame.empty:
-            raise ValueError("No historical bars were returned for this replay")
+            raise MissingHistoryParameterError("No historical bars were returned for this replay")
         import pandas as pd
         working = frame.copy().sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
         timestamps = pd.to_datetime(working["timestamp"], utc=True)
@@ -392,7 +393,7 @@ class BacktestService:
             # start, while preserving the originally requested date in metadata.
             candidates = working.index[timestamps >= pd.Timestamp(reveal_at)].tolist()
             if not candidates:
-                raise ValueError("No session bars exist on or after the selected replay date in the loaded range")
+                raise MissingHistoryParameterError("No session bars exist on or after the selected replay date in the loaded range")
             first_available_idx = candidates[0]
             effective_reveal_at = timestamps.iloc[first_available_idx].to_pydatetime()
             replay_date = local_dates.iloc[first_available_idx]
@@ -484,7 +485,7 @@ class BacktestService:
         after_bars: int = 20,
     ) -> dict:
         if self.market_data is None:
-            raise RuntimeError("No market data provider is configured")
+            raise ProviderUnavailableError("No market data provider is configured")
         if timeframe not in SUPPORTED_TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe '{timeframe}'")
         if session not in {"regular", "extended", "24h"}:

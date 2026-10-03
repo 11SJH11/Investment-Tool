@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
+from app.api.safe_errors import safe_http_error
 from app.services.container import AppServices
 
 router = APIRouter(prefix="/strategy-lab", tags=["strategy-lab"])
@@ -266,11 +267,11 @@ def replay_bars(
             start_time=start_time, context_bars=context_bars, context_days=context_days, frontier=frontier,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Replay data fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/replay/indicator")
@@ -299,11 +300,11 @@ def replay_indicator(
             start_time=start_time, context_bars=context_bars, context_days=context_days, key=key, params=params, frontier=frontier,
         )
     except (ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Replay indicator failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/audit-bars")
@@ -325,11 +326,11 @@ def audit_bars(
             entry=entry, exit=exit, before_bars=before_bars, after_bars=after_bars,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Trade audit fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.post("/backtest")
@@ -337,11 +338,11 @@ def run_backtest(payload: BacktestRequest, services: AppServices = Depends(get_s
     try:
         return services.backtest.run(payload.model_dump())
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503, default="strategy_execution") from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Backtest failed: {exc}") from exc
+        raise safe_http_error(exc, 502, default="strategy_execution") from None
 
 
 @router.get('/experiments/{experiment_group}/status')

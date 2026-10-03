@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.core.safe_errors import ProviderUnavailableError
 
 from dataclasses import dataclass
 
@@ -215,10 +216,10 @@ def build_services(settings: Settings) -> AppServices:
         provider = market_providers.get(spec.provider_key)
         if provider is None:
             if spec.provider_key == "oanda":
-                raise RuntimeError("OANDA market data is not configured; set OANDA_ACCESS_TOKEN in backend/.env")
+                raise ProviderUnavailableError("OANDA market data is not configured; set OANDA_ACCESS_TOKEN in backend/.env")
             if spec.provider_key == "massive":
-                raise RuntimeError("Massive Futures is not configured; set MASSIVE_API_KEY in backend/.env")
-            raise RuntimeError("Alpaca market data is not configured; set ALPACA_API_KEY and ALPACA_API_SECRET in backend/.env")
+                raise ProviderUnavailableError("Massive Futures is not configured; set MASSIVE_API_KEY in backend/.env")
+            raise ProviderUnavailableError("Alpaca market data is not configured; set ALPACA_API_KEY and ALPACA_API_SECRET in backend/.env")
         return provider
 
     default_market_provider = alpaca_provider or oanda_provider or massive_provider

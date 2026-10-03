@@ -9,7 +9,7 @@ function fixtures(){
  window.fetch=async(url,options={})=>{
   const u=new URL(String(url),location.href),p=u.pathname;window.requests.push(p);let body={};
   if(p.endsWith('/replay/bars')){
-   if(window.failReplay)return new Response(JSON.stringify({detail:'Fixture history unavailable'}),{status:503});
+   if(window.failReplay){const limited=window.failReplay==='rate';return new Response(JSON.stringify({detail:{category:limited?'rate_limited':'missing_history',message:limited?'Provider rate limited (HTTP 429). Retry no earlier than 2026-10-04T12:00:00+00:00.':'No usable history or dated contracts were returned for this range. Check symbol, dates and provider coverage.',retry_at:limited?'2026-10-04T12:00:00+00:00':null}}),{status:limited?429:503});}
    const frontier=u.searchParams.get('frontier');const count=frontier?all.findIndex(b=>b.timestamp===frontier)+1:2;
    body={timeline:all.map(b=>b.timestamp),bars:all.slice(0,count),source_bars:all.slice(0,count),initial_visible_count:2,visible_count:count,frontier:all[count-1].timestamp,replay_end_date:'2026-09-01',instrument:{asset_type:'stock'},provider:'fixture'};
   }else if(p.endsWith('/strategies'))body={strategies:[]};
@@ -55,10 +55,12 @@ await nav('Backtest');await guard();await click('Save checkpoint and leave');awa
 assert((await evaluate(`JSON.parse(localStorage.getItem('ledger.replay.checkpoint'))`)).closedTrade);
 await nav('Replay');await evaluate(`window.failReplay=true`);await click('Resume saved replay');await waitFor(`document.body.innerText.includes('Could not resume checkpoint')`);
 assert(!(await evaluate(`document.body.innerText.includes('Checkpoint resumed.')`)));
+assert(await evaluate(`document.body.innerText.includes('No usable history or dated contracts')`));
 await evaluate(`window.failReplay=false`);await click('Resume saved replay');await waitFor(`document.body.innerText.includes('Save closed trade to Journal')`);
 await click('Next bar');await nav('Backtest');await guard();
 for(const width of [1024,1440,1920]){await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});assert(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`));}
 const saved=await evaluate(`localStorage.getItem('ledger.replay.checkpoint')`);
 await click('Leave / discard');await waitFor(`!document.querySelector('.replay-toolbar')&&!document.querySelector('dialog')`);
 assert.equal(await evaluate(`localStorage.getItem('ledger.replay.checkpoint')`),saved);
+await nav('Replay');await evaluate(`window.failReplay='rate'`);await click('Resume saved replay');await waitFor(`document.body.innerText.includes('Retry no earlier than 2026-10-04T12:00:00+00:00')`);
 assert.equal(errors.length,0,errors.join('\n'));console.log('PASS Replay pending/active/closed trade checkpoints, Stay, quota failure, save/leave/resume, failed resume, discard, 1024/1440/1920 and runtime checks');close();

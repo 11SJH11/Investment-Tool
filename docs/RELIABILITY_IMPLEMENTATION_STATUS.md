@@ -19,7 +19,7 @@
 | 5 | Global simulation budget and 5x5 parity benchmark | Complete: 647 backend / 80 frontend; build/browser and exact benchmark parity pass |
 | 6 | Compact research polling | Complete: 649 backend / 84 frontend; build and browser pass |
 | 7 | Replay leave/checkpoint guard | Complete: 649 backend / 88 frontend; build and browser pass |
-| 8 | Safe actionable error categories | In progress: queue/worker/warming classification implemented; synchronous API review next |
+| 8 | Safe actionable error categories | Complete: 737 backend / 88 frontend; build and browser pass |
 | 9–10 | Protected scope and final acceptance | Pending final verification |
 | 11 | Documentation/test classification and cleanup | Pending |
 | 12 | TradeLocker read-only import | Pending official API review |
@@ -348,3 +348,47 @@ JS chunk warnings only. Isolated artifacts: `stage8a-final` outside the reposito
 Remaining Stage 8: sanitise synchronous Charts/Replay/backtest API failures and
 verify the resulting response contracts. Do not interpret Stage 8A as application-
 wide secret-sanitisation coverage or as a completed Stage 8.
+
+## Stage 8B - synchronous data/research API errors
+
+Charts (including batched indicators), raw market bars, Replay bars/indicators,
+Trade Audit and direct backtests now return structured safe details with category,
+message and optional UTC retry time. HTTP 429 also carries a numeric Retry-After
+header. Existing non-rate-limit HTTP status codes remain unchanged, and the
+frontend already supports detail.message. The queue's legacy error-string contract
+and saved result schemas remain unchanged.
+
+Missing provider configuration and Replay history use typed exceptions preserving
+existing ValueError/RuntimeError contracts. Cache corruption is classified as
+storage. Research profile partial-success responses no longer embed raw SEC
+exceptions. Unexpected batched-indicator failures preserve bars and report a safe
+per-indicator error rather than escaping as an unhandled exception.
+
+Coverage: 64 parameterised API cases exercise eight entry points against auth,
+permissions, rate-limit, missing provider/history, corrupt cache, invalid params
+and unknown execution failures. Two additional tests cover partial Research and
+indicator failures. No test uses live credentials or providers. Final verification: **737 backend passed** (92.35s; 88 new tests since Stage 7),
+**88 frontend passed**, production build passed (124 modules), and source diff
+whitespace checks passed. Existing Starlette/large-chunk warnings only. Final
+isolated artifacts: `C:/Users/jamie/Project/stage8-final`.
+
+Focused API/classifier/Replay/Research checks: **102 passed**, followed by **66 API
+tests passed** after adding the final indicator case. Isolated browser checks
+passed structured missing-history/rate-limit messages and the existing Replay
+checkpoint/leave flows at 1024/1440/1920, without overflow/runtime errors. The
+browser-tested frontend is byte-identical to the final build. No live providers,
+credentials, databases or running Ledger processes were accessed/restarted.
+
+Stage 8 is complete for this scope. Changes take effect at the next normal backend
+restart after active research finishes. Stages 9-18 remain pending; no later stage
+was started. User strategy edits and existing generated-file changes remain
+outside these commits.
+
+Boundaries: this is the requested research/data error handling, not a claim that
+all application endpoints or third-party logs have undergone a security audit.
+Internal queue/workspace validation messages and broker-specific handling retain
+their existing contracts. Unknown exceptions remain unclassified rather than
+being guessed from arbitrary exception text. A provider's HTTP 403 identifies
+access denial, not proof of which subscription entitlement is missing. Existing
+valid empty market sessions remain valid; this change does not invent missing
+bars or redefine successful empty responses. No live Massive acceptance was run.

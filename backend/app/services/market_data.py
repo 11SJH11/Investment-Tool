@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.core.safe_errors import ProviderUnavailableError
 from app.performance import timed, profiled, measure
 
 
@@ -47,7 +48,7 @@ class MarketDataService:
         if self.provider_resolver is not None:
             return self.provider_resolver(symbol, spec)
         if self.provider is None:
-            raise RuntimeError(f"No market-data provider configured for {symbol}")
+            raise ProviderUnavailableError(f"No market-data provider configured for {symbol}")
         return self.provider
 
     def historical_delay_minutes(self, ticker: str) -> int:

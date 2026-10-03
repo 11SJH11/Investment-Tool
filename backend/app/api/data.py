@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
+from app.api.safe_errors import safe_http_error
 from app.data.providers.base import Timeframe
 from app.data.instruments import normalize_symbol, virtual_symbol, virtual_symbols
 from app.services.container import AppServices
@@ -39,7 +40,7 @@ def refresh_symbols(services: AppServices = Depends(get_services)):
     try:
         return services.symbol_universe.refresh()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Symbol refresh failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/symbols")
@@ -91,9 +92,9 @@ def market_bars(
     try:
         frame = services.market_data.get_bars(ticker, timeframe, start, end, force_refresh=refresh)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Market data fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
     records = frame.copy()
     if "timestamp" in records.columns:
@@ -113,9 +114,9 @@ def fundamentals(ticker: str, refresh: bool = False, services: AppServices = Dep
     try:
         return services.fundamentals.get(ticker, refresh=refresh)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise safe_http_error(exc, 404) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"SEC fundamentals fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/macro/snapshot")
@@ -125,7 +126,7 @@ def macro_snapshot(refresh: bool = False, services: AppServices = Depends(get_se
     try:
         return services.macro.get_snapshot(refresh=refresh)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"FRED fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/data/cache")

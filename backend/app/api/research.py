@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
+from app.api.safe_errors import safe_http_error
+from app.core.safe_errors import safe_failure
 from app.data.providers.base import Timeframe
 from app.services.chart_data import prepare_chart_bars
 from app.services.container import AppServices
@@ -70,9 +72,9 @@ def research_profile(ticker: str, refresh: bool = False, services: AppServices =
     try:
         return services.research.profile(ticker, refresh=refresh)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise safe_http_error(exc, 404) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Research fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
 
 @router.get("/research/{ticker}/bars")
@@ -101,11 +103,11 @@ def research_bars(
         frame = services.market_data.get_bars(ticker, source_timeframe, start, end, force_refresh=refresh)
         records, aggregation = prepare_chart_bars(frame, timeframe, session, session_profile=spec.session_profile)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Chart data fetch failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
     if "timestamp" in records.columns:
         records = records.copy()
@@ -165,13 +167,13 @@ def research_indicator(
             params["length"] = length
         values = indicator.calculate(records, **params)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise safe_http_error(exc, 404) from None
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise safe_http_error(exc, 400) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise safe_http_error(exc, 503) from None
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Indicator calculation failed: {exc}") from exc
+        raise safe_http_error(exc, 502) from None
 
     if not hasattr(values, "index"):
         raise HTTPException(status_code=500, detail="Indicator returned an unsupported value")
@@ -211,6 +213,8 @@ def chart_batch(ticker: str, req: ChartBatchRequest, services: AppServices = Dep
         indicators = [(item, indicator_registry.create(item.key)) for item in req.indicators]
     except KeyError:
         raise HTTPException(status_code=400, detail='Unknown chart indicator') from None
+    except Exception as exc:
+        raise safe_http_error(exc,502,default='indicator_execution') from None
     result = research_bars(ticker, req.timeframe, req.lookback_days, req.refresh, req.session, services, req.end_at)
     frame = pd.DataFrame(result['bars'], columns=list(result['bars'][0]) if result['bars'] else ['timestamp','open','high','low','close','volume'])
     frame['timestamp'] = pd.to_datetime(frame['timestamp'], utc=True)
@@ -224,4 +228,7 @@ def chart_batch(ticker: str, req: ChartBatchRequest, services: AppServices = Dep
             output.append({'key':item.key,'params':item.params,'values':points})
         except (ValueError,TypeError,KeyError,ZeroDivisionError,IndexError):
             output.append({'key':item.key,'params':item.params,'values':[], 'error':'Indicator unavailable. Check parameters and available history.'})
+        except Exception as exc:
+            category,message,retry_at=safe_failure(exc,default='indicator_execution')
+            output.append({'key':item.key,'params':item.params,'values':[], 'error':message,'error_category':category,'retry_at':retry_at})
     return {**result,'indicators':output}
