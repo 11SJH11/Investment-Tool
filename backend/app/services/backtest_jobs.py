@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
 import json
 import uuid
+from app.core.safe_errors import safe_failure
 
 
 class JobCancelled(Exception):
@@ -248,16 +249,19 @@ class BacktestJobs:
                 raise RuntimeError('No immutable result was saved')
         except JobCancelled:
             self._update(job_id, status='cancelled')
-        except Exception:
+        except Exception as exc:
             # Provider exceptions may contain request URLs or credentials.
             # Do not log or persist arbitrary exception text.
-            self._update(job_id, status='failed', error='Backtest failed. Check strategy, dates, provider configuration and data availability, then retry.')
+            phase=self.get(job_id)['status']
+            default='strategy_execution' if phase=='running' else 'unknown'
+            category,message,retry_at=safe_failure(exc,default=default)
+            self._update(job_id, status='failed', error=f'[{category}] {message}')
             payload = self.get(job_id)['payload']
             if payload.get('research_children'):
                 document = self.research.get(payload['experiment_group'])
                 if document:
                     document['status']='failed'
-                    document['error']='Research interrupted or input snapshot changed. Completed cells remain saved; retry only with identical source data.'
+                    document['error']=f'[{category}] {message} Completed cells remain saved; retry only with identical source data.'
                     self.research.save(document)
 
     def close(self):

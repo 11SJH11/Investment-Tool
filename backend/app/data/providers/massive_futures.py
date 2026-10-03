@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlsplit
 
 import pandas as pd
 
+from app.core.safe_errors import MissingHistoryError, MissingHistoryParameterError, ProviderConfigurationError
 from app.data.http import JsonHttpClient
 from app.data.contract_reference_cache import ContractReferenceCache
 from app.data.continuous_schedule import VERSION, choose_roll, adjust_continuous
@@ -53,7 +54,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         roll_policy=VERSION,
     ):
         if not api_key:
-            raise ValueError("Massive API key is required")
+            raise ProviderConfigurationError("Massive API key is required")
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.back_adjust = bool(back_adjust)
@@ -80,7 +81,7 @@ class MassiveFuturesProvider(MarketDataProvider):
         now = datetime.now(timezone.utc)
         frame = self.get_bars(ticker, "1m", now - timedelta(days=5), now)
         if frame.empty:
-            raise RuntimeError(f"No Massive futures bars returned for {ticker}")
+            raise MissingHistoryError(f"No Massive futures bars returned for {ticker}")
         row = frame.iloc[-1]
         ts = pd.Timestamp(row["timestamp"]).to_pydatetime()
         return Quote(ticker=normalize_symbol(ticker), price=float(row["close"]), timestamp=ts)
@@ -201,7 +202,7 @@ class MassiveFuturesProvider(MarketDataProvider):
     def _scheduled_front(self, root, resolution, start, end):
         contracts = self._range_contracts(root, start, end)
         if not contracts:
-            raise ValueError(f'No dated contracts available for {root}')
+            raise MissingHistoryParameterError(f'No dated contracts available for {root}')
         now = datetime.now(timezone.utc)
         rolls = []
         boundaries = {}
@@ -273,13 +274,13 @@ class MassiveFuturesProvider(MarketDataProvider):
     def _continuous_front(self, root: str, resolution: str, start: datetime, end: datetime) -> pd.DataFrame:
         contracts = self._range_contracts(root, start, end)
         if not contracts:
-            raise RuntimeError(f"Massive returned no dated contracts for futures product {root}")
+            raise MissingHistoryError(f"Massive returned no dated contracts for futures product {root}")
 
         start_date = start.date()
         end_date = end.date()
         eligible = [c for c in contracts if c.last_trade_date >= start_date and c.first_trade_date <= end_date]
         if not eligible:
-            raise RuntimeError(f"No {root} contract overlaps {start_date} to {end_date}")
+            raise MissingHistoryError(f"No {root} contract overlaps {start_date} to {end_date}")
 
         # Calendar-front v1: the active front contract is the nearest dated
         # contract whose last-trade date has not passed. This is deterministic and

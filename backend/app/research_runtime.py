@@ -76,6 +76,8 @@ def execute_cell(payload, inputs=None, cancel=None):
                     'memory':memory_info(),'pid':os.getpid()}
         except InterruptedError:
             return {'cancelled':True}
-        except Exception:
+        except Exception as exc:
             # Strategy/plugin exceptions can contain arbitrary data. Do not persist them.
-            return {'error':'Cell simulation failed; check the exact configuration and data.'}
+            from app.core.safe_errors import safe_failure
+            category,message,_=safe_failure(exc,default='strategy_execution')
+            return {'error':f'[{category}] {message}'}

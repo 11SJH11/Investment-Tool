@@ -19,7 +19,7 @@
 | 5 | Global simulation budget and 5x5 parity benchmark | Complete: 647 backend / 80 frontend; build/browser and exact benchmark parity pass |
 | 6 | Compact research polling | Complete: 649 backend / 84 frontend; build and browser pass |
 | 7 | Replay leave/checkpoint guard | Complete: 649 backend / 88 frontend; build and browser pass |
-| 8 | Safe actionable error categories | Pending |
+| 8 | Safe actionable error categories | In progress: queue/worker/warming classification implemented; synchronous API review next |
 | 9–10 | Protected scope and final acceptance | Pending final verification |
 | 11 | Documentation/test classification and cleanup | Pending |
 | 12 | TradeLocker read-only import | Pending official API review |
@@ -322,3 +322,29 @@ user strategy edits/generated files remain outside these commits.
 
 Next: Stage 8 safe actionable errors. Stages 8-18 are not complete; TradeLocker,
 MT5, canonical broker imports and repository cleanup remain pending.
+
+## Stage 8A - safe queue, worker and cache-warming errors
+
+Shared allowlisted messages distinguish authentication/configuration, HTTP 403
+permissions/entitlement, rate limiting with a UTC retry time, missing history,
+invalid parameters, strategy execution, storage/cache failure and worker termination.
+Unknown exceptions stay explicitly unclassified; exception text, provider bodies,
+URLs and account/token strings are never copied into these messages.
+
+Queue errors keep their existing string field with a category prefix. Research
+cells and parent failures reuse the classifier. Cache warming retains structured
+category/retry fields and its existing cooldown enforcement. Massive's known
+missing-history/configuration failures use typed exceptions; original ValueError
+versus RuntimeError catch contracts are preserved. No schema or saved-result
+migration, automatic retry, strategy/fill/accounting change or live restart.
+
+New deterministic tests cover all categories, malicious exception text, invalid
+retry delays, exact retry timestamps, strategy ValueError context, and persisted
+queue/compact-list messages. Initial focused suite: 91 passed; final classifier
+suite: 22 passed. Full verification: **671 backend passed** (85.81s), **88 frontend passed**,
+production build and source whitespace checks passed. Existing Starlette and large
+JS chunk warnings only. Isolated artifacts: `stage8a-final` outside the repository.
+
+Remaining Stage 8: sanitise synchronous Charts/Replay/backtest API failures and
+verify the resulting response contracts. Do not interpret Stage 8A as application-
+wide secret-sanitisation coverage or as a completed Stage 8.

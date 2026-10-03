@@ -1,5 +1,6 @@
 """One parent coordinates exact simulations; all persistence stays in the parent."""
 from contextlib import nullcontext
+from app.core.safe_errors import safe_failure
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from hashlib import sha256
 import json
@@ -118,7 +119,9 @@ def run_experiment(service, repository, payload, *, progress, cancelled, commit)
                                 for future in completed:
                                     i=pending.pop(future)
                                     try:outcome=future.result()
-                                    except Exception:outcome={'error':'Research worker failed; this cell can be retried.'}
+                                    except Exception as exc:
+                                        category,message,_=safe_failure(exc,default='worker_termination')
+                                        outcome={'error':f'[{category}] {message}'}
                                     save_cell(i,outcome)
                                 fill()
                         finally:

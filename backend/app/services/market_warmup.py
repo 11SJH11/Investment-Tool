@@ -6,7 +6,7 @@ from threading import RLock
 import uuid
 
 from app.data.instruments import instrument_spec, normalize_symbol
-from app.data.http import ProviderHttpError
+from app.core.safe_errors import safe_failure
 from app.services.market_coordination import background_market_work, WarmupPaused
 from app.storage.market_warmup_repository import MarketWarmupRepository
 
@@ -40,17 +40,6 @@ def union(a, b):
     return min(a[0], b[0]), max(a[1], b[1])
 
 
-def safe_failure(exc):
-    # Never persist exception text, URLs, credentials or provider payloads.
-    code = getattr(exc, 'status_code', None)
-    if code == 429:
-        delay = max(1., float(getattr(exc, 'retry_after', None) or 60))
-        return 'rate_limited', 'Provider rate limited; resume after the cooldown.', (datetime.now(timezone.utc)+timedelta(seconds=delay)).isoformat()
-    if code in (401, 403): return 'authentication_or_entitlement', 'Check provider credentials and history entitlement.', None
-    if isinstance(exc, OSError): return 'storage', 'Cache storage failed; check available disk space and access.', None
-    if isinstance(exc, ProviderHttpError): return 'provider', 'Provider request failed; cached history is retained.', None
-    if isinstance(exc, RuntimeError): return 'configuration_or_provider', 'Check provider configuration and history availability.', None
-    return 'data_or_storage', 'Data update failed; cached history is retained. Check provider and cache status.', None
 
 
 class MarketWarmupManager:
