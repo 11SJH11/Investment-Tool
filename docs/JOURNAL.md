@@ -49,3 +49,13 @@ trade, review broker facts, edit a Playbook answer and date/account Daily Review
 Repeat read-only sync and verify preserved reviews and no duplicates. Test a trade
 near midnight across Trades/Calendar/Analysis. Replay a close and repeat its save.
 Open Chart at trade or Replay this period from either trades view.
+
+
+## Review and descriptive analysis
+
+Manual entry continues into review. Custom reusable setups, conditions, emotions,
+mistakes and confluences become later suggestions; narrative fields stay freeform.
+Analysis combines up to four descriptive dimensions, with sample-size/expectancy/
+win-rate/total-R ordering. Time series retain chronological order and dense series
+omit per-trade markers. Calendar reuses the loaded Journal report. These displays
+are descriptive; small samples are not evidence of a causal edge.

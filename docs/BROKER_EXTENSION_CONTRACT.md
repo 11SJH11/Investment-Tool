@@ -1,4 +1,4 @@
-# Checkpoint 8C: Journal broker extension audit
+# Broker import extension contract
 
 2026-09-18. No new broker networking or execution methods were added.
 
@@ -80,3 +80,43 @@ investment history are not evidence of closed trading positions. Tradovate's
 existing scaffold remains unsupported. A future CSV adapter could normalize
 verified rows into HistoryBatch with explicit file/row identities and currencies;
 no CSV import feature is implemented in this checkpoint.
+
+## Stage 12 official TradeLocker review (3 October 2026)
+
+Implementation remains pending. These findings constrain the next stage; no
+connection, authentication or history request has been made to a live account.
+
+The public API separates demo/live hosts, uses JWT authentication and requires
+`accNum` on trade routes. Account ID and accNum are different concepts. Runtime
+configuration supplies column definitions and provider limits; do not freeze array
+column offsets or invent a history row cap. See [Getting started](https://public-api.tradelocker.com/docs/getting-started)
+and [configuration](https://public-api.tradelocker.com/reference/getconfigusingget).
+
+Documented history is `GET /trade/accounts/{accountId}/ordersHistory` with UTC
+millisecond `from`/`to` bounds; it includes final statuses other than filled.
+Account discovery uses `GET /auth/jwt/all-accounts`. See [history contract](https://public-api.tradelocker.com/reference/getordershistory)
+and [account discovery](https://public-api.tradelocker.com/reference/getallaccounts).
+
+The [official Python client](https://github.com/TradeLocker/tradelocker-python/blob/main/src/tradelocker/tradelocker_api.py)
+describes executions as current-session data and decodes them using filledOrdersConfig.
+That is insufficient evidence to treat executions as a complete historical ledger.
+Its [types](https://github.com/TradeLocker/tradelocker-python/blob/main/src/tradelocker/types.py)
+separate order ID, position ID and execution ID; the execution columns shown there
+do not establish complete historical fee/realised-P&L attribution.
+
+Implementation decisions still required before enabling import:
+
+- Preserve environment/account identity, distinguish orders from actual executions,
+  and normalize through the shared execution boundary required by Stage 14.
+- Decode config-labelled rows; traverse bounded time windows and detect saturation.
+  If a minimum window cannot be proven complete, fail without advancing the cursor.
+- Reconstruct positions only from supported opening/closing facts. Preserve partial
+  order/position IDs; missing costs/P&L remain unavailable, not zero or guessed.
+- Expose authentication POST only for token acquisition/refresh; broker-data access
+  is GET-only. No order mutation methods. Keep tokens/passwords memory-only.
+- Preserve existing OANDA identities and Portfolio behaviour. The present dispatcher
+  is OANDA-specific for Journal, so factory registration alone is not sufficient.
+
+The public documentation and official client are the sources, not third-party
+copy-trading wrappers. Broker/account-dependent config and historical availability
+still need fixture contracts and optional live acceptance before claiming support.

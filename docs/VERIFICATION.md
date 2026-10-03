@@ -26,3 +26,31 @@ refresh can legitimately require provider validation.
 
 Tests cover cold/warm equality, provider-call counts, a memory hit, cleared-memory
 new-service reconstruction and isolation from caller mutation.
+
+
+## Manual regression checklist
+
+Use isolated fixture storage and browser profiles; never replace the user database.
+
+1. Draw/drag rectangle, trend and fib anchors on 1m; switch 5m/15m/1h/back and
+   confirm market anchors persist, including off-grid and cross-session points.
+2. Replay each timeframe: Next/Previous/+5, fill a market order, close next-open,
+   verify Journal idempotency, then Stay/save/leave/resume. Simulate unavailable
+   storage/history and confirm no false checkpoint-success message.
+3. Journal: create/review a manual trade, save a reusable custom option, combine
+   two to four Analysis dimensions, verify N and separate currency totals.
+4. Calendar: change months and open a busy date; inspect its Daily Review.
+5. Backtest: queue multiple symbols, inspect default Run N, configure another
+   while running, open Summary/Trades/Analysis, cancel and clear finished jobs;
+   immutable saved Runs must remain intact. Test concurrent research CPU limits.
+6. Screener: cached results remain visible while refresh completes. Portfolio
+   updates its local snapshot after backend broker sync; connection setup stays
+   in Settings. Strategies can navigate to Indicators and back.
+7. Check 1024/1440/1920 widths for internal table scroll, no page overflow or
+   runtime errors. Review provider-path NQ separately when entitlement permits;
+   mocked tests do not establish live data availability or TradingView parity.
+
+Current automated results and the exact measured 5x5 parity comparison are in
+[Reliability acceptance](RELIABILITY_ACCEPTANCE.md). Historical Linux/native-binding
+failures in removed RC notes are superseded by verified Windows production builds;
+reinstalling working dependencies is not a verification step.

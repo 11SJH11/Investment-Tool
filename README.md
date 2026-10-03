@@ -1,7 +1,8 @@
 # Ledger
 
 Local trading research, charting, causal Replay, backtesting, Journal and investment
-Portfolio. Checkpoint 12 is the release-candidate workflow foundation.
+Portfolio. Current reliability work and provider limitations are recorded in the
+[documentation index](docs/README.md).
 
 ## Run locally
 
@@ -12,8 +13,9 @@ After the one-time setup below, run `Start-Ledger.bat` (double-click is fine) or
 ### First-time/manual setup
 
 Use Python 3.11+ and Node compatible with the installed Vite version. From `backend`,
-create `.venv`, install `requirements.txt` (plus `pytest` for tests), copy `.env.example`
-to `.env` and configure only the providers you use. Run:
+create `.venv`, install `requirements.txt` (and `requirements-dev.txt` for tests),
+and configure only the providers you use in `backend/.env`. See
+[data sources](docs/DATA_SOURCES.md) for provider configuration. Run:
 
 ```powershell
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -53,7 +55,7 @@ and opt-in browser checks. Never run fixture scripts against the live database.
 - [Futures economics](docs/FUTURES_FOUNDATION.md), [continuous methodology and real NQ evidence](docs/CONTINUOUS_FUTURES_RESEARCH.md)
 - [Momentum/VCP](docs/MOMENTUM_VCP_BASELINE_V1.md), [ORB/VWAP](docs/ORB_VWAP_BASELINES.md), [Gold variants](docs/GOLD_EXPERIMENTS.md)
 - [Release history](docs/RELEASE_CHECKPOINTS.md), [third-party notices](docs/THIRD_PARTY.md)
-- [Engineering rules](AGENTS.md), [task workflow](CODEX_WORKFLOW.md)
+- [Documentation index](docs/README.md), [verification](docs/VERIFICATION.md)
 
 NQ source/roll provenance is explicit; TradingView parity is unverified. Stock
 universes are current-only and historical analysis may contain survivorship bias.

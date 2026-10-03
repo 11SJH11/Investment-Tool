@@ -164,8 +164,7 @@ foundation, not a full app redesign or a change to the chart library.
 - `DataTable`, `tableModel` and `useTableView` supply compact/comfortable density,
   sticky headers/key column, column visibility/order, categorical search and OR
   selection, numeric strict greater/less and inclusive ranges, date ranges,
-  text search, sorting, row selection, primary action plus secondary menu, 50-row
-  pagination, removable chips and Reset view. Runs and Portfolio filter locally;
+  text search, sorting, row selection, primary action plus secondary menu, 20-row pagination (expandable to 100), removable chips and Reset view. Runs and Portfolio filter locally;
   Journal submits the same standard rules to its authoritative backend report.
   The old Runs helper remains for compatibility tests, but no old Runs filter UI
   or separate feature-specific table filter implementation is mounted.
@@ -222,3 +221,9 @@ Screener background refresh reads only local daily Parquet caches, stores additi
 universe discovery service, not a point-in-time historical universe.
 Replay playback and ticket presentation are separate modules. Canonical reveal,
 fill, roll and Journal identity behavior remain in the existing Replay path.
+
+
+Screener serves its persisted snapshot while maintenance refreshes stale technicals
+from cached daily bars and, when configured, batches Alpaca price snapshots. SEC
+bulk refresh remains manual. Maintenance is throttled across restarts and disabled
+for the synthetic demo database; current-universe survivorship limits still apply.

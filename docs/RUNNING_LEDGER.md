@@ -34,3 +34,12 @@ For a more permanent private deployment:
 6. Back up `backend/data` and `.env` separately.
 
 Public hosting should wait until authentication, authorization, CSRF/origin policy, secrets management, upload hardening, per-user data isolation and production observability have been designed and tested.
+
+
+## Synthetic demonstrations
+
+`backend/tools/generate_demo_data.py` creates deterministic synthetic UI-load data.
+Use a dedicated temporary data directory only; never aim it at your real database.
+Demo records are not strategy-performance or investment evidence, and are not
+selected automatically. Historical RC fixture counts are not production data
+requirements. Background Screener maintenance is disabled for the demo database.

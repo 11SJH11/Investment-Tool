@@ -82,3 +82,20 @@ setData for initial load, corrected history, prepend, rewind or lattice replacem
 Replay increments candles only from already-revealed responses. Indicators still
 rebuild their chart series; there is no new lower-pane framework or live tick feed.
 Historical workflow handoffs request a bounded period around the trade timestamp.
+
+
+## Drawing and Replay acceptance contracts
+
+Off-grid anchors project through surrounding integer chart bars and interpolate
+in pixel space. Whole-object drags use logical bars so weekends/session gaps do
+not produce wall-clock jumps. Switching timeframe never rewrites saved anchors.
+Replay Next/Previous/+5 are relative to the chosen timeframe; intervening canonical
+1m bars still determine fills/stops/targets. Timeframe controls appear normally
+and in full screen; the obsolete Current button is not part of the workflow.
+
+Leaving an active/unsaved Replay offers Stay, Save checkpoint and leave, or Discard.
+Checkpoint save verifies browser storage before leaving; failures keep Replay open.
+Resume preserves canonical frontier, positions/orders and the last closed trade.
+This is one browser-local checkpoint, not server durability or a Journal save.
+Reload/close uses the browser's native unsaved-state warning. Historical bars must
+remain available to resume; see [verification](VERIFICATION.md).

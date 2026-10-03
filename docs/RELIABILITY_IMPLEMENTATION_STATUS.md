@@ -21,8 +21,8 @@
 | 7 | Replay leave/checkpoint guard | Complete: 649 backend / 88 frontend; build and browser pass |
 | 8 | Safe actionable error categories | Complete: 737 backend / 88 frontend; build and browser pass |
 | 9–10 | Protected scope and final acceptance | Pending final verification |
-| 11 | Documentation/test classification and cleanup | Pending |
-| 12 | TradeLocker read-only import | Pending official API review |
+| 11 | Documentation/test classification and cleanup | Complete: 737 backend / 88 frontend; build and 117 local links pass |
+| 12 | TradeLocker read-only import | Official contract review started; implementation pending |
 | 13 | MetaTrader 5 read-only import | Pending official integration review |
 | 14 | Canonical broker execution model | Pending |
 | 15 | Broker frontend | Pending |
@@ -392,3 +392,36 @@ being guessed from arbitrary exception text. A provider's HTTP 403 identifies
 access denial, not proof of which subscription entitlement is missing. Existing
 valid empty market sessions remain valid; this change does not invent missing
 bars or redefine successful empty responses. No live Massive acceptance was run.
+
+## Stages 9-11 - completed 3 October 2026
+
+Stages 9-10 close the protected-scope and reliability acceptance gates; see
+[acceptance report](RELIABILITY_ACCEPTANCE.md) for root causes, exact committed files,
+original/final counts, benchmark, NQ recovery and CPU-budget evidence. The committed
+engine/strategy/indicator/chart-drawing diff from 4dc3da4 through 1a09820 is empty.
+User strategy drafts and modifications remain outside this work. The seven focused
+acceptance suites passed **99 tests** on the current tree.
+
+Stage 11 deleted exactly **two** superseded documents: RC_FINAL_PASS.md and
+FINAL_RC_VERIFICATION.md. Their current workflow/safety/manual-check guidance was
+merged into authoritative feature and verification docs before deletion. Full
+reasons and reference evidence are in [cleanup audit](CLEANUP_AUDIT.md). Fixed
+missing links and obsolete worker/navigation/pagination/drawing claims; added the
+[documentation index](README.md). No test or fixture was deleted; 99 test source
+files had no byte-identical nonempty duplicates. Old phase names alone are not a
+reason to remove causality, accounting or migration regressions.
+
+Post-cleanup verification: **737 backend passed** (75.91s), **88 frontend passed**,
+production build passed (124 modules; existing large-chunk warning), source
+whitespace checks passed, **121 local Markdown file links resolve**. No application,
+test, route, discovery or build/config reference to the deleted documents remains;
+audit references are intentional deletion evidence. Artifacts: `stage11-final`
+outside the repository. No dependency reinstall or live process/data access.
+
+Stage 12 official API research has started; no TradeLocker connector is enabled or
+claimed complete. Stages 12-18 remain pending implementation.
+
+Official TradeLocker findings and the existing dispatcher/canonical-model boundaries
+are recorded in [broker extension contract](BROKER_EXTENSION_CONTRACT.md). This is
+research only; no adapter, secret fields, API integration or automatic sync was
+partially enabled. Resume with Stage 12 implementation and its fixture tests.

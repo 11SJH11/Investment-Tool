@@ -165,7 +165,8 @@ protections; no cross-contract position transfer is added.
 
 Real provider latency, entitlements, throttling and exchange/reference data quality
 remain external constraints. Fixture benchmarks do not establish live Massive
-performance or TradingView parity. See RESEARCH_BENCHMARKS.md for measured results.
+performance or TradingView parity. See [recorded global-budget benchmark](GLOBAL_BUDGET_BENCHMARK.json)
+and the measurement caveats below.
 
 ## Verification / operations
 

@@ -1,4 +1,4 @@
-# Backtest workflow — Checkpoint 9
+# Backtest workflow
 
 ## Configure a backtest
 
@@ -9,7 +9,8 @@ The primary tabs are **Backtest, Runs, Strategies, Workspace**. Indicators remai
 available from Strategies. The standalone Replay workspace is unchanged.
 
 Select a strategy, symbols, requested dates, primary timeframe, balance, sizing,
-name and research role. Review **Ready to run** before submitting. Auto session
+name and optional tags. Ordinary runs use the internal development role; validation
+assigns explicit roles. Review **Ready to run** before submitting. Auto session
 resolves separately for each instrument in an independent batch. The requested
 end date is still capped by the existing historical-delay/provider-availability
 rules; the saved result records the actual end. Invalid zero/negative account
@@ -40,21 +41,21 @@ Opening a saved experiment reads immutable snapshots, without rerunning it.
 
 ### Sensitivity analysis (expandable)
 
-Choose one numeric parameter and up to nine values, using the displayed base
-configuration and requested period. The role is development. Values outside the
-declared parameter range are excluded. Existing research-only parameters remain
-available; a frozen strategy may reject an unsupported override. The whole sweep
-is saved; no winning parameter is selected automatically and no source defaults
-are changed. Results and the descriptive sensitivity summary update as jobs finish.
+Spectrum and interaction research define exact numeric values or bands and run
+independent simulations from the selected configuration. No winner is selected
+and source defaults are never tuned automatically. See [Research experiments](RESEARCH_EXPERIMENTS.md)
+for the authoritative execution, grid, limits, fingerprint and resume contracts.
 
 ## Queue and concurrency
 
 - States: queued → preparing data → running → completed; failure/cancellation are
   terminal alternatives. Completed jobs link to immutable BacktestRunRepository runs.
-- `MAX_CONCURRENT_BACKTESTS=2` by default; configuration accepts 1–8 workers.
-  Configure another run while earlier jobs execute. Workers are in-process threads,
-  not separate services; Python CPU throughput is subject to the GIL.
-- Data preparation occupies a worker. Preparation has no invented percentage.
+- The persisted compute setting selects an application-wide CPU reservation budget.
+  Ordinary simulations and research process pools share it; parent jobs cannot
+  multiply it. Preparation/coordinator threads are separate from reserved CPU slots.
+  The queue shows configured budget, reserved workers and waiting simulations.
+  This is one application process, not a distributed limit across servers.
+- Data preparation has no invented percentage.
   Simulation reports actual processed/total primary timestamps every 64 events.
   This is simulation progress, not an estimate of remaining wall time.
 - Cancel queued items individually or together. Running cancellation is cooperative:
@@ -130,9 +131,9 @@ redaction remain unchanged. Local Python is not a secure sandbox.
 
 1. Choose VWAP, AAPL, a period with data, and review sizing/costs. Run it.
 2. While it executes, change the name and queue another; the form stays editable.
-3. Paste AAPL/MSFT/NVDA. Queue three independent runs; at most two jobs prepare/run.
+3. Paste AAPL/MSFT/NVDA. Queue three independent runs; CPU reservations obey the configured budget.
 4. Cancel a queued item, open a completion, and compare completed snapshots.
-5. Switch to Validation and Sensitivity; verify only the relevant experiment controls.
+5. Expand Validation & out-of-sample or Sensitivity analysis within the normal workflow.
 6. Filter Runs by symbol/role, numeric boundaries and dates. Select two to compare.
 7. Reload: run type, advanced sections, table columns/filters/sort and result mode persist.
 8. Check Workspace guidance and Journal cards/table persistence.
@@ -146,3 +147,17 @@ Backtest is the normal workflow. Optional research sections preserve chronologic
 60 / 20 / 20 boundaries, editable periods and descriptive sensitivity. Settings
 defaults apply to new forms; Use settings retains saved configuration. Cross-feature
 actions prepopulate symbol, dates and compatible timeframe without submitting.
+
+
+## Run configuration and viewer
+
+The required name defaults to `Run N` using the highest saved run ID plus one;
+tags and notes are optional. Execution/cost/account/schedule controls live under
+Advanced. Opening a saved run enters the dedicated Summary, Trades and Analysis
+viewer, with Use settings and Back to Runs. Broker connection controls live in
+Settings; Portfolio refreshes local snapshots without polling providers directly.
+
+Queue/compute polling shares one in-flight request and stops when idle. An open
+research viewer polls compact status/cell metrics; full snapshots load when opened.
+Manual refresh/focus finds work submitted by another client. Old running backends
+fall back to full experiment reads until their next normal restart.

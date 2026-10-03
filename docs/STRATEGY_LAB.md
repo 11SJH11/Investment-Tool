@@ -239,7 +239,9 @@ The user enters execution facts/intent (order type, position value, entry trigge
 
 Indicator plugins remain the calculation authority. Replay instances now store independent parameters, visibility, colour and line width. Generic plugin defaults are editable in the UI and sent to the shared backend registry. The UI uses a 12-colour default palette and permits multiple instances of the same indicator.
 
-Dedicated lower panes, persisted chart drawings, draggable order lines, multi-chart layouts and the wider TradingView-style drawing/object-tree layer are intentionally later shared-chart work rather than page-specific hacks.
+Browser-persisted drawings and the shared object panel are now implemented; see
+[Chart workspace](CHART_WORKSPACE.md) for the current contract. Dedicated lower
+panes, draggable order lines and multi-chart layouts remain future work.
 
 
 ## Phase 5.6.1 — canonical intraday Replay data

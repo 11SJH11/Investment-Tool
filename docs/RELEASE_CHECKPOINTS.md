@@ -2,14 +2,15 @@
 
 Current:
 
-- [Checkpoint 12](RELEASE_CHECKPOINT_12.md) ? release candidate workflow foundation.
+- [Reliability implementation](RELIABILITY_IMPLEMENTATION_STATUS.md) and
+  [acceptance evidence](RELIABILITY_ACCEPTANCE.md).
 
 Previous major milestones:
 
-- CP11 ? premium UX foundation (`7283472`).
-- CP10 ? futures, Workspace and broker stabilization (`69278b1`).
-- CP9 ? durable Backtest queue and frontend foundations (`9b08d93`).
+- CP12: release-candidate workflow foundation.
+- CP11: premium UX foundation (`7283472`).
+- CP10: futures, Workspace and broker stabilization (`69278b1`).
+- CP9: durable Backtest queue and frontend foundations (`9b08d93`).
 
-Detailed historical diffs and verification reports remain available in Git history.
-Current contracts live in the architecture, provider and strategy documentation.
-Future development is usage-driven; no further major checkpoint is planned.
+Historical implementation narratives remain in Git history. Current contracts
+and operating instructions are indexed in [Documentation](README.md).

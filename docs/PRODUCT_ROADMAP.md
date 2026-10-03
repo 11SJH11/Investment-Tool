@@ -2,7 +2,9 @@
 
 The application is entering usage-driven development. Fix observed reliability,
 data-integrity and workflow issues before adding breadth. Current functionality and
-verification are in RELEASE_CHECKPOINT_12.md; contracts are in ARCHITECTURE.md.
+verification are indexed in [README](README.md); contracts are in
+[Architecture](ARCHITECTURE.md). Read-only broker expansion is explicitly scoped in
+[implementation status](RELIABILITY_IMPLEMENTATION_STATUS.md), not yet completed.
 
 Priorities from real use may include large-history table virtualization, accessible
 keyboard/screen-reader coverage, indicator panes and authentic broker CSV adapters.
