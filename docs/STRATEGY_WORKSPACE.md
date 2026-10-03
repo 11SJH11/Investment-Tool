@@ -1,3 +1,8 @@
+> Legacy backend reference: Workspace is no longer mounted in normal frontend
+> navigation. Drafts, history and backend APIs remain preserved. Use the
+> [manual strategy refresh workflow](STRATEGY_REFRESH.md) for direct Python files.
+> UI instructions below describe the retained legacy component, not current navigation.
+
 # Strategy Workspace — Checkpoint 4
 
 Open **Backtest → Strategy Workspace**. The local editor supports a new template,

@@ -5,7 +5,7 @@
 For Run Viewer excursion measurements, analysis and CSV/JSON exports, see
 [Research diagnostics and exports](RESEARCH_DIAGNOSTICS.md).
 
-The primary tabs are **Backtest, Runs, Strategies, Workspace**. Indicators remain
+The primary tabs are **Backtest, Runs, Strategies**. Indicators remain
 available from Strategies. The standalone Replay workspace is unchanged.
 
 Select a strategy, symbols, requested dates, primary timeframe, balance, sizing,
@@ -118,14 +118,12 @@ Job execution state stays on the server. Strategy configuration and unsaved code
 are not silently persisted as presentation preferences. Storage failure falls back
 to usable defaults.
 
-## Strategy Workspace
+## Strategy files
 
-Follow the visible nine-step guide: create/copy, write Python, check syntax/save,
-validate interface, add deterministic tests, run tests, configure, backtest, inspect
-saved metrics/Trade Audit. New strategy loads the existing working template; the
-plugin guidance explains StrategySpec, on_bar(ctx), EntrySignal and engine ownership.
-The explicit trusted-code consent, built-in protection, subprocess timeouts and
-redaction remain unchanged. Local Python is not a secure sandbox.
+Add/edit local Python strategies, then use **Strategies > Refresh strategies**.
+See [manual refresh](STRATEGY_REFRESH.md) for validation, active-job safety and
+saved source fingerprints. Workspace is hidden from the normal frontend; backend
+source/history remains intact.
 
 ## Acceptance walkthrough
 
@@ -136,7 +134,7 @@ redaction remain unchanged. Local Python is not a secure sandbox.
 5. Expand Validation & out-of-sample or Sensitivity analysis within the normal workflow.
 6. Filter Runs by symbol/role, numeric boundaries and dates. Select two to compare.
 7. Reload: run type, advanced sections, table columns/filters/sort and result mode persist.
-8. Check Workspace guidance and Journal cards/table persistence.
+8. Check strategy refresh feedback and Journal cards/table persistence.
 9. At approximately 1024px, tables scroll internally without horizontal page overflow.
 
 No live broker order routes, strategy tuning, provider-routing changes or new

@@ -19,7 +19,8 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Backtest workflow](BACKTEST_WORKFLOW.md): configuration, queue and saved runs.
 - [Research experiments](RESEARCH_EXPERIMENTS.md): exact spectra/grids and CPU budget.
 - [Research diagnostics](RESEARCH_DIAGNOSTICS.md): Run Viewer metrics and exports.
-- [Strategy Workspace](STRATEGY_WORKSPACE.md): trusted source, tests and activation.
+- [Strategy refresh](STRATEGY_REFRESH.md): direct Python files, safe registry updates and provenance.
+- [Legacy Workspace backend](STRATEGY_WORKSPACE.md): retained drafts/history and API reference.
 - [Strategy Lab internals](STRATEGY_LAB.md): engine/interface and historical contracts;
   current user navigation lives in Backtest workflow.
 - [Strategy plugin template](STRATEGY_PLUGIN_TEMPLATE.md) and

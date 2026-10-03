@@ -240,6 +240,17 @@ def strategies(services: AppServices = Depends(get_services)):
     return {"strategies": services.backtest.strategies()}
 
 
+@router.post('/strategies/refresh')
+def refresh_strategies(services: AppServices = Depends(get_services)):
+    from app.backtesting.strategies import strategy_registry
+    from app.backtesting.strategies._refresh import RefreshBusy
+    try:
+        result = strategy_registry.refresh()
+    except RefreshBusy as exc:
+        raise HTTPException(409, str(exc)) from None
+    return {**result, 'strategies': services.backtest.strategies()}
+
+
 @router.get("/indicators")
 def indicators(services: AppServices = Depends(get_services)):
     return {"indicators": services.backtest.indicators()}

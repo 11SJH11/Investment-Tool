@@ -6,6 +6,7 @@ from threading import RLock
 import json
 import uuid
 from app.core.safe_errors import safe_failure
+from app.backtesting.strategies._refresh import execution_scope
 
 
 class JobCancelled(Exception):
@@ -185,6 +186,7 @@ class BacktestJobs:
             raise ValueError('Only failed jobs can be retried')
         return self.enqueue([job['payload']], request_key)
 
+    @execution_scope
     def _work(self, job_id):
         # Parent coordinators/data preparation do not consume CPU reservations.
         # Legacy service doubles without prepare still use one bounded run slot.

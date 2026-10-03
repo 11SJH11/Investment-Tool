@@ -20,8 +20,7 @@ function AppContent(){
  const [active,setActive]=useUIPreference("navigation.active", "Dashboard"); const [selectedTicker,setSelectedTicker]=useState("AAPL"); const [prefs,setPrefs]=useState(loadPreferences);
  const [journalDirty,setJournalDirty]=useState(false);
  const [context,setContext]=useState(null);
- const [workspaceDirty,setWorkspaceDirty]=useState(false);
- const navigate=(next,context=null)=>replayLeave.request(()=>{if(active==="Backtest"&&workspaceDirty&&!confirm("Discard unsaved Strategy Workspace changes?"))return;if(active==="Journal"&&journalDirty&&!confirm("Discard unsaved Journal changes?"))return;setActive(next);setContext(context);if(context?.symbol)setSelectedTicker(context.symbol);});
+ const navigate=(next,context=null)=>replayLeave.request(()=>{if(active==="Journal"&&journalDirty&&!confirm("Discard unsaved Journal changes?"))return;setActive(next);setContext(context);if(context?.symbol)setSelectedTicker(context.symbol);});
  const selectPage=next=>{if(next!==active)navigate(next);};
  const openWorkflow=(target,input)=>navigate(target==="Research"?"Charts":target,{...workflowContext(target,input),id:Date.now()+Math.random()});
 
@@ -37,7 +36,7 @@ function AppContent(){
   {active==="Charts"&&<ChartsPage key={context?.target==="Charts"||context?.target==="Research"?context.id:"charts"} selectedTicker={selectedTicker} onTickerChange={setSelectedTicker}/>}
   {active==="Replay"&&<StrategyLabPage initialTab="Replay" standaloneTab="Replay"/>}
   {active==="Journal"&&<JournalPage onDirtyChange={setJournalDirty}/>}
-  {active==="Backtest"&&<StrategyLabPage initialTab="Backtest" standaloneTab="Backtest" onWorkspaceDirty={setWorkspaceDirty}/>}
+  {active==="Backtest"&&<StrategyLabPage initialTab="Backtest" standaloneTab="Backtest"/>}
   {active==="Investment Portfolio"&&<PortfolioPage onOpenTicker={openCharts} onWorkflow={openWorkflow}/>}
   {active==="Settings"&&<SettingsPage preferences={prefs} onChange={updatePrefs}/>}
  </main></div></WorkflowContext.Provider>

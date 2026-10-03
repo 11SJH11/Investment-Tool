@@ -57,6 +57,14 @@ def initialize_worker(path, cancel):
     global _inputs,_cancel
     # App-owned, private temporary snapshot; never an uploaded pickle.
     with open(path,'rb') as stream:_inputs=pickle.load(stream)
+    # Existing spawned imports may have loaded disk code already. Replace them
+    # from the parent's private source snapshot before any cell starts.
+    import sys
+    registry_module = sys.modules.get('app.backtesting.strategies.registry')
+    if registry_module and _inputs.get('strategy_sources'):
+        outcome = registry_module.strategy_registry.refresh(sources=_inputs['strategy_sources'])
+        if not outcome['ok']:
+            raise ValueError('Captured strategy source could not initialize worker')
     _cancel=cancel
 
 

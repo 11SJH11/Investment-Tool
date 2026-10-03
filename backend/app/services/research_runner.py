@@ -15,6 +15,7 @@ from app.performance import Profile, measure
 from app.research_runtime import execute_cell, initialize_worker, worker_count, memory_info
 from app.services.backtest import _snapshot_config
 from app.backtesting.strategies import strategy_registry
+from app.backtesting.strategies._refresh import execution_scope
 
 
 def input_identity(inputs):
@@ -23,6 +24,7 @@ def input_identity(inputs):
     return sha256(json.dumps([hashes,warmup,inputs['providers'],inputs['source_namespaces']],sort_keys=True,default=str).encode()).hexdigest()
 
 
+@execution_scope
 def run_experiment(service, repository, payload, *, progress, cancelled, commit):
     """Callbacks serialize cancellation and commits with the owning queue."""
     children=payload['research_children'];group=payload['experiment_group']
@@ -41,6 +43,11 @@ def run_experiment(service, repository, payload, *, progress, cancelled, commit)
     with Profile() as preparation:
         inputs=service.prepare(children[0],progress=lambda *args:progress('preparing shared data',0,len(children)))
     identity=input_identity(inputs)
+    provenance = inputs.get('strategy_provenance')
+    if document.get('strategy_provenance') not in (None, provenance):
+        raise ValueError('Strategy implementation changed; create a new experiment instead of mixing versions')
+    if provenance:
+        document['strategy_provenance'] = provenance
     if document.get('market_data_fingerprint') not in (None,identity):
         raise ValueError('Research input changed; create a new experiment instead of mixing snapshots')
     document['market_data_fingerprint']=identity
@@ -66,6 +73,7 @@ def run_experiment(service, repository, payload, *, progress, cancelled, commit)
             child=children[index];result=outcome['result']
             effective={**child,'strategy_params':result['strategy']['params'],
                        'research_parent_id':group,'market_data_fingerprint':identity}
+            effective['strategy_provenance'] = result.get('strategy', {}).get('implementation', {})
             if result.get('workspace'):effective['workspace']=result['workspace']
             persistence_start=perf_counter()
             with measure('research_persistence'):

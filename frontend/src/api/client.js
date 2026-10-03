@@ -95,6 +95,7 @@ export const api = {
   journalSettings: () => request("/journal/settings"),
   saveJournalSettings: (timezone) => request("/journal/settings", { method: "PUT", body: JSON.stringify({ timezone }) }),
   brokerStatus: () => request("/journal/brokers"),
+  refreshBackendStrategies: () => request('/strategy-lab/strategies/refresh',{method:'POST'}),
   brokerProfiles: () => request('/brokers'),
   testBrokerConnection: (id) => request(`/brokers/${encodeURIComponent(id)}/test`, {method:'POST'}),
   selectBrokerAccount: (id, account_key) => request(`/brokers/${encodeURIComponent(id)}/account`, {method:'PUT',body:JSON.stringify({account_key})}),

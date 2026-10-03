@@ -1,15 +1,21 @@
-from app.backtesting.strategies.base import Strategy
+from app.backtesting.strategies.base import Strategy, StrategySpec
+from ._refresh import RefreshSupport, RegistryValidationError
 
 
-class StrategyRegistry:
+class StrategyRegistry(RefreshSupport):
     def __init__(self):
         self._items: dict[str, type[Strategy]] = {}
+        self._init_refresh()
 
     def register(self, strategy: type[Strategy]) -> type[Strategy]:
-        key = strategy.spec.key
-        if key in self._items:
-            raise ValueError(f"Strategy '{key}' is already registered")
-        self._items[key] = strategy
+        with self._lock:
+            if not isinstance(getattr(strategy,'spec',None), StrategySpec):
+                raise RegistryValidationError('Registered strategy requires a valid StrategySpec')
+            key = strategy.spec.key
+            items = self._items if self._candidate is None else self._candidate
+            if key in items:
+                raise RegistryValidationError(f"Strategy '{key}' is already registered")
+            items[key] = strategy
         return strategy
 
     def create(self, key: str, **params) -> Strategy:
@@ -19,9 +25,17 @@ class StrategyRegistry:
             raise KeyError(f"Unknown strategy '{key}'") from exc
 
     def specs(self):
-        return [item.spec for item in self._items.values()]
+        with self._lock:
+            return [item.spec for item in self._items.values()]
 
     def register_workspace_class(self, strategy, provenance):
+        if self._candidate is not None:
+            existing = self._candidate.get(strategy.spec.key)
+            if existing is not None and existing is not strategy:
+                raise RegistryValidationError('Workspace key is already registered')
+            strategy.workspace_provenance = dict(provenance)
+            self._candidate[strategy.spec.key] = strategy
+            return
         existing = self._items.get(strategy.spec.key)
         if existing is not None and existing is not strategy:
             raise ValueError('Workspace key is already registered')

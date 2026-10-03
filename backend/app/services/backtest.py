@@ -14,6 +14,7 @@ from app.backtesting.models import BacktestConfig
 from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
 from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as MOMENTUM_KEY
 from app.backtesting.strategies import strategy_registry
+from app.backtesting.strategies._refresh import execution_scope
 from app.backtesting.strategies.intraday_baselines import KEYS as INTRADAY_KEYS, ORB_DIAGNOSTIC_KEYS, validate_market
 from app.backtesting.intraday_reporting import annotate_intraday
 from app.backtesting.strategies.gold_experiments import KEYS as GOLD_EXPERIMENT_KEYS
@@ -59,10 +60,12 @@ class BacktestService:
             return self.market_data.latest_available_end(symbol, timeframe, reference)
         return reference
 
+    @execution_scope
     def strategies(self) -> list[dict]:
         result = []
         for spec in strategy_registry.specs():
             item = asdict(spec)
+            item['implementation'] = strategy_registry.provenance(spec.key)
             item["parameters"] = [asdict(parameter) for parameter in spec.parameters]
             item["research_parameters"] = [asdict(parameter) for parameter in spec.research_parameters]
             result.append(item)
@@ -72,6 +75,7 @@ class BacktestService:
         return [asdict(spec) for spec in indicator_registry.specs()]
 
     @timed('shared_preparation')
+    @execution_scope
     def prepare(self, payload: dict, *, progress=None) -> dict:
         progress = progress or (lambda *args: None)
         progress('preparing data', None, None)
@@ -179,15 +183,21 @@ class BacktestService:
                     additional=additional, session=session, requested_session=requested_session,
                     start=start, end=end, delay=delay, frames_by_symbol=frames_by_symbol,
                     diagnostic_history=diagnostic_history, diagnostic_warnings=diagnostic_warnings,
-                    providers=providers,
+                    providers=providers, strategy_sources=strategy_registry.sources(),
+                    strategy_provenance=strategy_registry.provenance(strategy_key),
                     source_namespaces={symbol:getattr(self._provider(symbol),'cache_namespace',None) for symbol in symbols})
 
     @profiled
     @timed('backtest_total')
+    @execution_scope
     def run(self, payload: dict, *, progress=None, persist=None, prepared=None) -> dict:
         progress = progress or (lambda *args: None)
         inputs = prepared if prepared is not None else self.prepare(payload, progress=progress)
         strategy_key, symbols, primary = inputs['strategy_key'], list(inputs['symbols']), inputs['primary']
+        provenance = strategy_registry.provenance(strategy_key)
+        if inputs.get('strategy_provenance', provenance) != provenance:
+            raise ValueError('Strategy implementation changed after preparation; prepare a new run')
+        payload = {**payload, 'strategy_provenance': provenance}
         strategy_spec = next(s for s in strategy_registry.specs() if s.key == strategy_key)
         additional, session = list(inputs['additional']), inputs['session']
         requested_session, start, end, delay = (inputs[k] for k in ('requested_session','start','end','delay'))
@@ -235,7 +245,7 @@ class BacktestService:
                 progress=lambda done, total: progress('running', done, total),
             )
         result.update({
-            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params},
+            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance},
             "symbols": symbols,
             "primary_timeframe": primary,
             "additional_timeframes": additional,
@@ -742,7 +752,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
-        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint",
+        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint", "strategy_provenance",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key
