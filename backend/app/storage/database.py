@@ -489,6 +489,11 @@ class Database:
         with self.connect() as connection:
             connection.executescript(_SCHEMA)
             _migrate_schema(connection)
+            connection.execute("""CREATE TABLE IF NOT EXISTS broker_executions (
+                provider TEXT NOT NULL, account_key TEXT NOT NULL, external_id TEXT NOT NULL,
+                position_id TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY(provider, account_key, external_id)
+            )""")
             # Phase 4.3 adds planned risk:reward metadata.
             # Existing rows are backfilled where entry/stop/target are directionally valid.
             connection.execute("""
@@ -502,7 +507,7 @@ class Database:
                     ELSE NULL
                 END
             """)
-            for version in range(1, 17):
+            for version in range(1, 18):
                 connection.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (version,))
 
     def set_setting(self, key: str, value: str) -> None:

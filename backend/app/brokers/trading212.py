@@ -3,7 +3,7 @@
 Schemas: https://docs.trading212.com/api/{accounts,positions,historical-events}
 History is evidence, never synthesized into buys used to reconstruct holdings.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import math
 import time
@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.brokers.base import BrokerHistoryError
+from app.brokers.executions import Execution, number
 
 
 def select(data, names):
@@ -42,6 +43,7 @@ class PortfolioSnapshot:
     summary: dict
     positions: list[dict]
     events: list[dict]
+    executions: list[dict] = field(default_factory=list)
 
 
 class Trading212Portfolio:
@@ -177,4 +179,25 @@ class Trading212Portfolio:
         if len({p["external_id"] for p in positions}) != len(positions):
             raise BrokerHistoryError("Trading 212 returned duplicate positions")
         events = [row for kind in ("orders", "dividends", "transactions") for row in self._history(kind)]
-        return PortfolioSnapshot(summary, positions, events)
+        executions = []
+        for event in events:
+            if event['kind'] != 'orders' or not event['facts'].get('fill'):
+                continue
+            order, fill = event['facts']['order'], event['facts']['fill']
+            # Keep the provider symbol as-is; no guessed US ticker/FX mapping.
+            symbol = order.get('instrument', {}).get('ticker') or order.get('ticker')
+            side = str(order.get('side', '')).lower()
+            if not symbol or side not in {'buy', 'sell'} or not fill.get('filledAt'):
+                event['facts']['normalization_status'] = 'incomplete_execution_evidence'
+                continue
+            pnl = fill.get('walletImpact', {}).get('realisedProfitLoss')
+            e = Execution(provider=self.provider, environment=self.environment, account_key=self.account_key,
+                external_id=event['external_id'], order_id=identifier(order['id']), position_id='',
+                symbol=symbol, asset_class='equity', side=side,
+                quantity=str(abs(number(fill['quantity']))), price=str(number(fill['price'])),
+                timestamp=fill['filledAt'], quantity_unit='shares',
+                realized_pnl=str(number(pnl)) if pnl is not None else None,
+                metadata={'fill_id': identifier(fill['id']), 'walletImpact': fill.get('walletImpact', {}),
+                          'destination': 'portfolio', 'instrument': order.get('instrument', {})})
+            executions.append(e.payload())
+        return PortfolioSnapshot(summary, positions, events, executions)

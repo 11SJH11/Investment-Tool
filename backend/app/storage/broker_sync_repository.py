@@ -6,6 +6,18 @@ from app.core.journal_fields import REVIEW_FIELDS
 from app.storage.journal_repository import TRADE_COLUMNS, _encode
 
 
+def persist_executions(connection, adapter, executions):
+    """Called inside the caller's facts/cursor transaction for either destination."""
+    for execution in executions:
+        if (execution['provider'], execution['account_key']) != (adapter.provider, adapter.account_key):
+            raise ValueError('Execution account does not match sync account')
+        connection.execute('''INSERT INTO broker_executions VALUES (?,?,?,?,?)
+            ON CONFLICT(provider,account_key,external_id) DO UPDATE SET
+            position_id=excluded.position_id,payload=excluded.payload''',
+            (adapter.provider, adapter.account_key, execution['external_id'], execution['position_id'],
+             json.dumps(execution, allow_nan=False)))
+
+
 class BrokerSyncRepository:
     def __init__(self, database):
         self.database = database
@@ -14,6 +26,18 @@ class BrokerSyncRepository:
         with closing(self.database.connect()) as connection:
             row = connection.execute("SELECT * FROM broker_sync_state WHERE provider=? AND account_key=?", (provider, account_key)).fetchone()
             return dict(row) if row else {}
+
+    def executions(self, provider, account_key):
+        with closing(self.database.connect()) as connection:
+            rows = connection.execute('SELECT payload FROM broker_executions WHERE provider=? AND account_key=?',
+                                      (provider, account_key)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def journal_ids(self, provider, account_key):
+        with closing(self.database.connect()) as connection:
+            return {r[0] for r in connection.execute(
+                'SELECT external_id FROM journal_trades WHERE external_provider=? AND external_account_key=?',
+                (provider, account_key))}
 
     def failure(self, adapter, error):
         with closing(self.database.connect()) as connection, connection:
@@ -28,7 +52,13 @@ class BrokerSyncRepository:
             state = connection.execute("SELECT cursor FROM broker_sync_state WHERE provider=? AND account_key=?", (adapter.provider, adapter.account_key)).fetchone()
             if (state[0] if state else None) != expected_cursor:
                 raise ValueError("Another sync completed; retry to read the latest history")
+            persist_executions(connection, adapter, batch.executions)
             for data in batch.trades:
+                # Legacy schema requires a fees number. Canonical unknown costs
+                # retain their null evidence and are decoded as null at every
+                # Journal read boundary, never presented as zero-cost trading.
+                if data.get('fees') is None and data.get('source_metadata', {}).get('canonical_execution_version') == 1:
+                    data = {**data, 'fees': 0}
                 existing = connection.execute("SELECT * FROM journal_trades WHERE source=? AND external_provider=? AND external_id=?", (data["source"], data["external_provider"], data["external_id"])).fetchone()
                 if existing:
                     # Never replace discretionary fields, even when the adapter

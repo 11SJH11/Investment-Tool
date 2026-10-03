@@ -237,6 +237,8 @@ def _trade(row) -> dict:
         result["source_metadata"] = json.loads(result.get("source_metadata") or "{}")
     except json.JSONDecodeError:
         result["source_metadata"] = {}
+    if result['source_metadata'].get('canonical_execution_version') == 1 and not result.get('costs_complete'):
+        result['fees'] = None
     try:
         result["review_data"] = json.loads(result.get("review_data") or "{}")
     except (ValueError, TypeError):

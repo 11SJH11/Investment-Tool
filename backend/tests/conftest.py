@@ -22,3 +22,9 @@ for _credential in ("ALPACA_API_KEY", "ALPACA_API_SECRET", "OANDA_ACCESS_TOKEN",
 os.environ['BROKER_PROFILES_JSON'] = '[]'
 os.environ['TRADING212_ENABLED'] = 'false'
 os.environ['TRADOVATE_ENABLED'] = 'false'
+os.environ['TRADELOCKER_ENABLED'] = 'false'
+os.environ['MT5_ENABLED'] = 'false'
+for _credential in ('MT5_LOGIN', 'MT5_PASSWORD', 'MT5_SERVER', 'MT5_TERMINAL_PATH'):
+    os.environ[_credential] = ''
+for _credential in ('TRADELOCKER_EMAIL', 'TRADELOCKER_PASSWORD', 'TRADELOCKER_SERVER', 'TRADELOCKER_ACCOUNT_ID', 'TRADELOCKER_DEVELOPER_API_KEY'):
+    os.environ[_credential] = ''

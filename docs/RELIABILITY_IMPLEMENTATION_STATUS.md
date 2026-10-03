@@ -20,15 +20,15 @@
 | 6 | Compact research polling | Complete: 649 backend / 84 frontend; build and browser pass |
 | 7 | Replay leave/checkpoint guard | Complete: 649 backend / 88 frontend; build and browser pass |
 | 8 | Safe actionable error categories | Complete: 737 backend / 88 frontend; build and browser pass |
-| 9–10 | Protected scope and final acceptance | Pending final verification |
-| 11 | Documentation/test classification and cleanup | Complete: 737 backend / 88 frontend; build and 117 local links pass |
-| 12 | TradeLocker read-only import | Official contract review started; implementation pending |
-| 13 | MetaTrader 5 read-only import | Pending official integration review |
-| 14 | Canonical broker execution model | Pending |
-| 15 | Broker frontend | Pending |
-| 16 | Safe root `.env.example` | Pending |
-| 17 | Untrack generated files, retain local copies | Pending |
-| 18 | Broker fixture acceptance | Pending |
+| 9-10 | Protected scope and final acceptance | Complete: see reliability acceptance report |
+| 11 | Documentation/test classification and cleanup | Complete: 737 backend / 88 frontend; build and 121 local links pass |
+| 12 | TradeLocker read-only import | TradeLocker implemented: official read-only API, bounded history, canonical reconciliation; fixtures pass. Live acceptance pending. |
+| 13 | MetaTrader 5 read-only import | MT5 implemented: optional official native integration, serialized terminal, position reconstruction; fixtures pass. Live acceptance pending. |
+| 14 | Canonical broker execution model | Implemented: shared canonical store/reconciler; Trading 212 remains Portfolio-only; existing OANDA preserved. |
+| 15 | Broker frontend | Complete: connection/account/environment/disconnect controls; mocked browser passes 1024/1440/1920. |
+| 16 | Safe root `.env.example` | Complete: 58 Settings names + 4 runtime/frontend variables; no real .env read. |
+| 17 | Untrack generated files, retain local copies | Complete: 11,826 generated entries untracked; all local copies retained. Tracked backend/.env untouched. |
+| 18 | Broker fixture acceptance | Complete: 771 backend / 90 frontend; build/browser pass; 33 focused broker fixtures pass. |
 
 ## Stage 1
 
@@ -425,3 +425,24 @@ Official TradeLocker findings and the existing dispatcher/canonical-model bounda
 are recorded in [broker extension contract](BROKER_EXTENSION_CONTRACT.md). This is
 research only; no adapter, secret fields, API integration or automatic sync was
 partially enabled. Resume with Stage 12 implementation and its fixture tests.
+
+## Stages 12-18 - completed implementation and automated acceptance, 3 October 2026
+
+TradeLocker and MT5 read-only imports, shared execution reconciliation, Trading 212
+canonical fill evidence, provider UI controls, safe environment template and Git-only
+runtime/dependency cleanup are implemented. Full current-tree verification:
+**771 backend**, **90 frontend**, production build, **33 focused broker tests**, and
+mocked browser acceptance at **1024/1440/1920** all pass. The exact file manifest,
+commands, migration details, cleanup evidence and manual checklist are in
+[BROKER_IMPORT_ACCEPTANCE.md](BROKER_IMPORT_ACCEPTANCE.md).
+
+No live provider/terminal acceptance was performed. TradeLocker history is explicitly
+order-aggregate evidence with unavailable costs/P&L where not supplied. MT5 lots,
+unsupported reversals/cash adjustments, and historical-correction overlap limits
+are documented in the current broker workflow. No live order methods were added.
+
+All **11,826** untracked generated files remain on disk. The tracked backend/.env
+was not read or changed; its separate safe index-removal action is in the acceptance
+report. User strategy edits/drafts remain uncommitted and unchanged by this work.
+The pre-existing turtle strategy trailing space is not cleaned up as part of this
+broker task. No user service was restarted; load changes at the next normal restart.

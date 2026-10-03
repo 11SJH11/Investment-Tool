@@ -17,6 +17,8 @@ class BrokerProfile:
     @property
     def configured(self):
         required = {"oanda": ("token", "account_id"), "trading212": ("api_key", "api_secret"),
+                    "tradelocker": ("email", "password", "server"),
+                    "mt5": (),
                     "tradovate": ("client_id", "client_secret", "account_id")}[self.provider]
         environments = {"practice", "live"} if self.provider == "oanda" else {"demo", "live"}
         return self.enabled and self.environment in environments and all(self.credentials.get(k, "").strip() for k in required)
@@ -31,6 +33,11 @@ def profiles(settings):
         BrokerProfile("tradovate-default", "tradovate", settings.tradovate_environment.strip().lower(), settings.tradovate_enabled,
                       {"client_id": settings.tradovate_client_id, "client_secret": settings.tradovate_client_secret, "account_id": settings.tradovate_account_id}),
     ]
+    result.append(BrokerProfile('tradelocker-default', 'tradelocker', settings.tradelocker_environment.strip().lower(),
+        settings.tradelocker_enabled, {k: getattr(settings, 'tradelocker_' + k) for k in
+        ('email', 'password', 'server', 'account_id', 'developer_api_key')}))
+    result.append(BrokerProfile('mt5-default', 'mt5', settings.mt5_environment.strip().lower(),
+        settings.mt5_enabled, {k: getattr(settings, 'mt5_' + k) for k in ('login', 'password', 'server', 'terminal_path')}))
     try:
         extra = json.loads(settings.broker_profiles_json)
         if not isinstance(extra, list):
@@ -42,7 +49,7 @@ def profiles(settings):
             profile = BrokerProfile(**item)
             if not re.fullmatch(r"[a-z][a-z0-9-]{0,59}", profile.id) or profile.id in ids:
                 raise ValueError()
-            if profile.provider not in {"oanda", "trading212", "tradovate"} or not isinstance(profile.enabled, bool):
+            if profile.provider not in {"oanda", "trading212", "tradovate", "tradelocker", "mt5"} or not isinstance(profile.enabled, bool):
                 raise ValueError()
             if not isinstance(profile.credentials, dict) or not all(isinstance(v, str) for v in profile.credentials.values()):
                 raise ValueError()

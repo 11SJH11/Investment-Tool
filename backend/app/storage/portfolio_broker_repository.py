@@ -1,6 +1,7 @@
 from contextlib import closing
 from datetime import datetime, timezone
 import json
+from app.storage.broker_sync_repository import persist_executions
 
 
 class PortfolioBrokerRepository:
@@ -16,6 +17,7 @@ class PortfolioBrokerRepository:
                                  (adapter.provider, adapter.account_key)).fetchone()
             if (previous[0] if previous else None) != expected_cursor:
                 raise ValueError("Another sync completed; retry")
+            persist_executions(c, adapter, snapshot.executions)
             c.execute("""INSERT INTO portfolio_broker_accounts VALUES (?,?,?,?,?,?)
                 ON CONFLICT(provider,account_key) DO UPDATE SET summary=excluded.summary,synced_at=excluded.synced_at""",
                 (adapter.provider, adapter.account_key, adapter.environment, adapter.account_label,

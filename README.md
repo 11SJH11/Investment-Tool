@@ -14,7 +14,8 @@ After the one-time setup below, run `Start-Ledger.bat` (double-click is fine) or
 
 Use Python 3.11+ and Node compatible with the installed Vite version. From `backend`,
 create `.venv`, install `requirements.txt` (and `requirements-dev.txt` for tests),
-and configure only the providers you use in `backend/.env`. See
+and configure only the providers you use in `backend/.env`, using the committed
+[safe template](.env.example). See
 [data sources](docs/DATA_SOURCES.md) for provider configuration. Run:
 
 ```powershell

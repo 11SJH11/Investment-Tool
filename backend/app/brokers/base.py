@@ -1,18 +1,20 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
 class BrokerHistoryError(RuntimeError):
     """A sanitized error suitable for sync status and the user interface."""
-    def __init__(self, message, *, status_code=None, retry_after=None):
+    def __init__(self, message, *, status_code=None, retry_after=None, category='provider'):
         super().__init__(message)
         self.status_code, self.retry_after = status_code, retry_after
+        self.category = category
 
 
 @dataclass
 class HistoryBatch:
     trades: list[dict]
     cursor: str
+    executions: list[dict] = field(default_factory=list)
 
 
 class BrokerHistoryAdapter(Protocol):

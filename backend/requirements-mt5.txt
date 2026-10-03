@@ -1,0 +1,2 @@
+# Optional Windows/local-terminal import only. Not required for tests or startup.
+MetaTrader5>=5.0.0,<6

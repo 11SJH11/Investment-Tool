@@ -1,12 +1,12 @@
-# Read-only broker connections — checkpoint 2
+# Read-only broker connections
 
-Trading 212 feeds Investment Portfolio. OANDA feeds the existing common Journal.
+Trading 212 feeds Investment Portfolio. OANDA, TradeLocker and MetaTrader 5 feed the common Journal.
 Tradovate is readiness scaffolding only: even complete credentials never cause a
 remote request. None of these adapters exposes execution or broker mutation methods.
 
 ## Configuration
 
-Configure the backend `.env`, using `.env.example` for the names. Never commit a
+Configure the backend `.env`, using the [safe root template](../.env.example) for the names. Never commit a
 populated `.env`. Credentials are not entered, stored or returned by the frontend.
 
 - OANDA retains `OANDA_ACCESS_TOKEN`, `OANDA_ACCOUNT_ID`, `OANDA_ENVIRONMENT`.
@@ -28,7 +28,7 @@ BROKER_PROFILES_JSON='[{"id":"oanda-live","provider":"oanda","environment":"live
 Profile IDs must start with a lowercase letter and contain lowercase letters,
 digits or hyphens, up to 60 characters. Do not use an account number or secret as
 the profile ID. Reserved default IDs are `oanda-default`, `trading212-default`,
-`tradovate-default`. Extra Tradovate profiles use `client_id`, `client_secret`,
+`tradovate-default`, `tradelocker-default`, `mt5-default`. Extra Tradovate profiles use `client_id`, `client_secret`,
 `account_id`. Restart the backend after changing configuration. Invalid JSON,
 duplicate IDs and invalid extra-profile environments fail with a sanitized error.
 
@@ -122,28 +122,105 @@ in review requests. Notes/tags survive sync and inactive holdings.
 - Removing a backend profile does not delete imported account data or reviews.
 - Validation used synthetic HTTP transports, not real credentials/accounts.
 
-## Checkpoint verification
+## Current verification
 
-- Full backend: **260 passed**, 2 pre-existing deprecation warnings, 27.70s.
-  Includes 28 new broker-connection cases plus all prior OANDA, migration, engine,
-  Gold, Momentum, Replay and Journal regressions.
-- Initial existing OANDA/Journal compatibility check: **21 passed**.
-- Frontend utilities: **7 passed**.
-- Production build: **passed**, 65 modules, 7.51s; existing chunk-size warning.
-- Isolated Chrome, synthetic broker data, blocked real outbound requests:
-  Settings capability states/disabled buttons; explicit Portfolio sync; 5 imported
-  records; repeat sync creates 0 and refreshes 5; saved position note preserved;
-  two fills of one order displayed separately; 1024px page width without overflow;
-  no observed runtime exceptions. Screenshots/helpers are in temporary directory
-  `ledger-cp2-smoke-zunlqz63`, not production source.
-
-Manual acceptance: configure a read-only demo profile, restart, sync explicitly,
-inspect positions/history/currencies, save notes/tags and resync. Add another
-profile and confirm independent account/environment identity. Verify OANDA reviews
-and prior imported IDs survive. Tradovate must remain disabled/unsupported.
+See [broker acceptance](BROKER_IMPORT_ACCEPTANCE.md) for current test/build/browser
+results. Automated imports use synthetic fixtures, never live credentials. Existing
+OANDA/Portfolio identity and review-preservation regressions remain in the suite.
 
 ## Backend scheduling and activity
 
  backend lifecycle owns the schedule, with persisted app_settings preferences/cooldowns, OANDA minimum/default 60s and Trading 212 300s. Configured supported profiles are enabled by default; incomplete profiles make no calls. Manual Sync now remains. Same-profile active/pending work cannot overlap; OANDA additionally locks by account/environment. Provider 429s defer to the scheduler and honor Retry-After. Failures retain last successful data. Normal browser navigation has no effect on scheduling. The browser polls status only. Run one Ledger backend process: distributed/multi-worker scheduling is not implemented.
 
 Activity: explicit provider BUY/SELL and supported Deposit/Withdrawal/Interest/Dividend/Fee directions are visible. Missing/ambiguous action or transfer direction stays Unavailable rather than being guessed from quantity sign.
+
+
+## TradeLocker
+
+Set `TRADELOCKER_ENABLED=true`, `TRADELOCKER_ENVIRONMENT=demo` (or `live`),
+`TRADELOCKER_EMAIL`, `TRADELOCKER_PASSWORD`, `TRADELOCKER_SERVER` on the backend.
+`TRADELOCKER_DEVELOPER_API_KEY` is optional if issued for your API access.
+`TRADELOCKER_ACCOUNT_ID` is optional: prefer **Test connection**, then select a
+verified account in Settings. The UI uses opaque account keys, never raw account
+numbers. No credentials/tokens enter the database or browser preferences.
+
+The adapter uses JWT token authentication and documented GET routes for accounts,
+config, instruments, historical orders and open positions. Only authentication is
+POST. Redirects and arbitrary routes are refused. See official
+[authentication](https://public-api.tradelocker.com/docs/getting-started),
+[history](https://public-api.tradelocker.com/reference/getordershistory), and
+[configuration](https://public-api.tradelocker.com/reference/getconfigusingget).
+
+Config supplies array column names, the history row cap and request pacing. A
+saturated time window is split with inclusive overlap and stable-ID deduplication.
+If a minimum window is saturated, data conflicts, an instrument is unknown, or the
+512-request/180-second budget is exhausted, no facts/cursor are committed. A 429
+returns a safe category and Retry-After to the backend scheduler.
+
+Historical evidence is an **order aggregate**, using filled quantity/average price
+and explicitly labelled order-last-modified timestamps. It is not an invented list
+of individual deals. Current-session executions are not treated as full history.
+Balanced position flows with matching instruments become closed Journal trades;
+open/unbalanced flows remain canonical evidence. Ambiguous simultaneous opposing
+orders and reversals fail reconciliation. Broker history retention can still limit
+available evidence; no complete lifetime history or exact execution-time guarantee
+is made. Unreported realized P&L, fees, commission and initial risk remain unavailable.
+
+Incremental *reconciliation* applies changed stable IDs only, while the provider
+history is reread in bounded windows to catch old orders finalized/corrected later.
+The `from` parameter is not assumed to mean modification time. This is intentionally
+not claimed to be an incremental network-history cursor.
+
+## MetaTrader 5 (not MT4)
+
+Install `backend/requirements-mt5.txt` in Ledger's backend Python environment only
+when this connector is needed. It is optional for application startup and tests.
+Run a logged-in **MetaTrader 5 terminal on the backend machine**, then set
+`MT5_ENABLED=true` and `MT5_ENVIRONMENT=demo` or `live` to match the terminal.
+`MT5_LOGIN`, `MT5_SERVER`, `MT5_PASSWORD`, and `MT5_TERMINAL_PATH` are optional:
+blank values use the terminal's current login; login/server can pin the account.
+The official integration may start the specified terminal during initialization.
+
+Only initialize/account_info/history_deals_get/positions_get/symbol_info/shutdown
+are called. No order methods exist in the adapter. One process-wide lock serializes
+native-terminal access; account/server/environment are verified again after reading.
+See official [Python integration](https://www.mql5.com/en/docs/python_metatrader5),
+[deal history](https://www.mql5.com/en/docs/python_metatrader5/mt5historydealsget_py),
+and [deal properties](https://www.mql5.com/en/docs/constants/tradingconstants/dealproperties).
+
+A one-day overlap from the last successful timestamp discovers changed positions;
+complete deal history is then retrieved by position ID. Tickets deduplicate fills.
+Entries, exits, partial closes, scale-in/out, commissions, swaps and fees reconcile
+before Journal creation. Cash-only account events are not fabricated into trades.
+Position-linked separate cash adjustments and INOUT reversals fail safely instead
+of inventing cost allocation or reversal lots. Closed-position corrections older
+than the overlap require a deliberate future reimport workflow; automatic discovery
+of arbitrarily backdated edits is not claimed.
+
+Quantities retain **lots**. Current symbol contract size is recorded as current
+metadata, not misrepresented as a historical conversion factor. Profit is taken
+from provider deal facts, not recomputed with a guessed multiplier/FX rate.
+Unallocated account charges are excluded from per-position deal P&L. Unknown
+symbols, missing position openings or incomplete data block commit.
+
+MT4 requires a separate adapter/transport; the MT5 package does not provide MT4.
+It can later reuse canonical executions, account scoping and atomic reconciliation.
+
+## Settings connection workflow
+
+Trading 212, TradeLocker and MT5 cards offer connection tests, manual sync, last
+successful sync, safe error category, persisted scheduling and environment controls.
+TradeLocker/MT5 offer verified account selection. Environment changes do not reuse
+another environment's selected account. Test connection reads account identity only;
+it does not import history. Demo and live both remain read-only.
+
+**Disconnect** disables that local profile persistently and preserves imports,
+reviews, notes and attachments. It does **not** erase credentials from environment
+configuration. Ledger has no secure credential vault, so this UI does not claim to
+remove stored secrets; remove them from local configuration yourself when desired.
+Enable connection restores eligibility. Normal restart is needed after changing
+backend environment credentials; do not interrupt active research to restart.
+
+New Journal providers use the existing minimum/default 60-second backend schedule.
+Trading 212 remains 300 seconds. Rate-limit backoff can extend the next run. One
+backend process per database remains required; locking is not distributed.

@@ -7,6 +7,41 @@ from app.brokers.base import BrokerHistoryError
 router = APIRouter(tags=['broker connections'])
 
 
+@router.post('/brokers/{profile_id}/test')
+def test_connection(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.discover(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+class AccountSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    account_key: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ConnectionConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    enabled: bool
+    environment: str = Field(pattern=r'^(demo|live)$')
+
+
+@router.patch('/brokers/{profile_id}/connection')
+def connection(profile_id: str, body: ConnectionConfig, services=Depends(get_services)):
+    try:
+        return services.broker_connections.configure_connection(profile_id, body.enabled, body.environment)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.put('/brokers/{profile_id}/account')
+def select_account(profile_id: str, body: AccountSelection, services=Depends(get_services)):
+    try:
+        return services.broker_connections.select_account(profile_id, body.account_key)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
 @router.get('/brokers')
 def broker_profiles(services=Depends(get_services)):
     result = services.broker_connections.statuses()

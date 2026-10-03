@@ -155,7 +155,8 @@ def test_migration_preserves_all_legacy_rows_and_media(tmp_path):
             for old,new in zip(rows,actual):
                 assert {k:new[k] for k in old}==old
         assert c.execute('PRAGMA foreign_key_check').fetchall()==[]
-        assert c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0]==16
+        assert c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0]==17
+        assert c.execute('SELECT COUNT(*) FROM broker_executions').fetchone()[0]==0
     assert JournalRepository(db).get_trade(41)['review_data']=={}
 
 

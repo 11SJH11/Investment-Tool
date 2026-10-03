@@ -25,6 +25,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Strategy plugin template](STRATEGY_PLUGIN_TEMPLATE.md) and
   [indicator plugin template](INDICATOR_PLUGIN_TEMPLATE.md).
 - [Broker connections](BROKER_CONNECTIONS.md): supported read-only connections.
+- [Broker import acceptance](BROKER_IMPORT_ACCEPTANCE.md): fixtures, verification, cleanup and limitations.
 - [Broker extension contract](BROKER_EXTENSION_CONTRACT.md): future adapter boundaries.
 
 ## Frozen strategy and instrument contracts
