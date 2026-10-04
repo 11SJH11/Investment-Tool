@@ -67,7 +67,7 @@ for the authoritative execution, grid, limits, fingerprint and resume contracts.
   request key returns the same jobs; conflicting payloads are rejected. Polling,
   navigation and refresh never submit jobs. Failed-item retry is an explicit new job.
 - Batch counts, completed-result opening, queued cancellation, failed retry and
-  comparison of up to 12 completed results are available in the queue panel.
+  comparison of up to 30 completed results are available in the Activity centre.
 
 ### Persistence and restart
 
@@ -108,7 +108,7 @@ The table shows status, strategy, symbol, requested period, role, trades, win ra
 average/total R, profit factor, return, max drawdown and creation date. Optional
 columns include tags, experiment and timeframe. Headers support category checkboxes,
 text search, numeric sorting and strict greater/less or inclusive between filters,
-plus date ranges/order. Select up to 12 runs for the existing immutable comparison.
+plus date ranges/order. Select up to 30 runs for the existing immutable comparison.
 Failed/queued jobs are shown in the queue, not fabricated as saved result rows.
 
 `ledger.ui.*` local storage remembers run type, expanded sections, visible columns,
@@ -164,3 +164,6 @@ fall back to full experiment reads until their next normal restart.
 Current background work, integrated parameter sweeps and progressive saved results
 are described in [Backtest usability and Trade Review](BACKTEST_REVIEW_USABILITY.md).
 The former page-local Jobs panel now lives in global Activity.
+
+Coordinated equity/drawdown charts, comparison semantics and manual checks are
+documented in [Performance charts](PERFORMANCE_CHARTS.md).

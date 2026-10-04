@@ -124,6 +124,13 @@ class BacktestRunRepository:
             item["config"] = _loads(item.pop("config_json"), {})
             item["result"] = _loads(item.pop("result_json"), {})
             item["tags"] = _loads(item.get("tags"), [])
+        if section == "summary":
+            curve=item["result"].get("equity_curve") or []
+            starting=item["result"].get("metrics",{}).get("starting_balance")
+            if starting is not None and any("drawdown_pct" not in point or "return_pct" not in point for point in curve):
+                from app.backtesting.engine import _decorate_equity_curve
+                calculated=_decorate_equity_curve(float(starting),curve)
+                item["result"]["equity_curve"]=[{**derived,**original} for derived,original in zip(calculated,curve)]
         item["section"] = section
         return item
 

@@ -1,3 +1,4 @@
+export const performanceSupported=run=>{const key=run.result?.strategy?.key||'';return !(key.startsWith('xau_type3_experiment_')&&(key.includes('dxy')||key.includes('full_candidate')))};
 export const isGoldReference = (run) => ["xau_liquidity_type3_baseline_v1", "xau_type3_experiment_reference_v1"].includes(run.result?.strategy?.key);
 const finite = (x) => x != null && Number.isFinite(Number(x));
 const average = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
@@ -51,7 +52,7 @@ export function retention(run, reference) {
 export function comparison(run, reference) {
   const result = run.result || {}, trades = result.trades || [], setups = result.setups || [];
   const key = result.strategy?.key || "";
-  const unsupported = key.startsWith("xau_type3_experiment_") && (key.includes("dxy") || key.includes("full_candidate"));
+  const unsupported = !performanceSupported(run);
   const summary = { ...tradeStatistics(trades), detected_setups: setups.length,
     rejected_setups: setups.filter(s => ["rejected", "filtered"].includes(s.status)).length,
     unfilled_setups: setups.filter(s => s.status === "not_filled").length,

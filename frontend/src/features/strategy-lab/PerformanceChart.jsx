@@ -1,142 +1,55 @@
-import { useEffect, useRef } from "react";
-import { ColorType, LineSeries, createChart, createSeriesMarkers } from "lightweight-charts";
-import { resolvedZone } from "../../utils/timezones";
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {ColorType,LineSeries,CrosshairMode,createChart,createSeriesMarkers} from 'lightweight-charts';
+import {resolvedZone} from '../../utils/timezones';
+import {assignRunStyles,prepareCurve,unionDomain,pointAt,chartValue} from './equitySeries.js';
 
-function timeLabel(seconds, zone) {
-  const date = new Date(Number(seconds) * 1000);
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: resolvedZone(zone),
-    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).format(date);
-}
-function dateTick(seconds, zone) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: resolvedZone(zone), day: "2-digit", month: "short",
-  }).format(new Date(Number(seconds) * 1000));
-}
-function money(value) {
-  return Intl.NumberFormat("en-GB", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(value || 0));
-}
-function modeValue(point, mode) {
-  if (mode === "drawdown") return Number(point.drawdown_pct);
-  if (mode === "return") return Number(point.return_pct);
-  if (mode === "r") return Number(point.cumulative_r);
-  return Number(point.equity);
-}
-function formatted(value, mode) {
-  if (mode === "equity") return money(value);
-  if (mode === "r") return `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}R`;
-  return `${Number(value) >= 0 && mode === "return" ? "+" : ""}${Number(value).toFixed(2)}%`;
-}
+export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null}){
+ const host=useRef(null),chartRef=useRef(null),seriesRef=useRef([]),legendRefs=useRef(new Map()),styles=useRef(runStyles||new Map()),hoverDate=useRef(null);
+ const fullRange=useRef(true);
+ const [hidden,setHidden]=useState(new Set()),[focus,setFocus]=useState(null);
+ const input=useMemo(()=>runs||[{id:'single',name:'Performance',result:{equity_curve:points,metrics:{starting_balance:startingBalance}}}],[runs,points,startingBalance]);
+ const curves=useMemo(()=>input.map(run=>({...prepareCurve(run.result?.equity_curve,run.result?.metrics?.starting_balance),id:String(run.id),label:`${run.id==='single'?'':`#${run.id} `}${run.name||run.result?.strategy?.name||'Run'}`,balance:run.result?.metrics?.starting_balance,currency:run.config?.account_currency||run.result?.account_currency||'account units'})),[input]);
+ const domain=useMemo(()=>unionDomain(curves),[curves]);assignRunStyles(curves.map(c=>c.id),styles.current);
+ const fmt=(value,suffix='')=>value==null?'Unavailable':`${Number(value).toLocaleString('en-GB',{maximumFractionDigits:2})}${suffix}`;
+ const reset=()=>{fullRange.current=true;const chart=chartRef.current;if(!chart||!domain)return;chart.timeScale().fitContent();if(domain.from<domain.to)chart.timeScale().setVisibleRange(domain)};
+ useEffect(()=>{
+  if(!host.current||!domain)return;
+  const css=getComputedStyle(document.documentElement),token=(key,fallback)=>css.getPropertyValue(key).trim()||fallback;
+  const height=expanded?Math.max(560,innerHeight-230):540;
+  const chart=createChart(host.current,{autoSize:true,height,layout:{background:{type:ColorType.Solid,color:token('--ledger-chart-background','#111111')},textColor:token('--ledger-muted','#a8a29e')},grid:{vertLines:{color:token('--ledger-chart-grid','#262626')},horzLines:{color:token('--ledger-chart-grid','#262626')}},timeScale:{minBarSpacing:0.000001,rightOffset:0,timeVisible:true,tickMarkFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),month:'short',year:'2-digit'}).format(new Date(Number(time)*1000))},crosshair:{mode:CrosshairMode.Normal},localization:{timeFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(time)*1000))}});
+  chartRef.current=chart;
+  chart.timeScale().subscribeVisibleTimeRangeChange(range=>{if(host.current&&range){host.current.dataset.visibleFrom=String(range.from);host.current.dataset.visibleTo=String(range.to)}});
+  const pairs=[];const markers=new Map();
+  for(const curve of curves){
+   const style=styles.current.get(curve.id);
+   const common={...style,lineWidth:2,priceLineVisible:false,lastValueVisible:curves.length===1,crosshairMarkerVisible:true};
+   const equity=chart.addSeries(LineSeries,{...common,priceFormat:{type:'custom',minMove:.01,formatter:v=>fmt(v,mode==='return'?'%':mode==='r'?'R':'')}},0);
+   const dd=chart.addSeries(LineSeries,{...common,priceFormat:{type:'custom',minMove:.01,formatter:v=>fmt(v,'%')},autoscaleInfoProvider:base=>{const info=base();if(info)info.priceRange.maxValue=0;return info;}},1);
+   if(!pairs.length)dd.createPriceLine({price:0,title:'Drawdown 0%',color:token('--ledger-muted','#a8a29e'),lineWidth:1,lineStyle:2,axisLabelVisible:true});
+   equity.setData(curve.display.map(p=>{const value=chartValue(p,mode,curve.balance);return value==null?{time:p.time}:{time:p.time,value}}));
+   dd.setData(curve.display.map(p=>p.drawdown_pct==null?{time:p.time}:{time:p.time,value:Number(p.drawdown_pct)}));
+   if(onTradeSelect){const list=[];for(const p of curve.display)for(const [i,t] of (p.closed_trades||[]).entries()){const id=`${curve.id}:${p.time}:${i}`;markers.set(id,t);list.push({id,time:p.time,position:'aboveBar',shape:'circle',color:style.color})}if(list.length)createSeriesMarkers(equity,list);}
+   pairs.push({id:curve.id,equity,dd,style});
+  }
+  chart.panes()[0]?.setStretchFactor(7);chart.panes()[1]?.setStretchFactor(3);
+  seriesRef.current=pairs;reset();
+  let frame=0;
+  const fitted=()=>{if(!host.current)return;const scale=chart.timeScale();host.current.dataset.startX=String(scale.timeToCoordinate(domain.from));host.current.dataset.endX=String(scale.timeToCoordinate(domain.to));host.current.dataset.plotWidth=String(scale.width())};
+  const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{if(fullRange.current)reset();frame=requestAnimationFrame(fitted)})})});
+  observer.observe(host.current);
+  const manual=()=>{fullRange.current=false};const element=host.current;element.addEventListener('wheel',manual,{passive:true});element.addEventListener('pointerdown',manual);
 
-export default function PerformanceChart({
-  points = [], startingBalance = 0, mode = "equity", expanded = false,
-  timeZone = "America/New_York", onTradeSelect = null,
-}) {
-  const containerRef = useRef(null);
-  const tooltipRef = useRef(null);
-
-  useEffect(() => {
-    if (!containerRef.current || !points.length) return undefined;
-    const chart = createChart(containerRef.current, {
-      autoSize: true,
-      height: expanded ? Math.max(620, window.innerHeight - 180) : (mode === "drawdown" ? 240 : 360),
-      layout: { background: { type: ColorType.Solid, color: "#fafaf9" }, textColor: "#57534e" },
-      grid: { vertLines: { color: "#e7e5e4" }, horzLines: { color: "#e7e5e4" } },
-      rightPriceScale: { borderColor: "#d6d3d1" },
-      timeScale: {
-        borderColor: "#d6d3d1", timeVisible: true, secondsVisible: false,
-        tickMarkFormatter: (time) => dateTick(time, timeZone),
-      },
-      localization: {
-        timeFormatter: (time) => timeLabel(time, timeZone),
-        priceFormatter: (value) => formatted(value, mode),
-      },
-      crosshair: { vertLine: { color: "#78716c" }, horzLine: { color: "#78716c" } },
-    });
-    const series = chart.addSeries(LineSeries, {
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      priceFormat: mode === "equity"
-        ? { type: "price", precision: 2, minMove: 0.01 }
-        : { type: "custom", minMove: 0.01, formatter: (value) => formatted(value, mode) },
-    });
-
-    const seen = new Set();
-    const clean = points.map((point) => ({
-      time: Math.floor(new Date(point.timestamp).getTime() / 1000),
-      value: modeValue(point, mode),
-      original: point,
-    })).filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && !seen.has(point.time) && seen.add(point.time));
-    series.setData(clean.map(({ time, value }) => ({ time, value })));
-
-    if (mode === "equity" && Number.isFinite(Number(startingBalance))) {
-      series.createPriceLine({
-        price: Number(startingBalance), title: "Starting balance", lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
-      });
-    }
-    if ((mode === "return" || mode === "r" || mode === "drawdown")) {
-      series.createPriceLine({ price: 0, title: "0", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
-    }
-
-    const byTime = new Map(clean.map((point) => [point.time, point.original]));
-    const markerTradeById = new Map();
-    if (onTradeSelect) {
-      const markers = [];
-      clean.forEach((point, pointIndex) => {
-        (point.original?.closed_trades || []).forEach((trade, tradeIndex) => {
-          const markerId = `trade-${pointIndex}-${tradeIndex}`;
-          markerTradeById.set(markerId, trade);
-          markers.push({
-            id: markerId, time: point.time, position: "aboveBar", shape: "circle",
-            color: Number(trade.r_multiple || 0) >= 0 ? "#16a34a" : "#dc2626",
-          });
-        });
-      });
-      if (markers.length) createSeriesMarkers(series, markers);
-    }
-    chart.subscribeCrosshairMove((param) => {
-      const tooltip = tooltipRef.current;
-      if (!tooltip || !param?.time || !param?.point) {
-        if (tooltip) tooltip.style.display = "none";
-        return;
-      }
-      const time = Number(param.time);
-      const point = byTime.get(time);
-      const datum = param.seriesData?.get(series);
-      if (!datum || !point) { tooltip.style.display = "none"; return; }
-      const lines = [
-        timeLabel(time, timeZone),
-        `Equity: ${money(point.equity)}`,
-        `Return: ${Number(point.return_pct || 0) >= 0 ? "+" : ""}${Number(point.return_pct || 0).toFixed(2)}%`,
-        `Cumulative R: ${Number(point.cumulative_r || 0) >= 0 ? "+" : ""}${Number(point.cumulative_r || 0).toFixed(2)}R`,
-        `Drawdown: ${Number(point.drawdown_pct || 0).toFixed(2)}%`,
-      ];
-      if (Number(point.realized_pnl || 0) !== 0) lines.push(`Realised here: ${money(point.realized_pnl)}`);
-      for (const trade of point.closed_trades || []) {
-        lines.push(`${trade.symbol} ${trade.direction} · ${String(trade.exit_reason).replaceAll("_", " ")} · ${Number(trade.r_multiple || 0) >= 0 ? "+" : ""}${Number(trade.r_multiple || 0).toFixed(2)}R · ${money(trade.net_pnl)}`);
-      }
-      if ((point.closed_trades || []).length && onTradeSelect) lines.push("Click to audit closed trade");
-      tooltip.textContent = lines.join("\n");
-      tooltip.style.display = "block";
-      const width = containerRef.current.clientWidth;
-      tooltip.style.left = `${Math.min(Math.max(8, param.point.x + 14), Math.max(8, width - 300))}px`;
-      tooltip.style.top = `${Math.max(8, param.point.y - 30)}px`;
-    });
-    if (onTradeSelect) {
-      chart.subscribeClick((param) => {
-        const markerId = param?.hoveredObjectId;
-        const trade = markerId ? markerTradeById.get(String(markerId)) : null;
-        if (trade) onTradeSelect(trade);
-      });
-    }
-    chart.timeScale().fitContent();
-    return () => chart.remove();
-  }, [points, startingBalance, mode, expanded, timeZone, onTradeSelect]);
-
-  return <div className="relative mt-4">
-    <div ref={containerRef} className={expanded ? "h-[calc(100vh-180px)] w-full" : (mode === "drawdown" ? "h-[240px] w-full" : "h-[360px] w-full")} />
-    <div ref={tooltipRef} className="pointer-events-none absolute hidden max-w-[300px] whitespace-pre-line rounded-md border border-stone-300 bg-white/95 px-3 py-2 text-xs leading-5 text-stone-700 shadow-lg" />
-  </div>;
+  chart.subscribeCrosshairMove(event=>{
+   if(hoverDate.current)hoverDate.current.textContent=event.time?new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(event.time)*1000)):'Hover either pane to inspect';
+   for(const curve of curves){const el=legendRefs.current.get(curve.id);if(!el)continue;const p=event.time?pointAt(curve,Number(event.time)):null;el.textContent=p?`Equity ${fmt(p.equity)} / Return ${fmt(chartValue(p,'return',curve.balance),'%')} / DD ${fmt(p.drawdown_pct,'%')}${p.time!==Number(event.time)?' / prior observation':''}`:'No observation';}
+  });
+  if(onTradeSelect)chart.subscribeClick(event=>{const trade=markers.get(String(event.hoveredObjectId));if(trade)onTradeSelect(trade)});
+  return()=>{observer.disconnect();cancelAnimationFrame(frame);element.removeEventListener("wheel",manual);element.removeEventListener("pointerdown",manual);chart.remove();chartRef.current=null;seriesRef.current=[]};
+ },[curves,mode,expanded,timeZone,onTradeSelect,domain]);
+ useEffect(()=>{for(const pair of seriesRef.current){const options={visible:!hidden.has(pair.id),color:focus&&focus!==pair.id?pair.style.color+'35':pair.style.color,lineWidth:focus===pair.id?3:2};pair.equity.applyOptions(options);pair.dd.applyOptions(options)}},[hidden,focus,curves,mode,expanded,timeZone,onTradeSelect]);
+ return <section className="performance-workspace" aria-label="Equity and drawdown history"><div className="ui-toolbar"><strong>{mode==='return'?'Normalized return (%)':mode==='r'?'Cumulative R':'Equity (account units)'} / Drawdown (%)</strong><button className="mini-btn" onClick={reset}>Full range / Reset zoom</button><button className="mini-btn" onClick={()=>{setHidden(new Set());setFocus(null)}}>Show all runs</button></div>
+ <p className="text-xs muted">Saved account equity and running-peak drawdown. Separate runs retain their own dates and capital. {mode==='return'?'Returns use each run’s starting balance.':'Compare different capitals using normalized return; verify account currencies before comparing absolute equity.'} Zoom/pan in either pane; both share one time axis.</p>
+ <div className="performance-layout"><div className="min-w-0"><div ref={host} className="performance-canvas" style={{height:expanded?Math.max(560,innerHeight-230):540}}/>{!domain&&<p>No saved equity observations.</p>}</div>
+ <aside className="performance-legend" aria-label="Run colour key"><p ref={hoverDate} className="text-xs muted">Hover either pane to inspect</p>{curves.map(curve=><div key={curve.id} className="performance-key" onMouseEnter={()=>setFocus(curve.id)} onMouseLeave={()=>setFocus(null)} onFocus={()=>setFocus(curve.id)} onBlur={()=>setFocus(null)}><button className="mini-btn" aria-pressed={!hidden.has(curve.id)} onClick={()=>setHidden(old=>{const next=new Set(old);next.has(curve.id)?next.delete(curve.id):next.add(curve.id);return next})}><span className="run-swatch" style={{background:styles.current.get(curve.id).color}}/>{curve.label}</button><button className="mini-btn" onClick={()=>setHidden(new Set(curves.filter(c=>c.id!==curve.id).map(c=>c.id)))}>Isolate</button><p className="text-xs" ref={el=>{if(el)legendRefs.current.set(curve.id,el);else legendRefs.current.delete(curve.id)}}>Hover to inspect</p></div>)}</aside></div>
+ <p className="text-xs muted">Full history by default. Only exact unchanged plateau interiors are omitted; peaks, troughs, recovery transitions and trade events remain. A one-second initial balance anchor is shown when the first observation already changed equity.</p></section>;
 }
