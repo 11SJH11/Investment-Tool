@@ -1,0 +1,1 @@
+export function sweepAxes(sweeps){return Object.entries(sweeps).filter(([,v])=>v.mode!=='fixed').map(([parameter,v])=>v.mode==='range'?{parameter,mode:'range',start:v.start,end:v.end,step:v.step}:{parameter,mode:'explicit',values:v.values})}

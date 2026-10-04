@@ -1,3 +1,6 @@
+import {notifyActivity} from '../../app/activityEvents.js';
+import IntegratedResearch,{SweepField,sweepAxes} from './ParameterSweep.jsx';
+import {createSectionCache} from './runSections.js';
 import {refreshedSelection,normalBacktestTab} from './strategyRefresh.js';
 import OrbDiagnosticAnalysis from './OrbDiagnosticAnalysis.jsx';
 import ExcursionAnalysis from './ExcursionAnalysis.jsx';
@@ -6,7 +9,7 @@ import {downloadCsv,downloadJson} from '../../utils/csv.js';
 import {backtestExportRows,runExportFilename} from '../../utils/researchExports.js';
 import {loadPreferences} from "../../app/preferences.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS } from "../../utils/timezones";
@@ -22,11 +25,12 @@ import {useUIPreference} from "../../app/useUIPreference.js";
 import {Section, MetricGrid, MetricCard, Button, FormGrid} from "../../components/ui.jsx";
 import {parseSymbols, independentRuns, runSummary, configurationError, nextRunName} from "./backtest-workflow.js";
 import useBacktestJobs from "./useBacktestJobs.js";
-import BacktestJobPanel from "./BacktestJobPanel.jsx";
+
 import RunsTable from "./RunsTable.jsx";
 import RunComparison from "./RunComparison.jsx";
 import ComputeControl from "./ComputeControl.jsx";
 
+const runSections=createSectionCache((id,section)=>api.strategyLabRunSection(id,section));
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
 function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
@@ -42,6 +46,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [savedTab, setSavedTab] = useUIPreference("backtest.tab", initialTab);
   const tab=standaloneTab==="Replay"?"Replay":normalBacktestTab(savedTab);
   const setTab=value=>setSavedTab(value);
+  const [sweeps,setSweeps]=useState({});
   const [strategies, setStrategies] = useState([]);
   const [refreshingStrategies,setRefreshingStrategies]=useState(false);
   const [strategyRefreshMessage,setStrategyRefreshMessage]=useState('');
@@ -73,10 +78,12 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     max_consecutive_losses: "", cooldown_minutes: "0",
   });
   const [result, setResult] = useState(null);
+  const [opening,setOpening]=useState(null);
+  const openRequest=useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [savedExperiment, setSavedExperiment] = useState(null);
-  useEffect(() => { if (tab === "Run Viewer" && !result) setTab("Runs"); }, [tab, result]);
+  useEffect(() => { if (tab === "Run Viewer" && !result && !opening) setTab("Runs"); }, [tab, result, opening]);
 
   const refreshRuns = useCallback(() => api.strategyLabRuns(100).then((data) => {
     const items = data.runs || [];
@@ -96,6 +103,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     refreshRuns();
   }, [refreshRuns]);
 
+  useEffect(()=>setSweeps({}),[strategyKey]);
   const strategy = strategies.find((item) => item.key === strategyKey);
   useEffect(() => {
     if (!strategy) return;
@@ -115,6 +123,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
   useEffect(()=>{
     if(context?.target!=="Backtest"||!strategies.length||appliedHandoff.current===context.id)return;
+    if(context.runId||context.experimentGroup){appliedHandoff.current=context.id;if(context.runId)openSavedRun(context.runId);else openSavedExperiment(context.experimentGroup);return;}
     const desired=strategies.find(s=>s.key===context.strategy_key)||strategies.find(s=>s.timeframes?.includes(context.timeframe)&&(!s.key.startsWith('xau')||context.symbol==='XAUUSD'))||strategy;
     if(desired&&desired.key!==strategyKey){setStrategyKey(desired.key);return;}
     if(context.symbol)setSymbols([context.symbol]);
@@ -162,25 +171,26 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   };
 
   const openSavedRun = async (runId) => {
-    setError("");
+    if(opening)return;
+    const request=++openRequest.current;setError("");setOpening(`Opening Run #${runId}...`);setTab("Run Viewer");setResult(null);
     try {
-      const saved = await api.strategyLabRun(runId);
-      setResult({ ...saved.result, saved_run: { id: saved.id, name: saved.name, test_role: saved.test_role, created_at: saved.created_at } });
-      setTab("Run Viewer");
-    } catch (e) { setError(e.message); }
+      const saved=await runSections.get(runId,'summary');
+      if(request!==openRequest.current)return;
+      setResult({...saved.result,config:saved.config,_lazy:true,saved_run:{id:saved.id,name:saved.name,test_role:saved.test_role,created_at:saved.created_at}});
+    }catch(e){if(request===openRequest.current)setError(e.message);}
+    finally{if(request===openRequest.current)setOpening(null);}
   };
   const openSavedExperiment = async (group) => {
-    setError("");
+    if(opening)return;
+    const request=++openRequest.current;setError("");setOpening('Opening research results...');
     try {
-      const suite = await api.strategyLabExperiment(group);
+      const suite=await api.strategyLabExperiment(group);
+      if(request!==openRequest.current)return;
       setSavedExperiment(suite);
-      if (suite.experiment || suite.runs?.some(r=>r.config?.research_experiment)) {
-        setTab("Research Viewer");
-      } else {
-        localStorage.setItem("ledger.ui.section.validation-research", "true");
-        setTab("Backtest");
-      }
-    } catch (e) { setError(e.message); }
+      if(suite.experiment||suite.runs?.some(r=>r.config?.research_experiment))setTab('Research Viewer');
+      else{localStorage.setItem('ledger.ui.section.validation-research','true');setTab('Backtest');}
+    }catch(e){if(request===openRequest.current)setError(e.message);}
+    finally{if(request===openRequest.current)setOpening(null);}
   };
 
   const useSavedSettings = async (runId) => {
@@ -220,9 +230,10 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     <div><p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">{standaloneTab === "Replay" ? "Replay" : standaloneTab === "Backtest" ? "Backtest" : "Strategy Lab"}</h2><p className="mt-2 max-w-5xl text-sm text-stone-600">{standaloneTab === "Replay" ? "Practise historical markets candle-by-candle without revealing the future; Replay trades feed directly into Journal." : "Backtest coded strategy plugins with explicit execution rules, saved reproducible runs, validation and diagnostic analysis."}</p></div>
     {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
     {standaloneTab === "Backtest" && <div className="feature-nav" aria-label="Backtest navigation">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies"].map(item=><button key={item} aria-current={tab===item?"page":undefined} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
+    {opening&&<div role="status" aria-busy="true" className="ui-section">{opening}</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-    {standaloneTab !== "Replay" && ["Backtest","Runs"].includes(tab) && <BacktestJobPanel queue={queue} onOpen={openSavedRun} onOpenExperiment={openSavedExperiment}/>}
+
     {tab === "Strategies" && <div className="mt-3 flex flex-wrap items-center gap-3"><Button disabled={refreshingStrategies} onClick={refreshStrategies}>{refreshingStrategies?'Refreshing strategies...':'Refresh strategies'}</Button><Button onClick={()=>setTab("Indicators")}>Browse indicators</Button><p className="text-xs text-stone-500">Add/edit a Python file in the backend strategies folder, refresh, then configure Backtest. Active jobs must finish before refresh.</p>{strategyRefreshMessage&&<p role="status" className="text-sm">{strategyRefreshMessage}</p>}</div>}
     {tab === "Indicators" && <Button onClick={()=>setTab("Strategies")}>Back to strategies</Button>}
     {tab === "Backtest" && <>
@@ -288,7 +299,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
           </CompactAdvanced>
         </Section>
 
-        {strategy && <div className="mt-6 border-t border-stone-100 pt-5"><div className="flex flex-wrap items-baseline justify-between gap-2"><div><h3 className="font-semibold">Strategy parameters</h3><p className="mt-1 text-xs text-stone-500">{strategy.description}</p></div><span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Reference strategy ≠ proven edge</span></div><div className="ui-form-grid mt-4">{(strategy.parameters || []).slice(0,4).map((parameter) => <ParameterField key={parameter.key} parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} />)}</div>{(strategy.parameters || []).length > 4 && <Section id="strategy-parameters" title="Advanced strategy parameters"><div className="ui-form-grid">{(strategy.parameters || []).slice(4).map((parameter) => <ParameterField key={parameter.key} parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} />)}</div></Section>}</div>}
+        {strategy && <div className="mt-6 border-t border-stone-100 pt-5"><div className="flex flex-wrap items-baseline justify-between gap-2"><div><h3 className="font-semibold">Strategy parameters</h3><p className="mt-1 text-xs text-stone-500">{strategy.description}</p></div><span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Reference strategy ≠ proven edge</span></div><div className="ui-form-grid mt-4">{(strategy.parameters || []).slice(0,4).map((parameter) => <SweepField key={parameter.key} parameter={parameter} sweep={sweeps[parameter.key]} onChange={value=>setSweeps(old=>({...old,[parameter.key]:value}))}><ParameterField parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} /></SweepField>)}</div>{(strategy.parameters || []).length > 4 && <Section id="strategy-parameters" title="Advanced strategy parameters"><div className="ui-form-grid">{(strategy.parameters || []).slice(4).map((parameter) => <SweepField key={parameter.key} parameter={parameter} sweep={sweeps[parameter.key]} onChange={value=>setSweeps(old=>({...old,[parameter.key]:value}))}><ParameterField parameter={parameter} value={params[parameter.key]} onChange={(value) => setParams({ ...params, [parameter.key]: value })} /></SweepField>)}</div></Section>}</div>}
 
         <div className="mt-5 border-t border-stone-100 pt-5"><Field label="Run notes · optional"><textarea className="input min-h-[72px] resize-y" value={runMeta.notes} onChange={(e) => setRunMeta({ ...runMeta, notes: e.target.value })} placeholder="What hypothesis is this run testing?" /></Field></div>
 
@@ -298,14 +309,15 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
         <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4"><ComputeControl compact onError={setError}/></div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p><button disabled={loading || Boolean(configurationError(buildPayload()))} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button></div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-stone-50 p-4"><p className="text-xs text-stone-600"><strong>No-lookahead contract:</strong> strategy evaluates after a candle completes; entries/discretionary exits fill next bar open. Every successful run is saved as an immutable result snapshot for later comparison.</p>{!sweepAxes(sweeps).length&&<button disabled={loading || Boolean(configurationError(buildPayload()))} onClick={run} className="shrink-0 rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{loading ? "Submitting..." : symbols.length>1 ? `Queue ${symbols.length} runs` : "Run backtest"}</button>}</div>
+        {!!sweepAxes(sweeps).length&&<IntegratedResearch base={buildPayload()} sweeps={sweeps} refresh={queue.refresh}/>}
       </section>
       <Section id="validation-research" title="Validation & out-of-sample"><ValidationPanel mode="Validation suite" submit={queue.submit} jobs={queue.jobs} buildPayload={buildPayload} startDate={form.start_date} endDate={form.end_date} strategyName={strategy?.name || strategyKey} strategy={strategy} refreshRuns={refreshRuns} onError={setError} savedExperiment={savedExperiment?.experiment||savedExperiment?.runs?.some(r=>r.config?.research_experiment)?null:savedExperiment} onClearSavedExperiment={()=>setSavedExperiment(null)}/></Section>
-      <Section id="sensitivity-research" title="Sensitivity / spectrum & interaction grid"><ResearchExperimentPanel strategy={strategy} buildPayload={buildPayload} refresh={queue.refresh} onError={setError} onOpenExperiment={openSavedExperiment}/></Section>
+      <Section id="sensitivity-research" title="Advanced research / band studies"><ResearchExperimentPanel strategy={strategy} buildPayload={buildPayload} refresh={queue.refresh} onError={setError} onOpenExperiment={openSavedExperiment}/></Section>
     </>}
 
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
-    {tab === "Run Viewer" && result && <BacktestResults result={result} onUseSettings={useSavedSettings} onBackToRuns={()=>{setTab("Runs");refreshRuns();}} />}
+    {tab === "Run Viewer" && result && <Profiler id="RunViewer" onRender={(_,phase,duration,baseDuration,start,commit)=>{const name="ledger.saved-run.react-render";if(performance.getEntriesByName(name).length>=20)performance.clearMeasures(name);performance.measure(name,{start:commit,duration});}}><BacktestResults result={result} onUseSettings={useSavedSettings} onBackToRuns={()=>{setTab("Runs");refreshRuns();}} /></Profiler>}
     {tab === "Research Viewer" && savedExperiment?.experiment && <ResearchExperimentViewer experimentGroup={savedExperiment.experiment_group} initial={savedExperiment} jobs={queue.jobs} onOpenRun={openSavedRun} onBack={()=>{setTab("Runs");refreshRuns();}} onError={setError}/>}
     {tab === "Strategies" && <section className="mt-5 grid gap-4 lg:grid-cols-2">{strategies.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wide text-stone-500">{item.category}</p><h3 className="mt-1 font-semibold">{item.name}</h3></div><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.description}</p><p className="mt-3 text-xs text-stone-500">Default timeframe: {(item.timeframes || []).join(", ")}</p><p className="mt-2 text-xs text-stone-500">Strategy code owns entry, initial stop/target and next-bar position management (including breakeven, trailing rules and partial exits). The run screen owns account sizing, execution costs, schedule and account guardrails.</p>{item.risk_management && Object.keys(item.risk_management).length > 0 && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{Object.entries(item.risk_management).map(([label,value]) => <div key={label} className="mt-1"><strong>{label}:</strong> {value}</div>)}</div>}{(item.research_parameters || []).length > 0 && <p className="mt-3 text-xs text-stone-500"><strong>Research-only sensitivity:</strong> {(item.research_parameters || []).map((p) => p.label).join(", ")}. These do not appear on ordinary runs.</p>}</div>)}</section>}
     {tab === "Indicators" && <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{indicators.map((item) => <div key={item.key} className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-semibold">{item.name}</h3><code className="rounded bg-stone-100 px-2 py-1 text-xs">{item.key}</code></div><p className="mt-3 text-sm text-stone-600">{item.overlay ? "Price-chart overlay" : "Separate/pane indicator"}</p><p className="mt-2 text-xs text-stone-500">Defaults: {Object.entries(item.defaults || {}).map(([k,v]) => `${k}=${v}`).join(", ") || "None"}</p></div>)}</section>}
@@ -313,7 +325,25 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   </div>;
 }
 
-function BacktestResults({ result, onUseSettings, onBackToRuns }) {
+function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns }) {
+  const [result,setResult]=useState(initialResult);
+  const [sectionBusy,setSectionBusy]=useState(''),[sectionError,setSectionError]=useState('');
+  const loaded=useRef(new Set(initialResult._lazy?['summary']:['summary','trades','analysis']));
+  const generation=useRef(0);
+  useEffect(()=>{generation.current++;setResult(initialResult);loaded.current=new Set(initialResult._lazy?['summary']:['summary','trades','analysis']);setSectionBusy('');setSectionError('');},[initialResult]);
+  const loadSection=async(section)=>{
+    if(loaded.current.has(section))return result;
+    const current=generation.current;setSectionBusy(`Loading ${section}...`);setSectionError('');
+    try{
+      const sections=section==='analysis'?['trades','analysis']:[section];
+      const responses=await Promise.all(sections.filter(s=>!loaded.current.has(s)).map(s=>runSections.get(result.saved_run.id,s)));
+      if(current!==generation.current)return;
+      const merged={...result};for(const response of responses){Object.assign(merged,response.result);loaded.current.add(response.section)}
+      setResult(merged);return merged;
+    }catch(e){if(current===generation.current)setSectionError(e.message);}
+    finally{if(current===generation.current)setSectionBusy('');}
+  };
+
   const {open}=useWorkflow();
   const m = result.metrics || {};
   const [viewerTab, setViewerTab] = useState("Summary");
@@ -334,24 +364,27 @@ function BacktestResults({ result, onUseSettings, onBackToRuns }) {
   const exitReasons = [...new Set(trades.map((trade) => trade.exit_reason).filter(Boolean))].sort();
   useEffect(() => { setViewerTab("Summary"); setAuditTrade(null); setExpandedChart(null); }, [result.saved_run?.id]);
   const openEventTrade = useCallback((event) => {
+    if(!loaded.current.has('trades')){loadSection('trades').then(data=>{const match=data?.trades?.find(t=>t.symbol===event.symbol&&t.exit_time===event.exit_time);if(match){setExpandedChart(null);setViewerTab('Trades');setAuditTrade(match)}});return;}
     const match = trades.find((trade) => trade.symbol === event.symbol && trade.exit_time === event.exit_time) || trades.find((trade) => trade.symbol === event.symbol && trade.exit_reason === event.exit_reason);
     if (match) { setExpandedChart(null); setViewerTab("Trades"); setAuditTrade(match); }
   }, [trades]);
   const runTitle = result.saved_run?.name || result.run_name || result.strategy?.name || "Backtest result";
   const runId = result.saved_run?.id;
+  const [exportBusy,setExportBusy]=useState(false);
   const [exportError,setExportError]=useState('');
-  const exportFullRun=async()=>{try{setExportError('');const snapshot=runId?await api.strategyLabRun(runId):result;downloadJson(snapshot,runExportFilename(result,'full.json'));}catch(e){setExportError(e.message);}};
+  const exportFullRun=async()=>{if(exportBusy)return;setExportBusy(true);try{setExportError('');const snapshot=runId?await api.strategyLabRun(runId):result;downloadJson(snapshot,runExportFilename(result,'full.json'));notifyActivity({title:'Export ready',detail:'Saved run JSON downloaded.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const symbols = (result.symbols || []).join(" · ") || "—";
 
   return <section className="mt-5">
-    <div className="ui-toolbar mb-3"><button className="mini-btn" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" onClick={()=>downloadCsv(backtestExportRows(result),runExportFilename(result,'all-trades.csv'))}>Export all trades CSV</button><button className="mini-btn" onClick={exportFullRun}>Export full run JSON</button>{exportError&&<p role="alert">{exportError}</p>}</div>
+    {sectionBusy&&<p role="status" aria-busy="true">{sectionBusy}</p>}{sectionError&&<p role="alert">{sectionError} <button className="mini-btn" onClick={()=>loadSection(viewerTab.toLowerCase())}>Retry loading</button></p>}
+    <div className="ui-toolbar mb-3"><button className="mini-btn" disabled={!loaded.current.has("trades")} title="Open Trades first to export filtered trades" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" disabled={!!sectionBusy} onClick={async()=>{const data=await loadSection("trades");if(data)downloadCsv(backtestExportRows(data),runExportFilename(data,"all-trades.csv"))}}>Export all trades CSV</button><button className="mini-btn" disabled={exportBusy} onClick={exportFullRun}>{exportBusy?"Preparing export...":"Export full run JSON"}</button>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500">Run Viewer</p><h3 className="mt-1 truncate text-xl font-semibold">{runId ? `#${runId} · ` : ""}{runTitle}</h3><p className="mt-1 text-xs text-stone-500">{result.strategy?.name || result.strategy?.key || "Strategy"} · {symbols} · {result.primary_timeframe || "—"} · {result.start_date || result.data?.requested_start || "—"} → {result.end_date || result.data?.requested_end || "—"}</p></div>
         <div className="ui-toolbar">{runId && <button className="mini-btn" onClick={()=>onUseSettings?.(runId)}>Use settings</button>}<button className="mini-btn" onClick={onBackToRuns}>Back to Runs</button></div>
       </div>
       <p className="mt-2 break-all text-xs text-stone-500">{result.strategy?.implementation?.source_sha256?`Recorded strategy SHA-256: ${result.strategy.implementation.source_sha256}`:'Historical run: strategy source fingerprint was not recorded.'}</p>
-      <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3" role="tablist" aria-label="Run viewer sections">{["Summary","Trades","Analysis"].map(item=><button key={item} role="tab" aria-selected={viewerTab===item} className={`mini-btn ${viewerTab===item?"active-btn":""}`} onClick={()=>setViewerTab(item)}>{item}{item==="Trades"?` (${trades.length})`:""}</button>)}</div>
+      <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3" role="tablist" aria-label="Run viewer sections">{["Summary","Trades","Analysis"].map(item=><button key={item} role="tab" aria-selected={viewerTab===item} className={`mini-btn ${viewerTab===item?"active-btn":""}`} onClick={()=>{setViewerTab(item);if(item!=="Summary")loadSection(item.toLowerCase())}}>{item}{item==="Trades"?` (${m.trades??trades.length})`:""}</button>)}</div>
     </div>
 
     {(result.data?.warnings || []).map((warning) => <p key={warning} className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">{warning}</p>)}
@@ -373,20 +406,20 @@ function BacktestResults({ result, onUseSettings, onBackToRuns }) {
 
       {result.strategy?.key === "momentum_vcp_breakout_baseline_v1" && <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="font-semibold">Detected breakout setups</h3><p className="mt-1 text-xs text-stone-500">All qualifying breakouts, including entries rejected at the next open. Setup counts are separate from portfolio performance.</p>
-        {!(result.setups || []).length && <p className="mt-3 text-sm">No qualifying setups in the completed data after warm-up.</p>}
+        {!loaded.current.has("analysis")&&<button className="mini-btn" onClick={()=>loadSection("analysis")}>Load setup diagnostics</button>}{loaded.current.has("analysis")&&!(result.setups || []).length && <p className="mt-3 text-sm">No qualifying setups in the completed data after warm-up.</p>}
         {(result.setups || []).map((setup, index) => <details key={`${setup.symbol}-${setup.detected_at}-${index}`} className="mt-3 rounded-lg border border-stone-200 p-3"><summary className="cursor-pointer text-sm"><strong>{setup.symbol}</strong> · {setup.metadata?.breakout_date} · {setup.status.replaceAll("_", " ")}{setup.resolution_reason ? ` · ${setup.resolution_reason.replaceAll("_", " ")}` : ""}</summary><dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">{Object.entries({ ...setup.metadata, ...setup.outcome }).filter(([, value]) => typeof value !== "object" || value === null).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-stone-500">{key.replaceAll("_", " ")}</dt><dd className="break-words">{value == null ? "—" : typeof value === "number" ? number(value) : String(value)}</dd></div>)}</dl></details>)}
       </section>}
-      <section className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 text-xs text-stone-600"><strong>Execution assumptions:</strong> signal {result.execution_model?.signal_timing?.replaceAll("_", " ")} → fill {result.execution_model?.entry_timing?.replaceAll("_", " ")}; same-bar policy {result.execution_model?.same_bar_policy?.replaceAll("_", " ")}; stop gaps {result.execution_model?.stop_gap_policy?.replaceAll("_", " ")}; overnight {result.execution_model?.allow_overnight ? "allowed" : `disabled · flatten ${result.execution_model?.force_close_time} ET`}. Rejected entry signals: {(result.rejected_signals || []).length}.{(result.rejected_signal_summary || []).length > 0 && <span className="ml-1">{(result.rejected_signal_summary || []).map((item) => `${String(item.reason).replaceAll("_", " ")} (${item.count})`).join(" · ")}</span>}</section>
+      <section className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 text-xs text-stone-600"><strong>Execution assumptions:</strong> signal {result.execution_model?.signal_timing?.replaceAll("_", " ")} → fill {result.execution_model?.entry_timing?.replaceAll("_", " ")}; same-bar policy {result.execution_model?.same_bar_policy?.replaceAll("_", " ")}; stop gaps {result.execution_model?.stop_gap_policy?.replaceAll("_", " ")}; overnight {result.execution_model?.allow_overnight ? "allowed" : `disabled · flatten ${result.execution_model?.force_close_time} ET`}. Rejected entry signals: {loaded.current.has("analysis")?(result.rejected_signals || []).length:"load Analysis for details"}.{(result.rejected_signal_summary || []).length > 0 && <span className="ml-1">{(result.rejected_signal_summary || []).map((item) => `${String(item.reason).replaceAll("_", " ")} (${item.count})`).join(" · ")}</span>}</section>
     </>}
 
-    {viewerTab === "Trades" && <section className="mt-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+    {viewerTab === "Trades" && loaded.current.has("trades") && <section className="mt-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter the complete run and open any trade on its historical chart. MFE/MAE are conservative lower bounds: exit-bar OHLC ordering is unknown. Giveback = MFE minus realised R.</p></div><div className="ui-toolbar"><span className="text-xs text-stone-500">Showing {visibleTrades.length} of {filtered.length} matching trades</span>{filtered.length>20&&<button className="mini-btn" onClick={()=>setShowAllTrades(v=>!v)}>{showAllTrades?"Show 20":"Expand all"}</button>}</div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","MFE (R)","MAE (R)","Hold minutes","Giveback (R)","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleTrades.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`}><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td>{["mfe_r","mae_r","minutes_in_trade","giveback_r"].map(key=><td key={key} className="px-3 py-3">{displayDiagnostic(tradeDiagnostics(trade)[key])}</td> )}<td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
       {!filtered.length && <p className="p-8 text-center text-sm text-stone-500">No trades match these filters.</p>}
     </section>}
 
-    {viewerTab === "Analysis" && <><AnalysisPanel analysis={result.analysis || {}} trades={trades} /><ExcursionAnalysis trades={trades}/>{result.strategy?.key==='opening_range_breakout_research_v1'&&<OrbDiagnosticAnalysis trades={trades}/>}</>}
-    {auditTrade && <TradeAuditChart trade={auditTrade} timeframe={result.primary_timeframe} session={result.session} onClose={() => setAuditTrade(null)} />}
+    {viewerTab === "Analysis" && loaded.current.has("analysis") && <><AnalysisPanel analysis={result.analysis || {}} trades={trades} /><ExcursionAnalysis trades={trades}/>{result.strategy?.key==='opening_range_breakout_research_v1'&&<OrbDiagnosticAnalysis trades={trades}/>}</>}
+    {auditTrade && <TradeAuditChart run={result} tradeIndex={trades.indexOf(auditTrade)} trade={auditTrade} timeframe={result.primary_timeframe} session={result.session} onClose={() => setAuditTrade(null)} />}
   </section>;
 }
 

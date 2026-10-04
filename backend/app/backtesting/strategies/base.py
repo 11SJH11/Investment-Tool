@@ -40,6 +40,8 @@ class StrategySpec:
     category: str = "Reference"
     risk_management: dict[str, str] = field(default_factory=dict)
     source_file: str = ""
+    # Optional presentation/evidence declarations; never consulted by trading rules.
+    review_config: dict[str, Any] = field(default_factory=dict)
 
 
 class Strategy(ABC):

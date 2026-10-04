@@ -1,13 +1,28 @@
+import {notifyActivity,beginRequest,requestLabel} from '../app/activityEvents.js';
 import {chartRequests,stableKey} from "./chartRequests.js";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
 async function request(path, options = {}) {
+  const label=requestLabel(path,options.method||'GET');
+  const finish=label?beginRequest(label):()=>{};
+  try{return await rawRequest(path,options)}finally{finish()}
+}
+async function rawRequest(path, options = {}) {
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const profileRun=path.includes("/runs/");const started=performance.now();
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) },
   });
-  const body = await response.json().catch(() => ({}));
+  let body;
+  if(profileRun){
+    const headersAt=performance.now(),text=await response.text(),bodyAt=performance.now();
+    try{body=JSON.parse(text)}catch{body={}}
+    const parsedAt=performance.now();
+    for(const [name,start,end] of [['headers',started,headersAt],['body',headersAt,bodyAt],['json-parse',bodyAt,parsedAt]]){
+      const key=`ledger.saved-run.${name}`;if(performance.getEntriesByName(key).length>=20)performance.clearMeasures(key);performance.measure(key,{start,end});
+    }
+  }else body=await response.json().catch(()=>({}));
   if (!response.ok) {
     const detail = body?.detail;
     let message = `Request failed (${response.status})`;
@@ -15,6 +30,10 @@ async function request(path, options = {}) {
     else if (Array.isArray(detail)) message = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
     else if (detail && typeof detail === "object") message = detail.message || JSON.stringify(detail);
     throw Object.assign(new Error(message),{status:response.status});
+  }
+  if(options.method && options.method!=='GET'){
+    const title=path.endsWith('/sync')?'Broker sync completed':path.includes('/settings')?'Settings saved':null;
+    if(title)notifyActivity({title,detail:'Operation completed.'});
   }
   return body;
 }
@@ -28,6 +47,8 @@ function queryString(params) {
 }
 
 export const api = {
+  tradeReview: (id,index,before,after,extended=false)=>request(`/strategy-lab/runs/${id}/trades/${index}/review?before=${before}&after=${after}&extended=${extended}`),
+  strategyLabRunSection: (id,section)=>request(`/strategy-lab/runs/${id}/sections/${section}`),
   scan:query=>request("/screener/query",{method:"POST",body:JSON.stringify(query)}),
   refreshTechnicals:()=>request("/screener/refresh/technicals",{method:"POST"}),
   technicalStatus:()=>request("/screener/refresh/technicals"),

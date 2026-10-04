@@ -1,3 +1,4 @@
+import ActivityCentre from './ActivityCentre.jsx';
 import ReplayLeaveGuard,{useReplayLeaveGuard} from './ReplayLeaveGuard.jsx';
 import {WorkflowContext} from "./WorkflowContext.js";
 import {workflowContext} from "./workflow.js";
@@ -29,7 +30,7 @@ function AppContent(){
  const order=(prefs.navOrder||sections).filter(x=>sections.includes(x)); const missing=sections.filter(x=>!order.includes(x)); const nav=[...order,...missing];
  const openCharts=t=>openWorkflow("Charts",{symbol:t});
  const workspacePage = active === "Charts" || active === "Replay";
- return <WorkflowContext.Provider value={{open:openWorkflow,context}}><div className="app-shell"><TopNav sections={nav} active={active} onSelect={selectPage}/><main id="workspace" className={`app-workspace ${workspacePage ? "chart-workspace" : ""}`}>
+ return <WorkflowContext.Provider value={{open:openWorkflow,context}}><div className="app-shell"><TopNav sections={nav} active={active} onSelect={selectPage} activity={<ActivityCentre onOpen={destination=>openWorkflow("Backtest",destination)}/>}/><main id="workspace" className={`app-workspace ${workspacePage ? "chart-workspace" : ""}`}>
 
   {active==="Dashboard"&&<DashboardPage onNavigate={selectPage}/>}
   {active==="Screener"&&<ScreenerPage onOpenTicker={openCharts} onWorkflow={openWorkflow}/>}

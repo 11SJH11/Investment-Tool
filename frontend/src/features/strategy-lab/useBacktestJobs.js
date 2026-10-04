@@ -1,3 +1,4 @@
+import {notifyActivity} from '../../app/activityEvents.js';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {api} from '../../api/client';
 import {jobStatus} from './researchPolling.js';
@@ -23,7 +24,7 @@ export default function useBacktestJobs(onComplete) {
     // same submission cannot duplicate jobs already accepted by the server.
     const signature=JSON.stringify(runs);
     if(pending.current?.signature!==signature)pending.current={signature,key:crypto.randomUUID()};
-    await api.queueBacktests(runs,pending.current.key);pending.current=null;await refresh();
+    await api.queueBacktests(runs,pending.current.key);pending.current=null;notifyActivity({title:'Backtests queued',detail:`${runs.length} independent run(s). Continue working; results open only when you choose.`});await refresh();
   };
   const cancel=async id=>{await api.cancelBacktestJob(id);await refresh();};
   const retry=async id=>{await api.retryBacktestJob(id,crypto.randomUUID());await refresh();};

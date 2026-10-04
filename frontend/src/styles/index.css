@@ -487,3 +487,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible {outline:2px solid va
 .analysis-breakdown-dimensions span { padding:.25rem .45rem; border-radius:999px; border:1px solid var(--ledger-border); background:var(--ledger-surface-2); font-size:.68rem; }
 .metric-chart-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
 .metric-chart-head select { width:auto; min-width:120px; }
+
+.activity-centre{position:fixed;right:16px;top:64px;width:min(720px,calc(100vw - 32px));max-height:calc(100vh - 80px);overflow:auto;z-index:80;padding:20px;background:var(--ledger-surface,#171717);border:1px solid var(--ledger-border,#444);border-radius:12px;box-shadow:0 12px 40px #0006}
+.activity-toasts{position:fixed;right:16px;bottom:16px;width:min(380px,calc(100vw - 32px));z-index:100;display:grid;gap:8px}
+.activity-toast{padding:14px;background:var(--ledger-surface,#171717);border:1px solid var(--ledger-border,#444);border-radius:10px;box-shadow:0 8px 25px #0004}

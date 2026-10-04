@@ -1,5 +1,7 @@
+import {createSectionCache} from './runSections.js';
+const reviewCache=createSectionCache((id,args)=>api.tradeReview(id,...JSON.parse(args)),6,60000);
 import { useEffect, useRef, useState } from "react";
-import { CandlestickSeries, ColorType, HistogramSeries, createChart, createSeriesMarkers } from "lightweight-charts";
+import { CandlestickSeries, LineSeries, ColorType, HistogramSeries, createChart, createSeriesMarkers } from "lightweight-charts";
 import { api } from "../../api/client";
 import { TIMEZONE_OPTIONS, resolvedZone } from "../../utils/timezones";
 
@@ -19,7 +21,7 @@ function chartTime(time, zone, withDate = false) {
   }).format(new Date(Number(time) * 1000));
 }
 
-export default function TradeAuditChart({ trade, timeframe: initialTimeframe, session: initialSession, onClose }) {
+export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: initialTimeframe, session: initialSession, onClose }) {
   const [bars, setBars] = useState([]);
   const [auditMeta, setAuditMeta] = useState(null);
   const [error, setError] = useState("");
@@ -29,6 +31,9 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
   const [timeZone, setTimeZone] = useState("America/New_York");
   const [beforeBars, setBeforeBars] = useState(50);
   const [afterBars, setAfterBars] = useState(20);
+  const [extendedHistory,setExtendedHistory]=useState(false);
+  const [showResearch,setShowResearch]=useState(false);
+  const [showEvidence,setShowEvidence]=useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [showLevels, setShowLevels] = useState(true);
   const [showMarkers, setShowMarkers] = useState(true);
@@ -42,17 +47,19 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
   useEffect(() => {
     const requestedBefore = Math.max(0, Math.min(500, Number(beforeBars) || 0));
     const requestedAfter = Math.max(0, Math.min(200, Number(afterBars) || 0));
-    const timer = globalThis.setTimeout(() => {
-      setLoading(true); setError("");
-      api.strategyLabAuditBars(
-        trade.symbol, timeframe, session, trade.entry_time, trade.exit_time, requestedBefore, requestedAfter,
-      )
-        .then((data) => { setBars(data.bars || []); setAuditMeta(data); })
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => globalThis.clearTimeout(timer);
-  }, [trade, timeframe, session, beforeBars, afterBars]);
+    let stale=false;setLoading(true);setError("");setAuditMeta(null);
+    const timer = globalThis.setTimeout(async () => {
+      try{
+        let data;
+        if(run?.saved_run?.id!=null&&tradeIndex>=0){
+          data=await reviewCache.get(run.saved_run.id,JSON.stringify([tradeIndex,requestedBefore,requestedAfter,extendedHistory]));
+          if(timeframe!==initialTimeframe||session!==initialSession){const chart=await api.strategyLabAuditBars(data.symbol,timeframe,session,trade.entry_time,trade.exit_time,requestedBefore,requestedAfter);data={...data,...chart,review:data.review};}
+        }else data=await api.strategyLabAuditBars(trade.symbol,timeframe,session,trade.entry_time,trade.exit_time,requestedBefore,requestedAfter);
+        if(!stale){setBars(data.bars||[]);setAuditMeta(data)}
+      }catch(e){if(!stale)setError(e.message)}finally{if(!stale)setLoading(false)}
+    }, 150);
+    return () => {stale=true;globalThis.clearTimeout(timer)};
+  }, [trade, run?.saved_run?.id, tradeIndex, timeframe, session, beforeBars, afterBars, extendedHistory]);
 
   useEffect(() => {
     if (loading || !ref.current || !bars.length) return undefined;
@@ -83,7 +90,20 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
     const clean = bars.map((bar) => ({
       time: seconds(bar.timestamp), open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close), volume: Number(bar.volume || 0),
     })).filter((bar) => Number.isFinite(bar.time) && !seen.has(bar.time) && seen.add(bar.time)).sort((a, b) => a.time - b.time);
-    candles.setData(clean.map(({ volume: _, ...bar }) => bar));
+    const highlights=new Map((auditMeta?.review?.highlights||[]).map(h=>[seconds(h.timestamp),h.kind]));
+    candles.setData(clean.map(({volume:_,...bar})=>showEvidence&&highlights.has(bar.time)?{...bar,color:highlights.get(bar.time)==='entry'?'#38bdf8':'#fbbf24',wickColor:highlights.get(bar.time)==='entry'?'#38bdf8':'#fbbf24'}:bar));
+    if(showEvidence||showResearch){
+      let pane=0;
+      const palette=['#60a5fa','#a78bfa','#a78bfa','#fbbf24'];
+      for(const [index,series] of (auditMeta?.review?.series||[]).entries()){
+        if(series.role==='research_only'?!showResearch:!showEvidence)continue;
+        const line=chart.addSeries(LineSeries,{color:palette[index%palette.length],lineWidth:series.id.includes('_upper')||series.id.includes('_lower')?1:2,title:series.label,priceLineVisible:false,lastValueVisible:false},series.overlay?0:++pane);
+        const points=series.points||[];let cursor=-1;const output=[];
+        const minutes={'1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'4h':240,'1d':1440}[timeframe];
+        for(const bar of clean){while(cursor+1<points.length&&seconds(points[cursor+1].available_at)<=bar.time+minutes*60)cursor++;if(cursor>=0&&seconds(points[cursor].timestamp)<=bar.time+minutes*60)output.push({time:bar.time,value:points[cursor].value});}
+        line.setData(output);
+      }
+    }
     if (volume) volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: bar.close >= bar.open ? "rgba(34,197,94,.30)" : "rgba(239,68,68,.30)" })));
 
     if (showLevels) {
@@ -101,10 +121,8 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
         [meta.base_low, "Base low", 1, 3],
         [meta.or_high, "Opening range high", 1, 2],
         [meta.or_low, "Opening range low", 1, 2],
-        [meta.vwap, "Confirmation VWAP", 2, 2],
-        [meta.upper_band, "Confirmation +2 SD", 1, 3],
-        [meta.lower_band, "Confirmation -2 SD", 1, 3],
       ];
+      for(const level of auditMeta?.review?.levels||[])levels.push([level.value,level.label,1,2]);
       const seenLevels = new Set();
       levels.forEach(([price, title, lineWidth, lineStyle]) => {
         if (price == null || !Number.isFinite(Number(price))) return;
@@ -156,12 +174,17 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
           shape: "circle", color: "#a16207", text: `PARTIAL ${Number(partial.fraction_of_remaining || 0) * 100}%`,
         });
       }
+      for(const window of auditMeta?.config?.entry_windows||[]){
+        for(const [clock,label] of [[window.start,'ENTRY WINDOW'],[window.end,'WINDOW END']]){
+          for(const bar of clean){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(bar.time*1000)).map(p=>[p.type,p.value]));if(`${parts.hour}:${parts.minute}`===clock)markers.push({time:bar.time,position:'belowBar',shape:'circle',color:'#64748b',text:label});}
+        }
+      }
       markers.sort((a, b) => a.time - b.time);
       if (markers.length) createSeriesMarkers(candles, markers);
     }
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [bars, trade, loading, showVolume, showLevels, showMarkers, timeZone, expanded]);
+  }, [bars, trade, loading, showVolume, showLevels, showMarkers, timeZone, expanded, showEvidence, showResearch, auditMeta, timeframe]);
 
   const body = <>
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -208,7 +231,11 @@ export default function TradeAuditChart({ trade, timeframe: initialTimeframe, se
     {showReasoning && <Reasoning trade={trade} />}
     <button onClick={() => setShowReasoning((value) => !value)} className="mt-3 text-xs font-medium underline">{showReasoning ? "Hide" : "Show"} strategy reasoning</button>
 
-    {loading && <div className="mt-4 flex h-[300px] items-center justify-center bg-stone-950 text-sm text-stone-300">Loading audit candles…</div>}
+    {auditMeta?.review&&<section className="ui-section" aria-label="Trade decision evidence"><div className="ui-toolbar"><h3>Strategy evidence</h3>{auditMeta.review.series.some(s=>s.role==='research_only')&&<label><input type="checkbox" checked={showResearch} onChange={e=>setShowResearch(e.target.checked)}/> Research overlays (not used by strategy)</label>}{auditMeta.review.extended_available&&<label><input type="checkbox" checked={extendedHistory} onChange={e=>setExtendedHistory(e.target.checked)}/> Reconstruct extended indicator history (slower first load)</label>}<label><input type="checkbox" checked={showEvidence} onChange={e=>setShowEvidence(e.target.checked)}/> Show historical series and confirmation candles</label></div><p className="text-xs">Blue candles: entry confirmation. Amber: exit confirmation. Volume is research only unless explicitly declared by the strategy. Dynamic indicators are never replaced by horizontal signal values.</p>
+      <div className="ui-toolbar">{auditMeta.review.series.map(series=><span className="text-xs" key={series.id}>{series.label} / {series.timeframe} / {series.role==='research_only'?'Research only':'Strategy evidence'} / reconstructed</span>)}</div>
+      {auditMeta.review.warnings.map((warning,i)=><p className="text-xs muted" key={i}>{warning}</p>)}
+      <div className="grid gap-4 lg:grid-cols-2">{['entry','exit'].map(group=><details open key={group}><summary>{group==='entry'?'Why this trade entered':'Why this trade exited'}</summary><dl className="text-xs space-y-2 mt-2">{auditMeta.review.evidence[group].map((field,i)=><div key={i} className="flex flex-wrap justify-between gap-2"><dt>{field.label}</dt><dd>{field.value==null?'Not recorded':Array.isArray(field.value)?field.value.map(v=>typeof v==='object'?`${v.start}-${v.end}`:String(v)).join(', '):String(field.value)} <span className="muted">/ {field.provenance.replaceAll('_',' ')}</span> {field.status&&<strong>{field.status}</strong>}</dd></div>)}</dl></details>)}</div></section>}
+      {loading && <div className="mt-4 flex h-[300px] items-center justify-center bg-stone-950 text-sm text-stone-300">Loading audit candles…</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     {!loading && !error && <div ref={ref} className={expanded ? "mt-4 h-[calc(100vh-250px)] min-h-[650px] w-full overflow-hidden rounded-lg" : "mt-4 h-[500px] w-full overflow-hidden rounded-lg"} />}
     <p className="mt-3 text-xs text-stone-500">Times are displayed in the selected timezone; stored timestamps remain UTC. The chart uses the same {timeframe} / {session} market-data path as the backtest. “Bars before/after” now counts displayed session-filtered candles rather than wall-clock minutes. Markers attach to the nearest displayed OHLCV bar, so exact intrabar execution time cannot be recovered from bar data alone.</p>

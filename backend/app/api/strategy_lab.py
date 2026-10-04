@@ -211,6 +211,33 @@ def list_research(compact: bool = False, services: AppServices = Depends(get_ser
     return {'experiments': ResearchExperimentRepository(services.backtest_jobs.database).list()}
 
 
+@router.get("/runs/{run_id}/trades/{trade_index}/review")
+def trade_review(run_id: int, trade_index: int, before: int = Query(50, ge=0, le=500), after: int = Query(20, ge=0, le=200), extended: bool = False, services: AppServices = Depends(get_services)):
+    from app.services.trade_review import review_trade
+    if trade_index < 0:
+        raise HTTPException(400, "Invalid trade index")
+    try:
+        return review_trade(services.backtest,run_id,trade_index,before,after,extended)
+    except ValueError as exc:
+        raise HTTPException(404,str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/sections/{section}")
+def backtest_run_section(run_id: int, section: str, services: AppServices = Depends(get_services)):
+    from app.performance import Profile
+    if section not in {"summary", "trades", "analysis"}:
+        raise HTTPException(status_code=400, detail="Unknown run section")
+    try:
+        if services.backtest.runs is None:
+            raise ValueError("Backtest run history is unavailable")
+        with Profile() as profile:
+            result = services.backtest.runs.get_section(run_id, section)
+        result["performance"] = profile.snapshot()
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/runs/{run_id}")
 def backtest_run(run_id: int, services: AppServices = Depends(get_services)):
     try:

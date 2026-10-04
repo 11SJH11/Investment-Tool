@@ -95,6 +95,38 @@ class BacktestRunRepository:
         item["result"] = _loads(item.pop("result_json", None), {})
         return item
 
+    def get_section(self, run_id: int, section: str) -> dict[str, Any]:
+        """Project immutable snapshots in SQLite; never deserialize trades for summary.
+
+        SQLite must still inspect the original JSON. No destructive migration or
+        second copy of historical results is required.
+        """
+        if section not in {"summary", "trades", "analysis"}:
+            raise ValueError("Unknown run section")
+        fields = {
+            "trades": ["trades"],
+            "analysis": ["analysis", "setups", "rejected_signals"],
+        }
+        if section == "summary":
+            projection = "json_remove(result_json, '$.trades', '$.analysis', '$.setups', '$.rejected_signals')"
+        else:
+            projection = "json_object(" + ",".join(f"'{key}',json_extract(result_json, '$.{key}')" for key in fields[section]) + ")"
+        with measure("saved_run.sqlite_projection"):
+            with self.database.connect() as connection:
+                row = connection.execute(
+                    f"SELECT id,name,notes,test_role,tags,created_at,config_json,{projection} AS result_json FROM backtest_runs WHERE id=?",
+                    (int(run_id),),
+                ).fetchone()
+        if row is None:
+            raise ValueError(f"Backtest run {run_id} was not found")
+        with measure("saved_run.json_decode"):
+            item = dict(row)
+            item["config"] = _loads(item.pop("config_json"), {})
+            item["result"] = _loads(item.pop("result_json"), {})
+            item["tags"] = _loads(item.get("tags"), [])
+        item["section"] = section
+        return item
+
     def list_by_experiment(self, experiment_group: str) -> list[dict[str, Any]]:
         group = str(experiment_group or "").strip()
         if not group:

@@ -1,3 +1,4 @@
+import {notifyActivity} from '../../app/activityEvents.js';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {api} from '../../api/client';
 
@@ -20,7 +21,7 @@ export default function ResearchExperimentPanel({strategy,buildPayload,refresh,o
   useEffect(()=>setPreview(null),[signature]);
   const request=()=>{if(pending.current?.signature!==signature)pending.current={signature,key:crypto.randomUUID()};return {...JSON.parse(signature),tags:tags.split(',').map(t=>t.trim()).filter(Boolean),request_key:pending.current.key};};
   const verify=async()=>{setBusy(true);try{const payload=request(),result=await api.previewResearchExperiment(payload);setPreview({plan:result,payload,signature});}catch(e){onError?.(e.message);}finally{setBusy(false);}};
-  const submit=async()=>{if(preview?.signature!==signature)return;setBusy(true);try{const result=await api.submitResearchExperiment(preview.payload);pending.current=null;setPreview(null);setLast({group:result.experiment_group,count:result.job_count});await refresh?.();onOpenExperiment?.(result.experiment_group);}catch(e){onError?.(e.message);}finally{setBusy(false);}};
+  const submit=async()=>{if(preview?.signature!==signature)return;setBusy(true);try{const result=await api.submitResearchExperiment(preview.payload);pending.current=null;setPreview(null);setLast({group:result.experiment_group,count:result.job_count});notifyActivity({title:'Research queued',detail:`${result.job_count} simulations. Follow progress in Activity.`});await refresh?.();}catch(e){onError?.(e.message);}finally{setBusy(false);}};
   const changeAxis=(i,next)=>setAxes(old=>old.map((a,j)=>j===i?next:a));
   return <section className="p-4 space-y-4 min-w-0">
     <p className="text-sm">Configure exact parameter research here. Completed/running experiment results open in the dedicated Research Viewer and remain persisted under Runs → Research experiments.</p>

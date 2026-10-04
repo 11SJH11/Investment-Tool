@@ -159,3 +159,8 @@ Queue/compute polling shares one in-flight request and stops when idle. An open
 research viewer polls compact status/cell metrics; full snapshots load when opened.
 Manual refresh/focus finds work submitted by another client. Old running backends
 fall back to full experiment reads until their next normal restart.
+
+
+Current background work, integrated parameter sweeps and progressive saved results
+are described in [Backtest usability and Trade Review](BACKTEST_REVIEW_USABILITY.md).
+The former page-local Jobs panel now lives in global Activity.

@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.backtesting.engine import BacktestEngine
+from app.backtesting.review_contracts import review_contract
 from app.backtesting.models import BacktestConfig
 from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
 from app.backtesting.strategies.momentum_vcp_breakout_baseline_v1 import KEY as MOMENTUM_KEY
@@ -245,7 +246,7 @@ class BacktestService:
                 progress=lambda done, total: progress('running', done, total),
             )
         result.update({
-            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance},
+            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance, "review_config": review_contract(strategy_spec)},
             "symbols": symbols,
             "primary_timeframe": primary,
             "additional_timeframes": additional,

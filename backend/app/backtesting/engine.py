@@ -285,6 +285,10 @@ class BacktestEngine:
                 )
                 decision = strategy.on_bar(ctx)
                 if isinstance(decision, EntrySignal):
+                    from app.backtesting.review_contracts import record_decision
+                    evidence = record_decision(strategy, ctx)
+                    if evidence is not None:
+                        decision = replace(decision, metadata={**decision.metadata, "review_entry": evidence})
                     current = _row_to_series(primary_rows[symbol][timestamp])
                     source = execution_contract(symbol,current)
                     if 'source_contract' in current:
@@ -344,6 +348,10 @@ class BacktestEngine:
                             setup_record.update({"status": "filtered", "resolution_time": decision_time.isoformat(), "resolution_reason": reason})
                 elif isinstance(decision, ExitSignal):
                     if symbol in positions:
+                        from app.backtesting.review_contracts import record_decision
+                        evidence = record_decision(strategy, ctx)
+                        if evidence is not None:
+                            positions[symbol].metadata["review_exit"] = evidence
                         pending_management.pop(symbol, None)
                         pending_exits[symbol] = decision
                 elif isinstance(decision, ManagePositionSignal):
