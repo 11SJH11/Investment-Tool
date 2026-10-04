@@ -1,3 +1,4 @@
+import {navigationState,navigationKey,tradeReference,detailWindow} from './reviewNavigation.js';
 import {createSectionCache} from './runSections.js';
 const reviewCache=createSectionCache((id,args)=>api.tradeReview(id,...JSON.parse(args)),6,60000);
 import { useEffect, useRef, useState } from "react";
@@ -21,7 +22,7 @@ function chartTime(time, zone, withDate = false) {
   }).format(new Date(Number(time) * 1000));
 }
 
-export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: initialTimeframe, session: initialSession, onClose }) {
+export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: initialTimeframe, session: initialSession, onClose, navigationTrades=[], onNavigate, capture=null }) {
   const [bars, setBars] = useState([]);
   const [auditMeta, setAuditMeta] = useState(null);
   const [error, setError] = useState("");
@@ -30,8 +31,8 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
   const [session, setSession] = useState(initialSession || "regular");
   const [timeZone, setTimeZone] = useState("America/New_York");
   const [beforeBars, setBeforeBars] = useState(50);
-  const [afterBars, setAfterBars] = useState(20);
-  const [extendedHistory,setExtendedHistory]=useState(false);
+  const [afterBars, setAfterBars] = useState(capture ? 25 : 20);
+  const [extendedHistory,setExtendedHistory]=useState(Boolean(capture));
   const [showResearch,setShowResearch]=useState(false);
   const [showEvidence,setShowEvidence]=useState(true);
   const [showVolume, setShowVolume] = useState(true);
@@ -41,6 +42,10 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
   const [expanded, setExpanded] = useState(false);
   const ref = useRef(null);
 
+  const navigation=navigationState(navigationTrades,trade);
+  useEffect(()=>{if(!onNavigate)return;const handler=event=>{const key=navigationKey(event);if(key&&navigation[key]){event.preventDefault();onNavigate(navigation[key]);}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[navigation.previous,navigation.next,onNavigate]);
+  useEffect(()=>{if(!capture&&onNavigate)document.getElementById('trade-review-navigation')?.scrollIntoView({block:'start'});},[trade]);
+  useEffect(()=>{if(capture&&!loading&&(error||!bars.length))capture.done({review:auditMeta?.review||{},images:[],warning:error||'Historical candles unavailable; not recorded.'});},[loading,error,bars,auditMeta,capture]);
   useEffect(() => { setTimeframe(initialTimeframe || "5m"); }, [initialTimeframe]);
   useEffect(() => { setSession(initialSession || "regular"); }, [initialSession]);
 
@@ -69,7 +74,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       grid: { vertLines: { color: getComputedStyle(document.documentElement).getPropertyValue("--ledger-chart-grid").trim() || "#262626" }, horzLines: { color: getComputedStyle(document.documentElement).getPropertyValue("--ledger-chart-grid").trim() || "#262626" } },
       rightPriceScale: { borderColor: "#333333" },
       timeScale: {
-        borderColor: "#333333", timeVisible: true, secondsVisible: false,
+        borderColor: "#333333", timeVisible: true, secondsVisible: false, minBarSpacing: 0.000001,
         tickMarkFormatter: (time) => timeframe === "1d" && trade.metadata?.strategy_version === "momentum_vcp_breakout_baseline_v1"
           ? new Intl.DateTimeFormat("en-GB", { timeZone: resolvedZone(timeZone), day: "2-digit", month: "short" }).format(new Date(Number(time) * 1000))
           : chartTime(time, timeZone, false),
@@ -183,10 +188,31 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       if (markers.length) createSeriesMarkers(candles, markers);
     }
     chart.timeScale().fitContent();
-    return () => chart.remove();
+    let disposed=false;
+    if(capture){
+      const settle=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      (async()=>{try{await settle();if(disposed)return;const images=[];
+        for(const kind of ['full','entry','exit']){
+          if(kind==='exit'&&!capture.exit)continue;
+          if(kind==='full')chart.timeScale().fitContent();
+          else {const window=detailWindow(clean.map(b=>({timestamp:new Date(b.time*1000).toISOString()})),kind==='entry'?trade.entry_time:trade.exit_time,kind==='entry'?40:15,kind==='entry'?25:20);if(window)chart.timeScale().setVisibleLogicalRange(window);}
+          await settle();if(disposed)return;
+          const canvas=chart.takeScreenshot();images.push({kind,width:canvas.width,height:canvas.height,data:canvas.toDataURL('image/jpeg',.95)});
+        }
+        if(!disposed)capture.done({review:auditMeta?.review||{},images});
+      }catch(e){if(!disposed)capture.done({review:auditMeta?.review||{},images:[],warning:e.message});}})();
+    }
+    return () => {disposed=true;chart.remove()};
   }, [bars, trade, loading, showVolume, showLevels, showMarkers, timeZone, expanded, showEvidence, showResearch, auditMeta, timeframe]);
 
   const body = <>
+    {onNavigate&&<div id="trade-review-navigation" className="ui-toolbar sticky top-0 z-10 bg-white p-3" aria-label="Trade review navigation">
+      <button className="mini-btn" disabled={!navigation.previous} onClick={()=>onNavigate(navigation.previous)}>Previous trade (J)</button>
+      <strong>{navigation.index<0?'Outside current filters':`Trade ${navigation.index+1} of ${navigation.count} filtered trades`}</strong>
+      <button className="mini-btn" disabled={!navigation.next} onClick={()=>onNavigate(navigation.next)}>Next trade (K)</button>
+      <span>{tradeReference(run?.saved_run?.id??'unsaved',tradeIndex)}</span>
+      <label>Jump to trade <select className="input" value={navigation.index} onChange={e=>onNavigate(navigationTrades[Number(e.target.value)])}><option value={-1} disabled>Select trade</option>{navigationTrades.map((t,i)=><option key={i} value={i}>#{run.trades.indexOf(t)+1} {t.symbol} {t.entry_time} {t.direction}</option>)}</select></label>
+    </div>}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p className="text-xs uppercase tracking-wide text-stone-500">Trade audit · historical bars</p>

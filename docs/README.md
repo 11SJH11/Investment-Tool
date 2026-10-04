@@ -17,6 +17,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Charts and Replay](CHART_WORKSPACE.md): drawings, causality and local checkpoints.
 - [Journal](JOURNAL.md): reviews, Playbook, Daily Review, analytics and preservation.
 - [Backtest usability and Trade Review](BACKTEST_REVIEW_USABILITY.md): Activity, lazy results, parameter sweeps and causal evidence.
+- [Trade Review Research Packs](TRADE_RESEARCH_PACK.md): navigation, PDF/CSV export and acceptance checks.
 - [Performance charts](PERFORMANCE_CHARTS.md): coordinated full-history equity/drawdown and multi-run comparison.
 - [Backtest workflow](BACKTEST_WORKFLOW.md): configuration, queue and saved runs.
 - [Research experiments](RESEARCH_EXPERIMENTS.md): exact spectra/grids and CPU budget.

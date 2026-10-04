@@ -3,7 +3,7 @@ import {ColorType,LineSeries,CrosshairMode,createChart,createSeriesMarkers} from
 import {resolvedZone} from '../../utils/timezones';
 import {assignRunStyles,prepareCurve,unionDomain,pointAt,chartValue} from './equitySeries.js';
 
-export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null}){
+export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null,onCapture=null}){
  const host=useRef(null),chartRef=useRef(null),seriesRef=useRef([]),legendRefs=useRef(new Map()),styles=useRef(runStyles||new Map()),hoverDate=useRef(null);
  const fullRange=useRef(true);
  const [hidden,setHidden]=useState(new Set()),[focus,setFocus]=useState(null);
@@ -44,7 +44,9 @@ export default function PerformanceChart({points=[],startingBalance=0,runs=null,
    for(const curve of curves){const el=legendRefs.current.get(curve.id);if(!el)continue;const p=event.time?pointAt(curve,Number(event.time)):null;el.textContent=p?`Equity ${fmt(p.equity)} / Return ${fmt(chartValue(p,'return',curve.balance),'%')} / DD ${fmt(p.drawdown_pct,'%')}${p.time!==Number(event.time)?' / prior observation':''}`:'No observation';}
   });
   if(onTradeSelect)chart.subscribeClick(event=>{const trade=markers.get(String(event.hoveredObjectId));if(trade)onTradeSelect(trade)});
-  return()=>{observer.disconnect();cancelAnimationFrame(frame);element.removeEventListener("wheel",manual);element.removeEventListener("pointerdown",manual);chart.remove();chartRef.current=null;seriesRef.current=[]};
+  let captureFrame=0;
+  if(onCapture)captureFrame=requestAnimationFrame(()=>{captureFrame=requestAnimationFrame(()=>{captureFrame=requestAnimationFrame(()=>{reset();captureFrame=requestAnimationFrame(()=>{const canvas=chart.takeScreenshot();onCapture({data:canvas.toDataURL('image/jpeg',.95),width:canvas.width,height:canvas.height})})})})});
+  return()=>{cancelAnimationFrame(captureFrame);observer.disconnect();cancelAnimationFrame(frame);element.removeEventListener("wheel",manual);element.removeEventListener("pointerdown",manual);chart.remove();chartRef.current=null;seriesRef.current=[]};
  },[curves,mode,expanded,timeZone,onTradeSelect,domain]);
  useEffect(()=>{for(const pair of seriesRef.current){const options={visible:!hidden.has(pair.id),color:focus&&focus!==pair.id?pair.style.color+'35':pair.style.color,lineWidth:focus===pair.id?3:2};pair.equity.applyOptions(options);pair.dd.applyOptions(options)}},[hidden,focus,curves,mode,expanded,timeZone,onTradeSelect]);
  return <section className="performance-workspace" aria-label="Equity and drawdown history"><div className="ui-toolbar"><strong>{mode==='return'?'Normalized return (%)':mode==='r'?'Cumulative R':'Equity (account units)'} / Drawdown (%)</strong><button className="mini-btn" onClick={reset}>Full range / Reset zoom</button><button className="mini-btn" onClick={()=>{setHidden(new Set());setFocus(null)}}>Show all runs</button></div>
