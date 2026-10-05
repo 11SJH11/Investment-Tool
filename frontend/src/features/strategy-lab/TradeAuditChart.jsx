@@ -1,3 +1,4 @@
+import {reviewPriceDomain,validCandle} from './reviewScale.js';
 import {navigationState,navigationKey,tradeReference,detailWindow} from './reviewNavigation.js';
 import {createSectionCache} from './runSections.js';
 const reviewCache=createSectionCache((id,args)=>api.tradeReview(id,...JSON.parse(args)),6,60000);
@@ -41,6 +42,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
   const [showReasoning, setShowReasoning] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const ref = useRef(null);
+  const scaleNote = useRef(null);
 
   const navigation=navigationState(navigationTrades,trade);
   useEffect(()=>{if(!onNavigate)return;const handler=event=>{const key=navigationKey(event);if(key&&navigation[key]){event.preventDefault();onNavigate(navigation[key]);}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[navigation.previous,navigation.next,onNavigate]);
@@ -72,7 +74,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       autoSize: true, height: expanded ? Math.max(650, globalThis.innerHeight - 250) : 500,
       layout: { background: { type: ColorType.Solid, color: getComputedStyle(document.documentElement).getPropertyValue("--ledger-chart-background").trim() || "#111111" }, textColor: "#a8a29e" },
       grid: { vertLines: { color: getComputedStyle(document.documentElement).getPropertyValue("--ledger-chart-grid").trim() || "#262626" }, horzLines: { color: getComputedStyle(document.documentElement).getPropertyValue("--ledger-chart-grid").trim() || "#262626" } },
-      rightPriceScale: { borderColor: "#333333" },
+      rightPriceScale: { borderColor: "#333333", autoScale: true, scaleMargins: {top: .08,bottom: .10} },
       timeScale: {
         borderColor: "#333333", timeVisible: true, secondsVisible: false, minBarSpacing: 0.000001,
         tickMarkFormatter: (time) => timeframe === "1d" && trade.metadata?.strategy_version === "momentum_vcp_breakout_baseline_v1"
@@ -92,9 +94,10 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     }
     const seen = new Set();
-    const clean = bars.map((bar) => ({
+    const clean = bars.filter(validCandle).map((bar) => ({
       time: seconds(bar.timestamp), open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close), volume: Number(bar.volume || 0),
     })).filter((bar) => Number.isFinite(bar.time) && !seen.has(bar.time) && seen.add(bar.time)).sort((a, b) => a.time - b.time);
+    const scaleOverlays=[];
     const highlights=new Map((auditMeta?.review?.highlights||[]).map(h=>[seconds(h.timestamp),h.kind]));
     candles.setData(clean.map(({volume:_,...bar})=>showEvidence&&highlights.has(bar.time)?{...bar,color:highlights.get(bar.time)==='entry'?'#38bdf8':'#fbbf24',wickColor:highlights.get(bar.time)==='entry'?'#38bdf8':'#fbbf24'}:bar));
     if(showEvidence||showResearch){
@@ -102,11 +105,12 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       const palette=['#60a5fa','#a78bfa','#a78bfa','#fbbf24'];
       for(const [index,series] of (auditMeta?.review?.series||[]).entries()){
         if(series.role==='research_only'?!showResearch:!showEvidence)continue;
-        const line=chart.addSeries(LineSeries,{color:palette[index%palette.length],lineWidth:series.id.includes('_upper')||series.id.includes('_lower')?1:2,title:series.label,priceLineVisible:false,lastValueVisible:false},series.overlay?0:++pane);
+        const line=chart.addSeries(LineSeries,{color:palette[index%palette.length],lineWidth:series.id.includes('_upper')||series.id.includes('_lower')?1:2,title:series.label,priceLineVisible:false,lastValueVisible:false,...(series.overlay?{autoscaleInfoProvider:()=>null}:{})},series.overlay?0:++pane);
         const points=series.points||[];let cursor=-1;const output=[];
         const minutes={'1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'4h':240,'1d':1440}[timeframe];
         for(const bar of clean){while(cursor+1<points.length&&seconds(points[cursor+1].available_at)<=bar.time+minutes*60)cursor++;if(cursor>=0&&seconds(points[cursor].timestamp)<=bar.time+minutes*60)output.push({time:bar.time,value:points[cursor].value});}
         line.setData(output);
+        if(series.overlay)scaleOverlays.push({label:series.label,points:output});
       }
     }
     if (volume) volume.setData(clean.map((bar) => ({ time: bar.time, value: bar.volume, color: bar.close >= bar.open ? "rgba(34,197,94,.30)" : "rgba(239,68,68,.30)" })));
@@ -134,6 +138,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
         const key = `${Number(price).toFixed(8)}:${title}`;
         if (seenLevels.has(key)) return;
         seenLevels.add(key);
+        scaleOverlays.push({label:title,value:Number(price)});
         candles.createPriceLine({ price: Number(price), title, lineWidth, lineStyle, axisLabelVisible: true });
       });
     }
@@ -187,7 +192,11 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       markers.sort((a, b) => a.time - b.time);
       if (markers.length) createSeriesMarkers(candles, markers);
     }
-    chart.timeScale().fitContent();
+    const domain=()=>reviewPriceDomain(clean,scaleOverlays,chart.timeScale().getVisibleLogicalRange());
+    candles.applyOptions({autoscaleInfoProvider:base=>{const current=domain();if(!current)return base();const margins=base()?.margins;return {priceRange:current.priceRange,margins:{above:Math.max(20,margins?.above||0),below:Math.max(20,margins?.below||0)}};}});
+    const updateScaleNote=()=>{const current=domain();if(scaleNote.current)scaleNote.current.textContent=[`Scale fits visible candle wicks and nearby overlays. ${bars.length-clean.length?`${bars.length-clean.length} invalid OHLC bars omitted.`:''}`,...(current?.offScale||[])].join(' | ');if(ref.current&&current){ref.current.dataset.priceMin=String(current.priceRange.minValue);ref.current.dataset.priceMax=String(current.priceRange.maxValue);}};
+    chart.timeScale().subscribeVisibleLogicalRangeChange(updateScaleNote);
+    chart.timeScale().fitContent();updateScaleNote();
     let disposed=false;
     if(capture){
       const settle=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -197,7 +206,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
           if(kind==='full')chart.timeScale().fitContent();
           else {const window=detailWindow(clean.map(b=>({timestamp:new Date(b.time*1000).toISOString()})),kind==='entry'?trade.entry_time:trade.exit_time,kind==='entry'?40:15,kind==='entry'?25:20);if(window)chart.timeScale().setVisibleLogicalRange(window);}
           await settle();if(disposed)return;
-          const canvas=chart.takeScreenshot();images.push({kind,width:canvas.width,height:canvas.height,data:canvas.toDataURL('image/jpeg',.95)});
+          const canvas=chart.takeScreenshot();images.push({kind,width:canvas.width,height:canvas.height,data:canvas.toDataURL('image/jpeg',.95),scaleNotes:domain()?.offScale||[]});
         }
         if(!disposed)capture.done({review:auditMeta?.review||{},images});
       }catch(e){if(!disposed)capture.done({review:auditMeta?.review||{},images:[],warning:e.message});}})();
@@ -263,6 +272,7 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
       <div className="grid gap-4 lg:grid-cols-2">{['entry','exit'].map(group=><details open key={group}><summary>{group==='entry'?'Why this trade entered':'Why this trade exited'}</summary><dl className="text-xs space-y-2 mt-2">{auditMeta.review.evidence[group].map((field,i)=><div key={i} className="flex flex-wrap justify-between gap-2"><dt>{field.label}</dt><dd>{field.value==null?'Not recorded':Array.isArray(field.value)?field.value.map(v=>typeof v==='object'?`${v.start}-${v.end}`:String(v)).join(', '):String(field.value)} <span className="muted">/ {field.provenance.replaceAll('_',' ')}</span> {field.status&&<strong>{field.status}</strong>}</dd></div>)}</dl></details>)}</div></section>}
       {loading && <div className="mt-4 flex h-[300px] items-center justify-center bg-stone-950 text-sm text-stone-300">Loading audit candles…</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+    <p ref={scaleNote} className="mt-3 text-xs text-stone-500" aria-label="Price scale evidence"/>
     {!loading && !error && <div ref={ref} className={expanded ? "mt-4 h-[calc(100vh-250px)] min-h-[650px] w-full overflow-hidden rounded-lg" : "mt-4 h-[500px] w-full overflow-hidden rounded-lg"} />}
     <p className="mt-3 text-xs text-stone-500">Times are displayed in the selected timezone; stored timestamps remain UTC. The chart uses the same {timeframe} / {session} market-data path as the backtest. “Bars before/after” now counts displayed session-filtered candles rather than wall-clock minutes. Markers attach to the nearest displayed OHLCV bar, so exact intrabar execution time cannot be recovered from bar data alone.</p>
   </>;

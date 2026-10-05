@@ -38,7 +38,7 @@ export default function ResearchPack({run,filtered,selected}) {
           const images=data.images||[];
           pdf.page(ref+' / Full context',facts,images.find(i=>i.kind==='full'));
           for(const image of images.filter(i=>i.kind!=='full'))pdf.page(ref+' / '+image.kind+' detail',facts.slice(0,2),image);
-          pdf.page(ref+' / Strategy evidence',[...evidenceLines(data.review||{}),...(data.warning?['Warning: '+data.warning]:[]),'Volume is research context unless declared as strategy evidence.','Recorded trade metadata:',...documentFields(trade.metadata||{})]);
+          pdf.page(ref+' / Strategy evidence',[...images.flatMap(image=>(image.scaleNotes||[]).map(note=>`${image.kind} chart: ${note}`)),...evidenceLines(data.review||{}),...(data.warning?['Warning: '+data.warning]:[]),'Volume is research context unless declared as strategy evidence.','Recorded trade metadata:',...documentFields(trade.metadata||{})]);
           completed++;
           setProgress(`Building Research Pack: ${completed} / ${entries.length} trades rendered`);
           setActive(null);await new Promise(resolve=>setTimeout(resolve,0));

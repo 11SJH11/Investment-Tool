@@ -106,3 +106,28 @@ PDF reader parsed/rendered the first 50-trade PDF without repairs: 202 pages,
 151 embedded charts and selectable trade references through #50. Entry-detail
 and whole-run equity/drawdown pages were visually inspected. Real provider
 latency and historical-data parity were not measured in this mocked fixture.
+
+## Visible-window price scaling
+
+Interactive review and each exported window use the same candle-anchored domain.
+Every valid visible high/low is retained, including extreme wicks. Overlay values
+can expand that domain only if within half the original candle span of its edges;
+expansion never chains from one overlay to another. This applies generically to
+all price series and fixed levels, including HTF evidence, stops and targets.
+Nearby HTF values remain plotted; distant ones do not flatten local candles.
+A minimum reference span of 0.01% of midpoint (floor 1e-8) handles flat windows.
+Padding is 5% of the expanded range or half that minimum reference span, whichever
+is larger, with chart margins for marker labels. Non-price panes keep their own
+scales. Invalid/missing OHLC rows are omitted with a count; valid extreme bars
+are never discarded to improve appearance.
+
+Off-scale labels and value ranges appear under the interactive chart and in
+per-window Research Pack evidence. Original indicator calculations, series,
+recorded values, trade facts and fills are unchanged. Pan/zoom recalculates the
+scale from the visible window. Existing price-axis manual gestures remain a
+user override; double-click the price axis to restore automatic scaling.
+
+Acceptance: open a QQQ example near 737-739 with extended daily EMA near 709;
+check candle wicks and VWAP are readable and the scale-evidence text reports
+the EMA below scale. Repeat near 714-716 with EMA around 713, which should be
+included. Export entry/exit/full views and compare their evidence and wicks.
