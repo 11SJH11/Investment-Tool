@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.backtesting.engine import BacktestEngine
+from app.market_concepts import registry as concept_registry
 from app.backtesting.review_contracts import review_contract
 from app.backtesting.models import BacktestConfig
 from app.backtesting.momentum_reporting import completed_daily_frame, annotate_result
@@ -79,6 +80,9 @@ class BacktestService:
     @execution_scope
     def prepare(self, payload: dict, *, progress=None) -> dict:
         progress = progress or (lambda *args: None)
+        from app.research_agent.workflow import validate_submission
+        if any(payload.get(k) for k in ('research_project_id','research_trial_id','research_validation_id')):
+            validate_submission(self.runs.database,payload)
         progress('preparing data', None, None)
         if self.market_data is None:
             raise ProviderUnavailableError("No market data provider is configured")
@@ -134,7 +138,11 @@ class BacktestService:
             raise ValueError("Requested period is too recent for the configured historical-data delay")
 
         additional = [str(tf) for tf in (payload.get("additional_timeframes") or []) if str(tf) in SUPPORTED_TIMEFRAMES]
-        requested_timeframes = list(dict.fromkeys([primary, *strategy_spec.timeframes, *additional]))
+        concepts = concept_registry.declarations(strategy_spec.concepts)
+        concept_timeframes = [value["timeframe"] for value in concepts.values()]
+        if any(tf not in SUPPORTED_TIMEFRAMES for tf in concept_timeframes):
+            raise ValueError("Concept requests a timeframe unsupported by backtesting")
+        requested_timeframes = list(dict.fromkeys([primary, *strategy_spec.timeframes, *additional, *concept_timeframes]))
         frames_by_symbol: dict[str, dict] = {}
         diagnostic_warnings = []
         for symbol in symbols:
@@ -154,7 +162,9 @@ class BacktestService:
                             completion = pd.to_datetime(daily["available_at"],utc=True) if "available_at" in daily else pd.to_datetime(daily.timestamp,utc=True)+pd.Timedelta(days=1)
                             daily["session_date"] = completion.dt.tz_convert(NY).dt.date.astype(str)
                         frames[timeframe] = daily
-                    except Exception:
+                    except Exception as exc:
+                        from app.research_agent.access import ResearchAccessError
+                        if isinstance(exc,ResearchAccessError):raise
                         diagnostic_warnings.append(f"{symbol}: ORB research daily history unavailable; daily ATR and historical-volume diagnostics are null and enabled filters reject missing values.")
                     continue
                 frames[timeframe] = self._load_timeframe(symbol, timeframe, start, end, session)
@@ -169,7 +179,9 @@ class BacktestService:
             for symbol in symbols:
                 try:
                     diagnostic_history[symbol] = self._load_timeframe(symbol,"1m",start-timedelta(days=60),start,session)
-                except Exception:
+                except Exception as exc:
+                    from app.research_agent.access import ResearchAccessError
+                    if isinstance(exc,ResearchAccessError):raise
                     diagnostic_warnings.append(f"{symbol}: ORB research intraday warmup unavailable; same-minute volume diagnostics require sufficient history inside the requested period.")
         providers = {
                     symbol: {
@@ -186,6 +198,7 @@ class BacktestService:
                     diagnostic_history=diagnostic_history, diagnostic_warnings=diagnostic_warnings,
                     providers=providers, strategy_sources=strategy_registry.sources(),
                     strategy_provenance=strategy_registry.provenance(strategy_key),
+                    concept_provenance=concepts,
                     source_namespaces={symbol:getattr(self._provider(symbol),'cache_namespace',None) for symbol in symbols})
 
     @profiled
@@ -198,8 +211,20 @@ class BacktestService:
         provenance = strategy_registry.provenance(strategy_key)
         if inputs.get('strategy_provenance', provenance) != provenance:
             raise ValueError('Strategy implementation changed after preparation; prepare a new run')
-        payload = {**payload, 'strategy_provenance': provenance}
+        from app.services.research_runner import input_identity
+        data_identity = input_identity(inputs) if 'source_namespaces' in inputs else None
+        if payload.get('research_validation_id'):
+            from app.research_agent.validation import validate
+            if not data_identity:raise ValueError('Validation requires complete market-data identity')
+            validate(self.runs.database,payload,data_identity)
+        if payload.get('research_trial_id'):
+            from app.research_agent.trials import validate_data
+            validate_data(self.runs.database,payload,data_identity)
+        payload = {**payload, 'strategy_provenance': provenance, 'market_data_fingerprint': data_identity}
         strategy_spec = next(s for s in strategy_registry.specs() if s.key == strategy_key)
+        concepts = concept_registry.declarations(strategy_spec.concepts)
+        if inputs.get("concept_provenance", concepts) != concepts:
+            raise ValueError("Concept implementation changed after preparation; prepare a new run")
         additional, session = list(inputs['additional']), inputs['session']
         requested_session, start, end, delay = (inputs[k] for k in ('requested_session','start','end','delay'))
         frames_by_symbol = {symbol: {tf: frame.copy(deep=True) for tf, frame in frames.items()}
@@ -246,7 +271,7 @@ class BacktestService:
                 progress=lambda done, total: progress('running', done, total),
             )
         result.update({
-            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance, "review_config": review_contract(strategy_spec)},
+            "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance, "review_config": review_contract(strategy_spec), "concepts": concepts},
             "symbols": symbols,
             "primary_timeframe": primary,
             "additional_timeframes": additional,
@@ -255,6 +280,7 @@ class BacktestService:
             "start": start.isoformat(),
             "end": end.isoformat(),
             "data": {
+                "fingerprint": data_identity,
                 "historical_delay_minutes": delay,
                 "providers": deepcopy(inputs["providers"]),
                 "bar_counts": {
@@ -276,6 +302,8 @@ class BacktestService:
         if diagnostic_warnings:
             result.setdefault("data", {}).setdefault("warnings", []).extend(diagnostic_warnings)
         from app.performance import snapshot
+        from app.storage.reproducibility import environment_snapshot
+        result['execution_environment'] = environment_snapshot()
         result['performance'] = {**snapshot(), 'scope': 'through reporting; persistence/total available to caller profiler'}
         if self.runs is not None and bool(payload.get("save_run", True)):
             if workspace:
@@ -284,6 +312,7 @@ class BacktestService:
                 return self.runs.create(
                     config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
                     result=result,
+                    strategy_sources=inputs.get("strategy_sources", strategy_registry.sources()),
                     name=str(payload.get("run_name") or ""),
                     notes=str(payload.get("run_notes") or ""),
                     test_role=str(payload.get("test_role") or "development"),
@@ -291,6 +320,7 @@ class BacktestService:
                     tags=payload.get("run_tags") or [],
                 )
             saved = persist(save) if persist else save()
+            result["strategy"]["source_archive"] = saved["result"]["strategy"]["source_archive"]
             result["saved_run"] = {
                 "id": saved["id"], "name": saved["name"], "test_role": saved["test_role"],
                 "experiment_group": saved.get("experiment_group", ""), "tags": saved.get("tags", []),
@@ -753,7 +783,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
-        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint", "strategy_provenance",
+        "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint", "strategy_provenance", "research_project_id", "research_trial_id", "research_trial_cell", "research_validation_id", "research_validation_cell",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

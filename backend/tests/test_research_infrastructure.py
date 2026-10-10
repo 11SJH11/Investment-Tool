@@ -140,13 +140,15 @@ def test_nonmonotonic_completion_falls_back():
     pd.testing.assert_frame_equal(StrategyContext(**kw).bars(),StrategyContext(**kw,completion_indexes=completion_indexes(kw['frames'])).bars())
 
 
-def test_lru_ttl_memory_and_copies():
+def test_lru_ttl_memory_and_copies(monkeypatch):
+    clock=[0.0]
+    monkeypatch.setattr('app.frame_cache.monotonic',lambda:clock[0])
     f=orb_frame();c=FrameCache(max_entries=2,ttl=.01)
     c.put('a',f);copy=c.get('a');copy.loc[:,'close']=999
     pd.testing.assert_frame_equal(c.get('a'),f)
     c.put('b',f);c.get('a');c.put('c',f)
     assert c.get('b') is None
-    time.sleep(.02);assert c.get('a') is None
+    clock[0]=.02;assert c.get('a') is None
     tiny=FrameCache(max_bytes=1);tiny.put('x',f);assert tiny.get('x') is None
     c.clear();assert c.stats()['approx_bytes']==0
 

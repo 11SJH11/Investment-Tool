@@ -1,0 +1,15 @@
+import {useEffect,useState,useRef} from 'react';
+import {api} from '../../api/client';
+const ACK='Authorize bounded model reviews and development backtests';
+export default function ResearchLoop({project,onChange}){
+ const lastProgress=useRef(null);
+ const [loop,setLoop]=useState(null),[consent,setConsent]=useState(false),[cycles,setCycles]=useState(1),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let alive=true,timer;const poll=async()=>{try{const value=await api.researchLoop(project.id);if(alive){setLoop(value);const progress=JSON.stringify(value);if(lastProgress.current!==null&&lastProgress.current!==progress)onChange();lastProgress.current=progress;timer=setTimeout(poll,3000);}}catch(e){if(alive)setError(e.message);}};poll();return()=>{alive=false;clearTimeout(timer);};},[project.id]);
+ const act=async(action,payload={})=>{setBusy(true);setError('');try{setLoop(await api.researchProjectAction(project.id,action,payload));onChange();}catch(e){setError(e.message);}finally{setBusy(false);}};
+ return <article className="insight-panel"><h4 className="font-semibold">Bounded development loop</h4>
+ <p className="text-sm muted mt-2">Opt in to committee reviews, preregistration and control-first parameter trials. Each completed trial feeds the next review. No holdout access, generated code, automatic winner or promotion.</p>
+ <p className="text-xs muted mt-2">The backend continues when you leave this page. Existing project call, hypothesis, variant, simulation and trial-time limits still apply. Autonomous mode also requires configured model prices and a positive USD reservation budget. This local estimate does not replace the provider billing limit.</p>
+ {error&&<p role="alert">{error}</p>}
+ {!loop?<><label className="block mt-3">Maximum development cycles<input aria-label="Maximum development cycles" className="input" type="number" min="1" max="10" value={cycles} onChange={e=>setCycles(Number(e.target.value))}/></label><label className="block text-sm mt-3"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Authorize sending development summaries to the configured model and running its approved parameter experiments within the existing project budgets.</label><button className="mini-btn mt-2" disabled={busy||!consent||project.state!=='BASELINE_ANALYSIS'} onClick={()=>act('loop',{acknowledgement:ACK,max_cycles:cycles})}>Start bounded research loop</button></>:<><p className="mt-3">{loop.status} / {loop.phase} / {loop.cycles.length} of {loop.max_cycles} cycles completed</p><p className="text-sm muted">{loop.reason}</p>{loop.status==='ACTIVE'&&<button className="mini-btn mt-2" disabled={busy} onClick={()=>act('loop/pause')}>Pause research loop</button>}{loop.status==='PAUSED'&&<button className="mini-btn mt-2" disabled={busy||project.state!=='BASELINE_ANALYSIS'} onClick={()=>act('loop/resume')}>Resume research loop</button>}<details className="mt-3"><summary>Authorization and cycle history</summary><pre className="overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(loop,null,2)}</pre></details></>}
+ </article>;
+}

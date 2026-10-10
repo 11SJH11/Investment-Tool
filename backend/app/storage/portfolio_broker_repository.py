@@ -17,6 +17,14 @@ class PortfolioBrokerRepository:
                                  (adapter.provider, adapter.account_key)).fetchone()
             if (previous[0] if previous else None) != expected_cursor:
                 raise ValueError("Another sync completed; retry")
+            if adapter.provider == 'robinhood':
+                old = c.execute('SELECT summary FROM portfolio_broker_accounts WHERE provider=? AND account_key=?',
+                                (adapter.provider, adapter.account_key)).fetchone()
+                if old:
+                    capabilities = json.loads(old[0]).get('capabilities', {})
+                    current = snapshot.summary.get('capabilities', {})
+                    if any(capabilities.get(key) and not current.get(key) for key in ('equities_read', 'options_read', 'crypto_read')):
+                        raise ValueError('Robinhood read capabilities changed; previous snapshot retained')
             persist_executions(c, adapter, snapshot.executions)
             c.execute("""INSERT INTO portfolio_broker_accounts VALUES (?,?,?,?,?,?)
                 ON CONFLICT(provider,account_key) DO UPDATE SET summary=excluded.summary,synced_at=excluded.synced_at""",
@@ -55,7 +63,7 @@ class PortfolioBrokerRepository:
         return [{**dict(r), "summary": json.loads(r['summary'])} for r in rows]
 
     def records(self, account_key, kind=None, limit=100, offset=0):
-        clauses, args = ["account_key=?", "provider='trading212'"], [account_key]
+        clauses, args = ["account_key=?"], [account_key]
         if kind:
             clauses.append("kind=?"); args.append(kind)
         where = ' AND '.join(clauses)

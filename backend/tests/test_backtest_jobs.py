@@ -47,7 +47,11 @@ class ControlledBacktest:
 
 
 @pytest.fixture
-def queue(tmp_path):
+def queue(tmp_path, monkeypatch):
+    # These queue-state tests require exactly two slots, independent of Docker
+    # Desktop or other applications changing the host's available RAM.
+    monkeypatch.setattr('app.research_runtime.memory_info', lambda: {'available_bytes': 8 * 1024**3})
+    monkeypatch.setattr('app.research_runtime.os.cpu_count', lambda: 8)
     db = Database(tmp_path / 'jobs.db')
     db.initialize()
     service = ControlledBacktest(db)

@@ -282,6 +282,7 @@ class BacktestEngine:
                     equity=marked_equity,
                     indicator_cache=indicator_caches[symbol],
                     completion_indexes=completed_indexes[symbol],
+                    concepts=getattr(strategy.spec, "concepts", {}),
                 )
                 decision = strategy.on_bar(ctx)
                 if isinstance(decision, EntrySignal):

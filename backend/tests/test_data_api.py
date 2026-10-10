@@ -11,4 +11,4 @@ def test_data_status_boots_without_external_keys():
     body = response.json()
     assert "providers" in body
     assert "symbols_cached" in body
-    assert set(body["providers"]) == {"alpaca", "massive", "oanda", "sec", "fred", "autochartist"}
+    assert set(body["providers"]) == {"alpaca", "massive", "oanda", "sec", "fred", "autochartist", "mt5_market_data"}

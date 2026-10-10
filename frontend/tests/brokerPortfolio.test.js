@@ -34,3 +34,14 @@ test('activity labels use explicit broker side and supported cash types, never a
   assert.equal(activitySemantics({type:'TRANSFER',amount:-5},'transactions').direction,'Unavailable');
   assert.equal(activitySemantics({type:'TRANSFER',direction:'OUT'},'transactions').direction,'OUT');
 });
+
+import {accountsForBroker,brokerAccountTotals} from '../src/features/portfolio/brokerPortfolioUtils.js';
+test('broker totals use authoritative account values once and never mix currencies',()=>{
+  const a={provider:'trading212',account_key:'a',summary:{currency:'USD',totalValue:120,cash:{availableToTrade:20},investments:{currentValue:100}}};
+  const b={provider:'robinhood',account_key:'b',summary:{currency:'USD',totalValue:230}};
+  const c={provider:'robinhood',account_key:'c',summary:{currency:'GBP',totalValue:50}};
+  assert.deepEqual(brokerAccountTotals([a,b,c,a]),[{currency:'USD',accounts:2,value:350,complete:true},{currency:'GBP',accounts:1,value:50,complete:true}]);
+  assert.deepEqual(accountsForBroker([a,b,c],'trading212'),[a]);
+  assert.equal(brokerAccountTotals([a,b],'robinhood')[0].value,230);
+  assert.equal(brokerAccountTotals([a,{provider:'robinhood',account_key:'d',summary:{currency:'USD'}}])[0].value,null);
+});

@@ -213,7 +213,7 @@ class StrategyWorkspace:
             # Credentials travel only through the private stdin pipe, never command arguments/files.
             values = services.settings.model_dump(mode='json')
             settings = {field.validation_alias or key: values[key]
-                        for key,field in type(services.settings).model_fields.items()}
+                        for key,field in type(services.settings).model_fields.items() if key in values}
             settings['LEDGER_DATA_DIR'] = str(services.settings.data_dir.resolve())
             job.update(settings=settings, payload={**(payload or {}), 'strategy_key': key, 'save_run': False})
         result = _run_worker(job, timeout=120 if action == 'backtest' else self.timeout)

@@ -28,3 +28,15 @@ for _credential in ('MT5_LOGIN', 'MT5_PASSWORD', 'MT5_SERVER', 'MT5_TERMINAL_PAT
     os.environ[_credential] = ''
 for _credential in ('TRADELOCKER_EMAIL', 'TRADELOCKER_PASSWORD', 'TRADELOCKER_SERVER', 'TRADELOCKER_ACCOUNT_ID', 'TRADELOCKER_DEVELOPER_API_KEY'):
     os.environ[_credential] = ''
+
+os.environ['MT5_MARKET_DATA_ENABLED'] = 'false'
+os.environ['MT5_FUTURES_MAPPINGS_JSON'] = '{}'
+os.environ['FUTURES_DATA_PROVIDER'] = 'massive'
+os.environ['ROBINHOOD_ENABLED'] = 'false'
+os.environ['ROBINHOOD_PORTFOLIO_SYNC'] = 'false'
+os.environ['ROBINHOOD_ACCESS_TOKEN'] = ''
+os.environ['ROBINHOOD_ACCOUNT_ID'] = ''
+
+os.environ['RESEARCH_LLM_ENABLED'] = 'false'
+os.environ['RESEARCH_LLM_API_KEY'] = ''
+os.environ['RESEARCH_LLM_MODEL'] = ''

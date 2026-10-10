@@ -32,7 +32,10 @@ class StrategyContext:
         equity: float,
         indicator_cache: dict | None = None,
         completion_indexes: dict | None = None,
+        concepts: dict | None = None,
     ):
+        from copy import deepcopy
+        self._concepts = deepcopy(concepts or {})
         self.symbol = symbol
         self.primary_timeframe = primary_timeframe
         self.decision_time = decision_time
@@ -70,6 +73,14 @@ class StrategyContext:
         if count is not None:
             available = available.tail(max(0, int(count)))
         return available.copy()
+
+    def concept(self, alias):
+        from app.market_concepts import registry
+        if alias not in self._concepts:
+            raise ValueError('Strategy must declare an exact concept dependency: '+str(alias))
+        request=self._concepts[alias]
+        return registry.evaluate(request,self.bars(request.get('timeframe','1m')),
+                                 symbol=self.symbol,decision_time=self.decision_time)
 
     def indicator(self, key: str, *, timeframe: str | None = None, **params):
         timeframe = timeframe or self.primary_timeframe

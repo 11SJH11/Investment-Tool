@@ -181,3 +181,21 @@ def control_market_cache_warm(job_id: str, action: str, services: AppServices = 
         raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
+
+
+class FuturesDiagnosticRequest(BaseModel):
+    symbol: str = Field(default='NQ1!', max_length=20)
+    timeframe: Timeframe = '1m'
+    start: datetime
+    end: datetime
+    compare: bool = True
+
+
+@router.post('/data/futures/diagnostics')
+def futures_diagnostics(payload: FuturesDiagnosticRequest, services: AppServices = Depends(get_services)):
+    from app.services.futures_diagnostics import diagnose
+    try:
+        return diagnose(services, payload.symbol, payload.timeframe, payload.start, payload.end,
+                        ('massive','mt5') if payload.compare else ('mt5',))
+    except Exception as exc:
+        raise safe_http_error(exc,400) from None

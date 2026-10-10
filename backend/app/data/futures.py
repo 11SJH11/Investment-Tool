@@ -91,8 +91,9 @@ def execution_contract(symbol, bar):
     if spec.security_type == 'continuous_future':
         dated = instrument_spec(source)
         if (dated.security_type != 'future_contract' or dated.root != spec.root
-                or bar.get('continuous_alias') != spec.ticker or bar.get('provider') != 'massive'
-                or bar.get('roll_schedule_version') not in {'prior-session-volume45-v1','calendar-front-v1'}):
+                or bar.get('continuous_alias') != spec.ticker or bar.get('provider') not in {'massive','mt5'}
+                or bar.get('roll_schedule_version') not in {'prior-session-volume45-v1','calendar-front-v1'}
+                or (bar.get('provider')=='mt5' and (dated.root not in {'NQ','MNQ'} or bar.get('roll_schedule_version')!='calendar-front-v1'))):
             raise ValueError('Continuous execution requires verified raw source-contract provenance; refresh the data')
     elif source != spec.ticker:
         raise ValueError('Futures execution cannot cross source contracts')

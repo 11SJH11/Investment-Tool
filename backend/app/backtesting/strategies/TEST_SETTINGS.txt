@@ -1,0 +1,50 @@
+QQQ target sensitivity — modern development
+========================================
+Symbol: QQQ
+Dates: 2026-01-01 -> 2026-06-01
+Primary timeframe: 5m
+Direction: both
+Minimum first-candle body: 0
+Sizing: risk_pct
+Risk: 1%
+Max leverage: 4
+Overnight: OFF
+Force close: 16:00 ET
+Commission/slippage/spread: 0
+Same-bar: stop_first
+
+Run:
+Q10 = Target R 10.0 (control)
+Q5  = Target R 5.0
+Q4  = Target R 4.0
+Q3  = Target R 3.0
+Q2  = Target R 2.0
+
+Do not change any other parameter.
+
+VWAP confirmation — modern development
+======================================
+Preferred original instrument first: QQQ
+Dates: 2026-01-01 -> 2026-06-01
+Primary timeframe: 1m
+Direction: both
+Earliest signal: 1 minute after open
+Safety stop: 90%
+Sizing: position value % of account
+Position value: 100%
+Max leverage: 1
+Overnight: OFF
+Force close: 16:00 ET
+Commission/slippage/spread: 0
+
+Run:
+VC1 = Confirmation bars 1 (v2 control / near-v1)
+VC2 = Confirmation bars 2
+VC3 = Confirmation bars 3
+
+Do not add deadbands, cooldowns, slopes, targets, or other filters yet.
+
+After choosing a robust candidate using 2026 development:
+- freeze it
+- validate unchanged on 2024-01-01 -> 2025-12-31
+- reserve older unused periods for further OOS testing

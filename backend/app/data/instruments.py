@@ -28,7 +28,7 @@ class InstrumentSpec:
         if self.asset_type == "future":
             data["execution_supported"] = bool(family and (self.security_type == "future_contract" or self.continuous_rank == 1))
             data['execution_requires_source_contract'] = self.security_type == 'continuous_future'
-            data["data_availability"] = "Subject to Massive contract coverage and account entitlement; live coverage not verified"
+            data["data_availability"] = "Subject to selected provider contract coverage and account entitlement; live coverage not verified"
         return data
 
 
@@ -73,6 +73,8 @@ _DATED_FUTURE_RE = re.compile(r"^(?P<root>[A-Z][A-Z0-9]{0,4})(?P<month>[FGHJKMNQ
 
 def normalize_symbol(ticker: str) -> str:
     symbol = str(ticker or "").strip().upper()
+    if symbol in {"NQ","MNQ","GC","MGC"}:
+        return symbol+"1!"
     if symbol == "XAU_USD":
         return "XAUUSD"
     return symbol
@@ -82,6 +84,10 @@ def instrument_spec(ticker: str) -> InstrumentSpec:
     symbol = normalize_symbol(ticker)
     if symbol in _VIRTUAL:
         return _VIRTUAL[symbol]
+
+    if symbol in {'NAS100', 'US100', 'USTEC'}:
+        return InstrumentSpec(symbol, f'{symbol} broker Nasdaq CFD (not CME futures)',
+            'cfd', 'cfd', 'unsupported_cfd', symbol, 'broker_defined')
 
     continuous = _CONTINUOUS_RE.fullmatch(symbol)
     if continuous:

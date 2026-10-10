@@ -54,6 +54,8 @@ class BrokerSyncRepository:
                 raise ValueError("Another sync completed; retry to read the latest history")
             persist_executions(connection, adapter, batch.executions)
             for data in batch.trades:
+                from app.core.automation import automation_fields
+                data = {**data, **automation_fields(data)}
                 # Legacy schema requires a fees number. Canonical unknown costs
                 # retain their null evidence and are decoded as null at every
                 # Journal read boundary, never presented as zero-cost trading.

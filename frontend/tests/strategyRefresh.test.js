@@ -18,3 +18,9 @@ test('Removed selection falls back safely and saved Workspace navigation is hidd
  assert.equal(normalBacktestTab('Workspace'),'Backtest');
  assert.equal(normalBacktestTab('Strategies'),'Strategies');
 });
+
+
+test('Research foundation tabs remain reachable and survive saved navigation',()=>{
+  assert.equal(normalBacktestTab('Research Agent'),'Research Agent');
+  assert.equal(normalBacktestTab('Market Concepts'),'Market Concepts');
+});

@@ -12,8 +12,10 @@ claim of exact Pine parity.
 The common Ledger engine remains responsible for fills, sizing, costs and P&L.
 """
 
-from datetime import time
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
+
+import pandas as pd
 
 from app.backtesting.models import EntrySignal
 from app.backtesting.strategies.base import ParameterSpec, Strategy, StrategySpec
@@ -38,7 +40,7 @@ def _signal_tf(params):
 def _et_timestamp(ts):
     if getattr(ts, "tzinfo", None) is None:
         # Ledger stores timestamps as UTC; naive input is treated as UTC defensively.
-        from datetime import timezone
+        from datetime import datetime, timezone
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.astimezone(NY)
 
@@ -83,7 +85,7 @@ class OpenSessionATRBreakoutResearchV1(Strategy):
         ),
         risk_management={
             "Initial stop": "Research-selectable: session open, opposite band, or one daily ATR from signal close.",
-            "Initial target": "Fixed R multiple from the signal reference and selected stop.",
+            "Initial target": "Fixed R multiple from the actual fill to the selected initial stop.",
             "Management": "No trailing or partials in v1; one trade attempt per ET session date.",
         },
         source_file="backend/app/backtesting/strategies/open_session_atr_breakout_research_v1.py",
@@ -130,10 +132,10 @@ class OpenSessionATRBreakoutResearchV1(Strategy):
         if not (start_minute <= minute_now < end_minute):
             return None
 
-        daily_atr = ctx.indicator("atr", timeframe="1d", length=atr_len)
-        if daily_atr is None:
+        daily_atr_series = ctx.indicator("atr", timeframe="1d", length=atr_len)
+        if daily_atr_series is None or len(daily_atr_series) == 0 or pd.isna(daily_atr_series.iloc[-1]):
             return None
-        daily_atr = float(daily_atr)
+        daily_atr = float(daily_atr_series.iloc[-1])
         if not (daily_atr > 0):
             return None
 
@@ -144,13 +146,17 @@ class OpenSessionATRBreakoutResearchV1(Strategy):
 
         # Identify today's first bar at the configured ET session start.
         day_rows = []
-        for idx, row in bars.iterrows():
-            idx_et = _et_timestamp(idx.to_pydatetime() if hasattr(idx, "to_pydatetime") else idx)
-            if idx_et.date() != session_date:
+        for _, row in bars.iterrows():
+            # StrategyContext frames elsewhere in Ledger expose bar time in the
+            # explicit timestamp column; do not assume a DatetimeIndex.
+            if "timestamp" not in row:
+                return None
+            bar_et = _et_timestamp(pd.Timestamp(row["timestamp"]).to_pydatetime())
+            if bar_et.date() != session_date:
                 continue
-            mins = _minutes(idx_et.hour, idx_et.minute)
-            if mins >= start_minute and mins < end_minute:
-                day_rows.append((idx_et, row))
+            mins = _minutes(bar_et.hour, bar_et.minute)
+            if start_minute <= mins < end_minute:
+                day_rows.append((bar_et, row))
 
         if not day_rows:
             return None
@@ -196,13 +202,13 @@ class OpenSessionATRBreakoutResearchV1(Strategy):
         if not (risk > 0):
             return None
 
-        target = close + risk * target_r if direction == "long" else close - risk * target_r
         self._attempted = True
+        expires_at = datetime.combine(session_date, time(end_h, end_m), tzinfo=NY)
 
         return EntrySignal(
             direction,
             stop_loss=stop,
-            take_profit=target,
+            target_r=target_r,
             reason=f"open_session_atr_breakout_{direction}",
             metadata={
                 "signal_tf": tf,
@@ -215,7 +221,9 @@ class OpenSessionATRBreakoutResearchV1(Strategy):
                 "breakout_atr_fraction": atr_fraction,
                 "stop_mode": stop_mode,
                 "target_r": target_r,
+                "target_basis": "actual_fill_to_initial_stop",
             },
+            expires_at=expires_at,
         )
 
 

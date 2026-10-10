@@ -489,6 +489,13 @@ class Database:
         with self.connect() as connection:
             connection.executescript(_SCHEMA)
             _migrate_schema(connection)
+            columns = {r[1] for r in connection.execute('PRAGMA table_info(journal_trades)')}
+            for name, ddl in {'is_automated':'INTEGER', 'execution_source':"TEXT NOT NULL DEFAULT 'unknown'", 'strategy_id':"TEXT NOT NULL DEFAULT ''", 'strategy_name':"TEXT NOT NULL DEFAULT ''", 'strategy_run_id':"TEXT NOT NULL DEFAULT ''"}.items():
+                if name not in columns:
+                    connection.execute(f'ALTER TABLE journal_trades ADD COLUMN {name} {ddl}')
+            connection.execute("UPDATE journal_trades SET is_automated=0, execution_source='manual' WHERE execution_source='unknown' AND source IN ('live_manual','paper_manual','replay')")
+            connection.execute("UPDATE journal_trades SET is_automated=1, execution_source='strategy' WHERE execution_source='unknown' AND source='backtest'")
+            connection.execute("UPDATE journal_trades SET execution_source='imported' WHERE execution_source='unknown' AND source LIKE 'broker_%'")
             connection.execute("""CREATE TABLE IF NOT EXISTS broker_executions (
                 provider TEXT NOT NULL, account_key TEXT NOT NULL, external_id TEXT NOT NULL,
                 position_id TEXT NOT NULL, payload TEXT NOT NULL,
@@ -507,7 +514,7 @@ class Database:
                     ELSE NULL
                 END
             """)
-            for version in range(1, 18):
+            for version in range(1, 19):
                 connection.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (version,))
 
     def set_setting(self, key: str, value: str) -> None:

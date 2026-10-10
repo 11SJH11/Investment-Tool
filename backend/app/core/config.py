@@ -6,6 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    research_llm_enabled: bool = Field(default=False, validation_alias="RESEARCH_LLM_ENABLED")
+    research_llm_api_key: str = Field(default="", validation_alias="RESEARCH_LLM_API_KEY", repr=False, exclude=True)
+    research_llm_model: str = Field(default="", validation_alias="RESEARCH_LLM_MODEL")
+    research_llm_max_output_tokens: int = Field(default=4096, ge=512, le=8192, validation_alias="RESEARCH_LLM_MAX_OUTPUT_TOKENS")
+    research_llm_input_usd_per_million: float = Field(default=0, ge=0, le=10000, allow_inf_nan=False, validation_alias="RESEARCH_LLM_INPUT_USD_PER_MILLION")
+    research_llm_output_usd_per_million: float = Field(default=0, ge=0, le=10000, allow_inf_nan=False, validation_alias="RESEARCH_LLM_OUTPUT_USD_PER_MILLION")
     app_name: str = "Ledger"
     max_concurrent_backtests: int = Field(default=2, ge=1, le=8, validation_alias="MAX_CONCURRENT_BACKTESTS")
     environment: str = Field(default="development", validation_alias="LEDGER_ENV")
@@ -43,6 +49,10 @@ class Settings(BaseSettings):
     oanda_practice_base_url: str = Field(default="https://api-fxpractice.oanda.com", validation_alias="OANDA_PRACTICE_BASE_URL")
     oanda_live_base_url: str = Field(default="https://api-fxtrade.oanda.com", validation_alias="OANDA_LIVE_BASE_URL")
 
+    robinhood_enabled: bool = Field(default=False, validation_alias="ROBINHOOD_ENABLED")
+    robinhood_portfolio_sync: bool = Field(default=False, validation_alias="ROBINHOOD_PORTFOLIO_SYNC")
+    robinhood_access_token: str = Field(default='', validation_alias="ROBINHOOD_ACCESS_TOKEN", repr=False)
+    robinhood_account_id: str = Field(default='', validation_alias="ROBINHOOD_ACCOUNT_ID", repr=False)
     trading212_enabled: bool = Field(default=False, validation_alias="TRADING212_ENABLED")
     trading212_api_key: str = Field(default="", validation_alias="TRADING212_API_KEY", repr=False)
     trading212_api_secret: str = Field(default="", validation_alias="TRADING212_API_SECRET", repr=False)
@@ -55,6 +65,8 @@ class Settings(BaseSettings):
     tradelocker_server: str = Field(default="", validation_alias="TRADELOCKER_SERVER", repr=False)
     tradelocker_account_id: str = Field(default="", validation_alias="TRADELOCKER_ACCOUNT_ID", repr=False)
     tradelocker_developer_api_key: str = Field(default="", validation_alias="TRADELOCKER_DEVELOPER_API_KEY", repr=False)
+    mt5_market_data_enabled: bool = Field(default=False, validation_alias="MT5_MARKET_DATA_ENABLED")
+    mt5_futures_mappings_json: str = Field(default='{}', validation_alias="MT5_FUTURES_MAPPINGS_JSON")
     mt5_enabled: bool = Field(default=False, validation_alias="MT5_ENABLED")
     mt5_environment: str = Field(default="demo", validation_alias="MT5_ENVIRONMENT")
     mt5_login: str = Field(default="", validation_alias="MT5_LOGIN", repr=False)

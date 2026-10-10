@@ -6,7 +6,7 @@ import json
 import math
 
 
-DIMENSIONS = ("ticker", "account", "external_provider", "environment", "source", "playbook_id",
+DIMENSIONS = ("automation_type", "execution_source", "strategy_id", "strategy_name", "ticker", "account", "external_provider", "environment", "source", "playbook_id",
               "setup", "setup_grade", "plan_followed", "direction", "session_time", "market_condition",
               "structure_alignment", "context_timeframe", "entry_relativity", "shift", "confluences", "mistakes", "emotions",
               "weekday", "entry_hour", "month", "result")
@@ -15,7 +15,9 @@ DIMENSIONS = ("ticker", "account", "external_provider", "environment", "source",
 def dimension_values(trade, key, zone):
     local = trade_date(trade, zone)
     formats = {"weekday": "%A", "entry_hour": "%H:00", "month": "%Y-%m"}
-    if key in formats:
+    if key=='automation_type':
+        value = 'Unknown' if trade.get('is_automated') is None else 'Automated' if trade['is_automated'] else 'Manual'
+    elif key in formats:
         value = local.strftime(formats[key]) if local else None
     elif key == "environment":
         value = trade.get("source_metadata", {}).get("environment")

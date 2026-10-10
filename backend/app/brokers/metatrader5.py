@@ -149,6 +149,8 @@ class MetaTrader5History:
                         quantity_unit='lots', role='entry' if deal.entry == 0 else 'exit',
                         commission=money('commission'), swap=money('swap'), fee=money('fee'), realized_pnl=money('profit'),
                         metadata=dict(deal_entry=deal.entry, deal_type=deal.type,
+                            deal_reason=getattr(deal,'reason',None),
+                            programmatic_order=(getattr(deal,'reason',None)==getattr(self._module,'DEAL_REASON_EXPERT',object())),
                             current_contract_size=str(number(symbol.trade_contract_size)),
                             contract_size_basis='current_symbol_info_not_historical',
                             cost_scope='position_deals_only; unallocated account charges are not allocated',

@@ -3,6 +3,7 @@ from app.performance import timed, profiled, measure
 
 
 import json
+from copy import deepcopy
 from typing import Any
 
 from app.storage.database import Database
@@ -27,6 +28,7 @@ class BacktestRunRepository:
     def create(
         self, *, config: dict[str, Any], result: dict[str, Any], name: str = "", notes: str = "",
         test_role: str = "development", experiment_group: str = "", tags: list[str] | None = None,
+        strategy_sources: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
         role = _normalise_role(test_role)
         strategy = result.get("strategy") or {}
@@ -39,6 +41,11 @@ class BacktestRunRepository:
         primary_timeframe = str(result.get("primary_timeframe") or config.get("primary_timeframe") or "")
         session = str(result.get("session") or config.get("session") or "regular")
         with self.database.connect() as connection:
+            if strategy_sources is not None:
+                connection.execute("BEGIN IMMEDIATE")
+                from app.storage.strategy_source_archive import store
+                result = deepcopy(result)
+                result.setdefault("strategy", {})["source_archive"] = store(connection, strategy.get("implementation") or {}, strategy_sources)
             cursor = connection.execute(
                 """
                 INSERT INTO backtest_runs(
@@ -166,7 +173,10 @@ class BacktestRunRepository:
         return self.get(run_id)
 
     def delete(self, run_id: int) -> None:
+        from .research_retention import require_deletable
         with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            require_deletable(connection, int(run_id))
             cursor = connection.execute("DELETE FROM backtest_runs WHERE id = ?", (int(run_id),))
             if cursor.rowcount == 0:
                 raise ValueError(f"Backtest run {run_id} was not found")

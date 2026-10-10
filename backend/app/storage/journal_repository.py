@@ -8,6 +8,7 @@ from app.storage.database import Database
 
 
 TRADE_COLUMNS = (
+    "is_automated", "execution_source", "strategy_id", "strategy_name", "strategy_run_id",
     "source", "name", "account", "ticker", "direction", "status", "opened_at", "closed_at", "practised_at",
     "entry_price", "exit_price", "quantity", "position_amount", "position_currency", "stop_loss", "take_profit", "fees", "result",
     "result_source", "pnl_amount", "pnl_pct", "r_multiple", "planned_rr", "pnl_override", "override_reason", "pnl_source", "trade_type", "setup", "market_condition",
@@ -25,6 +26,8 @@ class JournalRepository:
         self.database = database
 
     def create_trade(self, payload: dict[str, Any]) -> dict:
+        from app.core.automation import automation_fields
+        payload = {**payload, **automation_fields(payload)}
         values = [_encode(payload.get(column), column) for column in TRADE_COLUMNS]
         placeholders = ",".join("?" for _ in TRADE_COLUMNS)
         with self.database.connect() as connection:
@@ -222,6 +225,8 @@ _NON_NULL_TEXT = {
 def _encode(value: Any, column: str) -> Any:
     if column in {"timeframe_notes", "source_metadata", "review_data"}:
         return json.dumps(value or {}) if not isinstance(value, str) else value
+    if value is None and column in {'execution_source','strategy_id','strategy_name','strategy_run_id'}:
+        return 'unknown' if column=='execution_source' else ''
     if value is None and column in _NON_NULL_TEXT:
         return ""
     return value
@@ -229,6 +234,8 @@ def _encode(value: Any, column: str) -> Any:
 
 def _trade(row) -> dict:
     result = dict(row)
+    result['is_automated'] = None if result.get('is_automated') is None else bool(result['is_automated'])
+    result['automation_type'] = 'Unknown' if result['is_automated'] is None else 'Automated' if result['is_automated'] else 'Manual'
     try:
         result["timeframe_notes"] = json.loads(result.get("timeframe_notes") or "{}")
     except json.JSONDecodeError:

@@ -169,3 +169,13 @@ def test_native_shutdown_error_is_sanitized_and_releases_terminal_lock(caplog):
     b=Terminal().factory({},'demo')
     try:assert b.connect()['environment']=='demo'
     finally:b.close()
+
+
+@pytest.mark.parametrize('entry_reason,exit_reason,expected',[(3,4,True),(None,3,None),(0,4,None)])
+def test_automation_requires_programmatic_entry_evidence(setup,entry_reason,exit_reason,expected):
+    db,t,s=setup;t.DEAL_REASON_EXPERT=3
+    t.deals[0].reason=entry_reason;t.deals[1].reason=exit_reason
+    s.sync('mt5-default');row=JournalRepository(db).list_trades()[0]
+    assert row['is_automated'] is expected and row['execution_source']=='imported'
+    assert row['source_metadata']['executions'][0]['metadata']['deal_reason']==entry_reason
+    assert s.sync('mt5-default')['created']==0

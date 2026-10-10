@@ -21,3 +21,6 @@ api_router.include_router(journal_router)
 api_router.include_router(strategy_lab_router)
 api_router.include_router(brokers_router)
 api_router.include_router(strategy_workspace_router)
+
+from app.api.research_agent import router as research_agent_router
+api_router.include_router(research_agent_router)

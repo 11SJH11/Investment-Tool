@@ -10,4 +10,4 @@ export function refreshedSelection(previous, response, key, params) {
   }
   return {strategies,key:selected?.key||'',params:nextParams,message:`Strategies refreshed: ${response.added} added / ${response.updated} updated / ${response.removed} removed.`};
 }
-export const normalBacktestTab = tab => ['Backtest','Runs','Run Viewer','Research Viewer','Strategies','Indicators'].includes(tab)?tab:'Backtest';
+export const normalBacktestTab = tab => ['Backtest','Runs','Run Viewer','Research Viewer','Strategies','Indicators','Research Agent','Market Concepts'].includes(tab)?tab:'Backtest';

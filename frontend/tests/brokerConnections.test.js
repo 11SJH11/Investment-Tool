@@ -16,3 +16,11 @@ test('Disconnected status has priority and MT5 explains local requirements',()=>
   assert.match(connectionHint('mt5'),/MT4 is not supported/);
   assert.match(connectionHint('tradelocker'),/unavailable costs/);
 });
+
+test('Robinhood exposes account selection and explicitly read-only OAuth setup',()=>{
+  assert.equal(BROKER_NAMES.robinhood,'Robinhood');
+  assert.equal(canConfigureConnection('robinhood'),true);
+  assert.equal(canSelectAccount('robinhood'),true);
+  assert.match(connectionHint('robinhood'),/OAuth/);
+  assert.match(connectionHint('robinhood'),/never enables Ledger order execution/);
+});

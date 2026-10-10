@@ -20,6 +20,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Trade Review Research Packs](TRADE_RESEARCH_PACK.md): navigation, PDF/CSV export and acceptance checks.
 - [Performance charts](PERFORMANCE_CHARTS.md): coordinated full-history equity/drawdown and multi-run comparison.
 - [Backtest workflow](BACKTEST_WORKFLOW.md): configuration, queue and saved runs.
+- [Research Agent current handoff](RESEARCH_AGENT_FOUNDATION.md) and [comprehensive October update](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md): research workflow, Market Concepts, Docker isolation, verification and operating limits.
 - [Research experiments](RESEARCH_EXPERIMENTS.md): exact spectra/grids and CPU budget.
 - [Research diagnostics](RESEARCH_DIAGNOSTICS.md): Run Viewer metrics and exports.
 - [Strategy refresh](STRATEGY_REFRESH.md): direct Python files, safe registry updates and provenance.
@@ -28,6 +29,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
   current user navigation lives in Backtest workflow.
 - [Strategy plugin template](STRATEGY_PLUGIN_TEMPLATE.md) and
   [indicator plugin template](INDICATOR_PLUGIN_TEMPLATE.md).
+- [MT5 market data / Robinhood / automation](MT5_ROBINHOOD_INTEGRATION.md): setup, capabilities, comparison and live-acceptance limits.
 - [Broker connections](BROKER_CONNECTIONS.md): supported read-only connections.
 - [Broker import acceptance](BROKER_IMPORT_ACCEPTANCE.md): fixtures, verification, cleanup and limitations.
 - [Broker extension contract](BROKER_EXTENSION_CONTRACT.md): future adapter boundaries.

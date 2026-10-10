@@ -78,7 +78,7 @@ def run_experiment(service, repository, payload, *, progress, cancelled, commit)
             persistence_start=perf_counter()
             with measure('research_persistence'):
                 saved=commit(lambda:service.runs.create(config=_snapshot_config(effective,strategy_key=inputs['strategy_key'],symbols=inputs['symbols']),
-                    result=result,name=child['run_name'],notes=child.get('run_notes',''),test_role=child['test_role'],
+                    result=result,strategy_sources=inputs.get('strategy_sources', {}),name=child['run_name'],notes=child.get('run_notes',''),test_role=child['test_role'],
                     experiment_group=group,tags=child.get('run_tags',[])))
             document['performance']['persistence_seconds']=document['performance'].get('persistence_seconds',0)+perf_counter()-persistence_start
             cell.update(status='completed',run_id=saved['id']);cell.pop('error',None)

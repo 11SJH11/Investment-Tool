@@ -9,6 +9,7 @@ from app.brokers.base import BrokerHistoryError
 from app.brokers.oanda import OandaHistory
 from app.brokers.profiles import profiles
 from app.brokers.trading212 import Trading212Portfolio
+from app.brokers.robinhood import RobinhoodPortfolio
 from app.brokers.tradovate import TradovateHistory
 from app.brokers.tradelocker import TradeLockerHistory
 from app.brokers.metatrader5 import MetaTrader5History
@@ -21,7 +22,8 @@ from app.storage.portfolio_broker_repository import PortfolioBrokerRepository
 ADAPTERS = {"oanda": OandaHistory, "trading212": Trading212Portfolio, "tradovate": TradovateHistory}
 ADAPTERS['tradelocker'] = TradeLockerHistory
 ADAPTERS['mt5'] = MetaTrader5History
-CAPABILITIES = {
+ADAPTERS['robinhood'] = RobinhoodPortfolio
+CAPABILITIES = {"robinhood": RobinhoodPortfolio.capability_report(),
     "oanda": {"provider": "oanda", "destination": "journal", "read_only": True, "supported": True, "closed_trades": True, "execution": False},
     "trading212": Trading212Portfolio.capability_report(),
     "tradovate": TradovateHistory.capability_report(),
@@ -43,7 +45,7 @@ class BrokerConnections:
             saved = json.loads(self._setting('broker_connection:' + p.id) or '{}')
             if 'disconnected' in saved:
                 p.enabled = not saved['disconnected']
-            if p.provider in {'tradelocker', 'mt5', 'trading212'} and saved.get('environment') in {'demo', 'live'}:
+            if p.provider in {'tradelocker', 'mt5', 'trading212', 'robinhood'} and saved.get('environment') in {'demo', 'live'}:
                 p.environment = saved['environment']
         self._oanda = {}
         for p in self.profiles.values():
@@ -95,17 +97,24 @@ class BrokerConnections:
         else:
             # Profile binding stores only the opaque verified account key. No API
             # call is made by status/Settings/page load, even when configured.
-            key = self._setting(self._binding(p))
+            key = (self._setting(self._selection(p)) if p.provider=='robinhood' else None) or self._setting(self._binding(p))
             if key:
                 saved = self.state.state(p.provider, key)
                 status.update({k: saved.get(k) for k in ('last_success_at','error')})
                 status['last_account_key'] = key
                 if p.configured: status['status'] = saved.get('status','never_synced')
+        if p.provider == 'robinhood':
+            status['account_key'] = self._setting(self._selection(p))
+            key = status.get('last_account_key')
+            if key:
+                account = next((a for a in self.portfolio.accounts() if a['account_key']==key), None)
+                if account:
+                    status['discovered_capabilities'] = account['summary'].get('capabilities', {})
         return status
 
     @staticmethod
     def _binding(p):
-        identity = sha256(f"{p.provider}:{p.environment}:{p.credentials.get('api_key','')}".encode()).hexdigest()
+        identity = sha256(f"{p.provider}:{p.environment}:{p.credentials.get('api_key',p.credentials.get('access_token',''))}".encode()).hexdigest()
         return 'broker_profile:' + p.id + ':' + identity
 
     def statuses(self):
@@ -133,8 +142,12 @@ class BrokerConnections:
             raise BrokerHistoryError("A Portfolio broker sync is already running")
         adapter = None
         try:
-            adapter = self.factories[p.provider](p.credentials['api_key'],p.credentials['api_secret'],p.environment)
-            summary = adapter.read_account()
+            if p.provider=='robinhood':
+                adapter=self.factories[p.provider](p.credentials,p.environment)
+                summary=adapter.read_account(self._setting(self._selection(p)))
+            else:
+                adapter = self.factories[p.provider](p.credentials['api_key'],p.credentials['api_secret'],p.environment)
+                summary = adapter.read_account()
             cursor = self.state.state(adapter.provider,adapter.account_key).get('cursor')
             result = self.portfolio.commit(adapter,adapter.fetch_snapshot(summary),cursor,self._binding(p))
             self.database.set_setting('broker_error_category:' + p.id, '')
@@ -144,7 +157,7 @@ class BrokerConnections:
             self.database.set_setting('broker_error_category:' + p.id, getattr(exc, 'category', 'provider'))
             if adapter and adapter.account_key:
                 self.state.failure(adapter,message)
-            raise BrokerHistoryError(message, status_code=getattr(exc,'status_code',None), retry_after=getattr(exc,'retry_after',None)) from None
+            raise BrokerHistoryError(message, category=getattr(exc,'category','provider'), status_code=getattr(exc,'status_code',None), retry_after=getattr(exc,'retry_after',None)) from None
         finally:
             if adapter: adapter.close()
             self._lock.release()
@@ -160,7 +173,7 @@ class BrokerConnections:
             lock.release()
 
     def _discover(self, p):
-        if p.provider not in {'tradelocker', 'mt5', 'trading212'} or not p.configured:
+        if p.provider not in {'tradelocker', 'mt5', 'trading212', 'robinhood'} or not p.configured:
             raise BrokerHistoryError('Account discovery is unavailable for this profile', category='configuration')
         adapter = None
         try:
@@ -223,7 +236,9 @@ class BrokerConnections:
 
     def configure_connection(self, profile_id, enabled, environment):
         p = self._profile(profile_id)
-        if p.provider not in {'tradelocker', 'mt5', 'trading212'} or environment not in {'demo', 'live'}:
+        if p.provider=='robinhood' and environment!='live':
+            raise BrokerHistoryError('Robinhood supports only live profiles',category='configuration')
+        if p.provider not in {'tradelocker', 'mt5', 'trading212', 'robinhood'} or environment not in {'demo', 'live'}:
             raise BrokerHistoryError('Unsupported broker connection configuration', category='configuration')
         lock = self._profile_locks[profile_id]
         if not lock.acquire(blocking=False):

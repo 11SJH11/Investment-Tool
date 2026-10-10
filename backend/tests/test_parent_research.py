@@ -46,6 +46,9 @@ def test_one_parent_prepare_once_exact_children_and_persistence(tmp_path,workers
         assert service.list_runs()==[]  # Children remain accessible through their parent.
         for cell,child in zip(document['cells'],payload['research_children']):
             saved=service.get_run(cell['run_id'])
+            from app.storage.strategy_source_archive import export_run
+            assert saved['result']['strategy']['source_archive']['status']=='archived'
+            assert export_run(service.runs.database,cell['run_id'])['archive']['sha256']==saved['result']['strategy']['implementation']['registry_sha256']
             assert facts(saved['result'])==facts(service.run({**child,'save_run':False}))
             assert saved['config']['market_data_fingerprint']==document['market_data_fingerprint']
         queue.clear_finished()

@@ -40,7 +40,11 @@ class MarketDataService:
         self.provider_resolver = provider_resolver
 
     def instrument_info(self, ticker: str) -> InstrumentSpec:
-        return instrument_spec(ticker)
+        from dataclasses import replace
+        spec = instrument_spec(ticker)
+        if spec.asset_type == 'future':
+            spec = replace(spec, provider_key=self.provider_for(ticker).key)
+        return spec
 
     def provider_for(self, ticker: str) -> MarketDataProvider:
         symbol = normalize_symbol(ticker)
@@ -56,6 +60,8 @@ class MarketDataService:
 
     def latest_available_end(self, ticker: str, timeframe: Timeframe, reference: datetime | None = None) -> datetime:
         """Clamp a requested end to the provider's newest complete candle when supported."""
+        from app.research_agent.access import active
+        if active():return _utc(reference or datetime.now(timezone.utc))
         provider = self.provider_for(ticker)
         reference = _utc(reference or datetime.now(timezone.utc))
         resolver = getattr(provider, "latest_available_end", None)
@@ -73,6 +79,8 @@ class MarketDataService:
         self, ticker, timeframe, start, end, *, force_refresh=False,
     ):
         provider = self.provider_for(ticker)
+        from app.research_agent.access import check
+        check(ticker,timeframe,start,end,getattr(provider,"cache_namespace",None))
         # Shared across service copies (including continuous -> dated contracts).
         # Reentrancy makes recursion safe; waiting interactive work precedes warming.
         with self._provider_lock(provider):
@@ -322,6 +330,8 @@ class MarketDataService:
     ) -> None:
         if start >= end:
             return
+        from app.research_agent.access import check
+        check(ticker,timeframe,start,end,getattr(provider,'cache_namespace',None))
         with measure('provider_fetch'):
             bars = provider.get_bars(ticker, timeframe, start, end)
         if bars.empty:

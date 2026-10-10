@@ -238,6 +238,26 @@ def backtest_run_section(run_id: int, section: str, services: AppServices = Depe
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/runs/{run_id}/reproducibility")
+def backtest_reproducibility(run_id: int, services: AppServices = Depends(get_services)):
+    from app.storage.reproducibility import export_manifest
+    try:
+        if services.backtest.runs is None:raise ValueError("Backtest run history is unavailable")
+        return export_manifest(services.backtest.runs.database,run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404,detail=str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/source-archive")
+def backtest_source_archive(run_id: int, services: AppServices = Depends(get_services)):
+    from app.storage.strategy_source_archive import export_run
+    try:
+        if services.backtest.runs is None:raise ValueError("Backtest run history is unavailable")
+        return export_run(services.backtest.runs.database,run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/runs/{run_id}")
 def backtest_run(run_id: int, services: AppServices = Depends(get_services)):
     try:
@@ -256,9 +276,12 @@ def update_backtest_run(run_id: int, payload: BacktestRunUpdate, services: AppSe
 
 @router.delete("/runs/{run_id}")
 def delete_backtest_run(run_id: int, services: AppServices = Depends(get_services)):
+    from app.storage.research_retention import ResearchRunProtected
     try:
         services.backtest.delete_run(run_id)
         return {"ok": True}
+    except ResearchRunProtected as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -390,3 +413,12 @@ def research_progress(experiment_group: str, services: AppServices = Depends(get
     if status is None:
         raise HTTPException(404, 'Research experiment not found')
     return status
+
+
+@router.get('/market-concepts')
+def market_concepts(services: AppServices = Depends(get_services)):
+    from app.market_concepts import registry
+    strategies=services.backtest.strategies()
+    return {'items':[{**item,'used_by':[s['key'] for s in strategies
+        if any(c.get('key')==item['key'] for c in s.get('concepts',{}).values())]}
+        for item in registry.describe()]}

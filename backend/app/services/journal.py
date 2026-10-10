@@ -81,6 +81,8 @@ class JournalService:
         data["external_id"] = external_id or None
         data["external_order_id"] = external_order_id or None
         data["source_metadata"] = source_metadata
+        from app.core.automation import automation_fields
+        data.update(automation_fields(data))
 
         ticker = str(data.get("ticker") or "").strip().upper()
         if not ticker:

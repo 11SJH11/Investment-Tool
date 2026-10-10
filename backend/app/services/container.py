@@ -9,6 +9,8 @@ from app.data.massive_request_gate import MassiveRequestGate
 from app.data.providers.alpaca import AlpacaProvider
 from app.data.providers.autochartist import AutochartistProvider
 from app.data.providers.massive_futures import MassiveFuturesProvider
+from app.data.providers.metatrader5 import MetaTrader5DataProvider
+import json
 from app.data.providers.oanda import OandaProvider
 from app.data.instruments import InstrumentSpec
 from app.data.providers.fred import FredProvider
@@ -70,8 +72,30 @@ class AppServices:
     broker_scheduler: BrokerScheduler | None = None
 
     technical_screener: TechnicalScreener | None = None
+    mt5_market_data_error: str | None = None
+
+    research_loop: object | None = None
+    research_sandbox: object | None = None
+
+    def __post_init__(self):
+        if self.backtest_jobs:
+            from app.research_agent.sandbox_runs import SandboxRuns
+            self.research_sandbox = SandboxRuns(self.database, self.backtest)
+            with self.database.connect() as c:
+                previous = c.execute('SELECT 1 FROM agent_sandbox_runs LIMIT 1').fetchone()
+            if previous:
+                from app.research_agent.sandbox import SandboxError
+                try:self.research_sandbox.recover()
+                except SandboxError:pass  # Ordinary Ledger remains usable; sandbox approvals retry cleanup and fail closed.
+            from app.research_agent.loop import ResearchLoop
+            from app.research_agent.llm import OpenAICommitteeModel
+            self.research_loop = ResearchLoop(self.database, self.backtest_jobs, OpenAICommitteeModel(self.settings))
 
     def close(self) -> None:
+        if self.research_sandbox:
+            self.research_sandbox.close()
+        if self.research_loop:
+            self.research_loop.close()
         if self.technical_screener:
             self.technical_screener.close()
         if self.broker_scheduler:
@@ -91,6 +115,14 @@ class AppServices:
                 "live_feed": self.settings.alpaca_live_feed,
                 "historical_delay_minutes": self.settings.alpaca_historical_delay_minutes,
                 "adjustment": self.settings.alpaca_adjustment,
+            },
+            "mt5_market_data": {
+                "configured": "market_data_mt5" in self.providers.configured(),
+                "configuration_error": self.mt5_market_data_error,
+                "selected_for_nq": self.settings.futures_data_provider == 'mt5',
+                "purpose": "Verified CME NQ/MNQ market data from the official local MT5 terminal",
+                "roll_policy": "calendar-front-v1", "adjustment": "raw",
+                "status": "not_probed", "execution": False,
             },
             "massive": {
                 "configured": self.settings.massive_configured,
@@ -185,6 +217,17 @@ def build_services(settings: Settings) -> AppServices:
         )
         providers.register("market_data_futures", massive_provider)
 
+    mt5_provider = None
+    mt5_error = None
+    if settings.mt5_market_data_enabled:
+        try:
+            mappings = json.loads(settings.mt5_futures_mappings_json)
+            mt5_provider = MetaTrader5DataProvider({k:getattr(settings,'mt5_'+k) for k in ('login','password','server','terminal_path')},settings.mt5_environment,mappings)
+        except (ValueError, TypeError):
+            mt5_error = 'Invalid MT5 market-data configuration; check login/server and futures mappings'
+        if mt5_provider is not None:
+            providers.register('market_data_mt5', mt5_provider)
+
     oanda_provider: OandaProvider | None = None
     if settings.oanda_configured:
         oanda_provider = OandaProvider(
@@ -209,11 +252,17 @@ def build_services(settings: Settings) -> AppServices:
     market_providers = {
         "alpaca": alpaca_provider,
         "massive": massive_provider,
+        "mt5": mt5_provider,
         "oanda": oanda_provider,
     }
 
     def resolve_market_provider(symbol: str, spec: InstrumentSpec):
-        provider = market_providers.get(spec.provider_key)
+        key = settings.futures_data_provider if spec.root in {'NQ','MNQ'} and spec.asset_type=='future' else spec.provider_key
+        provider = market_providers.get(key)
+        if key == 'unsupported_cfd':
+            raise ProviderUnavailableError('Nasdaq CFD aliases are not CME NQ futures; no market-data mapping is configured')
+        if key == 'mt5' and provider is None:
+            raise ProviderUnavailableError('MT5 market data is disabled or not configured')
         if provider is None:
             if spec.provider_key == "oanda":
                 raise ProviderUnavailableError("OANDA market data is not configured; set OANDA_ACCESS_TOKEN in backend/.env")
@@ -222,7 +271,7 @@ def build_services(settings: Settings) -> AppServices:
             raise ProviderUnavailableError("Alpaca market data is not configured; set ALPACA_API_KEY and ALPACA_API_SECRET in backend/.env")
         return provider
 
-    default_market_provider = alpaca_provider or oanda_provider or massive_provider
+    default_market_provider = alpaca_provider or oanda_provider or massive_provider or mt5_provider
     market_data = (
         MarketDataService(default_market_provider, market_store, coverage, provider_resolver=resolve_market_provider)
         if default_market_provider is not None else None
@@ -246,6 +295,7 @@ def build_services(settings: Settings) -> AppServices:
     broker_connections = BrokerConnections(settings, database, legacy_oanda=broker_sync)
     return AppServices(
         settings=settings, database=database, providers=providers, symbols=symbols,
+        mt5_market_data_error=mt5_error,
         symbol_universe=symbol_universe, market_data=market_data, market_warmup=market_warmup,
         fundamentals=fundamentals_service, macro=macro_service, autochartist=autochartist,
         screener_repository=screener_repository, screener=screener,

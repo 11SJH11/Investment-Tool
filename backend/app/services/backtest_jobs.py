@@ -53,6 +53,9 @@ class BacktestJobs:
         for job_id in pending:
             self.executor.submit(self._work, job_id)
 
+        from app.research_agent.trials import TrialCoordinator
+        self.trial_coordinator = TrialCoordinator(self)
+
     @property
     def workers(self):
         from app.research_runtime import worker_count
@@ -77,7 +80,7 @@ class BacktestJobs:
         if mode == 'auto':
             mode = 'auto_conservative'
         if mode not in {'auto_conservative','auto_performance','1','2','3','4','5','6','7','8'}:
-            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1–8 workers')
+            raise ValueError('Compute mode must be Auto conservative, Auto performance or 1â€“8 workers')
         worker_count(mode)  # validate on this host
         self.worker_mode = mode
         self.database.set_setting('backtest_worker_mode', mode)
@@ -200,10 +203,23 @@ class BacktestJobs:
                 self._update(job_id, status='cancelled')
 
     def _cancelled(self, job_id):
-        if self.closed or self.get(job_id)['cancel_requested']:
+        job=self.get(job_id)
+        if self.closed or job['cancel_requested']:
             raise JobCancelled()
+        if job['payload'].get('research_validation_id'):
+            from app.research_agent.validation import active
+            if not active(self.database,job['payload']['research_validation_id']):raise JobCancelled()
+        if job['payload'].get('research_trial_id'):
+            from app.research_agent.trials import active
+            if not active(self.database,job['payload']):raise JobCancelled()
 
     def _work_inner(self, job_id):
+        from app.research_agent.access import scope
+        payload=self.get(job_id)['payload']
+        with scope(self.database,payload.get('research_project_id'),payload.get('research_validation_id')):
+            return self._work_scoped(job_id)
+
+    def _work_scoped(self, job_id):
         try:
             with self.lock:
                 if self.closed or self.get(job_id)['status'] != 'queued':
@@ -211,8 +227,7 @@ class BacktestJobs:
                 self._update(job_id, status='preparing data')
             def progress(status, done, total):
                 with self.lock:
-                    if self.closed or self.get(job_id)['cancel_requested']:
-                        raise JobCancelled()
+                    self._cancelled(job_id)
                     self._update(job_id, status=status, processed=done, total=total)
             def persist(save):
                 # Cancellation and commit are mutually exclusive. Once saved,
@@ -269,5 +284,6 @@ class BacktestJobs:
     def close(self):
         with self.lock:
             self.closed = True
+        self.trial_coordinator.close()
         self.budget.notify()
         self.executor.shutdown(wait=True, cancel_futures=True)

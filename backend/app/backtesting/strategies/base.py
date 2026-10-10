@@ -42,6 +42,8 @@ class StrategySpec:
     source_file: str = ""
     # Optional presentation/evidence declarations; never consulted by trading rules.
     review_config: dict[str, Any] = field(default_factory=dict)
+    # Exact version/profile/timeframe declarations for optional causal detectors.
+    concepts: dict[str, dict] = field(default_factory=dict)
 
 
 class Strategy(ABC):

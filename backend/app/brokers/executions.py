@@ -146,7 +146,11 @@ def closed_positions(executions, account_label, currency, open_position_ids=()):
         complete = all(v is not None for v in (realized, commission, swap, fee))
         net = realized + commission + swap + fee if complete else None
         money = lambda v: float(v) if v is not None else None
+        # Only entry evidence from the official adapter establishes automation.
+        # SL/TP closes and magic numbers alone never establish strategy origin.
+        automated = any(e.metadata.get('programmatic_order') is True for e in entries)
         trades.append(dict(source='broker_' + first.provider, external_provider=first.provider,
+            is_automated=True if automated else None, execution_source='imported',
             external_account_key=first.account_key,
             external_id=f'{first.environment}:{first.account_key}:{position_id}',
             external_order_id=first.order_id, account=account_label,

@@ -45,3 +45,20 @@ export function positionMetrics(facts) {
     invested:wallet.totalCost, value:wallet.currentValue, pnl:wallet.unrealizedProfitLoss,
     returnPct:wallet.currency ? returnPercent(wallet.unrealizedProfitLoss, wallet.totalCost) : null};
 }
+
+
+export const accountsForBroker=(accounts,broker='all')=>accounts.filter(a=>broker==='all'||a.provider===broker);
+export function brokerAccountTotals(accounts,broker='all') {
+  const groups=new Map(),seen=new Set();
+  for(const account of accountsForBroker(accounts,broker)){
+    const key=account.provider+':'+account.account_key;
+    if(seen.has(key))continue;seen.add(key);
+    const summary=account.summary||{},currency=summary.currency||'Unknown';
+    const group=groups.get(currency)||{currency,accounts:0,value:0,complete:true};
+    group.accounts++;
+    if(Number.isFinite(summary.totalValue))group.value+=summary.totalValue;
+    else group.complete=false;
+    groups.set(currency,group);
+  }
+  return [...groups.values()].map(g=>({...g,value:g.complete&&g.currency!=='Unknown'?g.value:null}));
+}

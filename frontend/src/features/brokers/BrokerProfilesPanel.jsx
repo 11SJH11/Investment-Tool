@@ -61,9 +61,10 @@ export default function BrokerProfilesPanel({destination,onSynced}) {
           </div>
         </div>
         {configurable&&<p className="mt-2 max-w-3xl text-xs text-stone-600">{connectionHint(p.provider)}</p>}
+        {p.discovered_capabilities&&<p className="mt-1 text-xs">Read access: {['equities','options','crypto'].filter(a=>p.discovered_capabilities[a+'_read']).join(', ')||'Unavailable'}. Ledger execution: disabled.</p>}
         {p.reason&&<p className="mt-1 max-w-3xl text-xs text-stone-600">{p.reason}</p>}
         {configurable&&<div className="mt-3 flex flex-wrap gap-3 text-xs">
-          <label>Environment <select aria-label={`${BROKER_NAMES[p.provider]} environment`} className="input" value={p.environment} disabled={disabled} onChange={e=>configure(p,p.configured,e.target.value)}><option value="demo">Demo</option><option value="live">Live (read only)</option></select></label>
+          <label>Environment <select aria-label={`${BROKER_NAMES[p.provider]} environment`} className="input" value={p.environment} disabled={disabled} onChange={e=>configure(p,p.configured,e.target.value)}>{p.provider!=='robinhood'&&<option value="demo">Demo</option>}<option value="live">Live (read only)</option></select></label>
           {canSelectAccount(p.provider)&&accounts[p.profile_id]?.length>0&&<label>Account <select className="input" aria-label={`${BROKER_NAMES[p.provider]} account`} disabled={disabled} value={p.account_key||''} onChange={e=>e.target.value&&select(p,e.target.value)}><option value="">Select a verified account</option>{accounts[p.profile_id].map(a=><option key={a.account_key} value={a.account_key}>{a.label} / {a.currency}</option>)}</select></label>}
         </div>}
         <p className="mt-2 text-xs">Last successful sync: {date(p.last_success_at)}</p>

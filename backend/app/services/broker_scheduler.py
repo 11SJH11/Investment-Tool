@@ -20,7 +20,7 @@ class BrokerScheduler:
 
     def _load(self, profile_id):
         p = self.connections._profile(profile_id)
-        minimum = 300 if p.provider == 'trading212' else 60
+        minimum = 300 if p.provider in {'trading212','robinhood'} else 60
         saved = json.loads(self.database.get_setting('broker_auto_sync:' + profile_id) or '{}')
         return {'enabled': True, 'interval_seconds': minimum, 'next_at': self.clock()+minimum,
                 'retry_until': 0, 'failures': 0, 'status': 'scheduled', **saved, 'minimum_seconds': minimum}

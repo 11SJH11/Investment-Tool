@@ -16,11 +16,11 @@ class BrokerProfile:
 
     @property
     def configured(self):
-        required = {"oanda": ("token", "account_id"), "trading212": ("api_key", "api_secret"),
+        required = {"robinhood": ("access_token",), "oanda": ("token", "account_id"), "trading212": ("api_key", "api_secret"),
                     "tradelocker": ("email", "password", "server"),
                     "mt5": (),
                     "tradovate": ("client_id", "client_secret", "account_id")}[self.provider]
-        environments = {"practice", "live"} if self.provider == "oanda" else {"demo", "live"}
+        environments = {"live"} if self.provider == "robinhood" else {"practice", "live"} if self.provider == "oanda" else {"demo", "live"}
         return self.enabled and self.environment in environments and all(self.credentials.get(k, "").strip() for k in required)
 
 
@@ -38,6 +38,9 @@ def profiles(settings):
         ('email', 'password', 'server', 'account_id', 'developer_api_key')}))
     result.append(BrokerProfile('mt5-default', 'mt5', settings.mt5_environment.strip().lower(),
         settings.mt5_enabled, {k: getattr(settings, 'mt5_' + k) for k in ('login', 'password', 'server', 'terminal_path')}))
+    result.append(BrokerProfile('robinhood-default','robinhood','live',
+        settings.robinhood_enabled and settings.robinhood_portfolio_sync,
+        {'access_token':settings.robinhood_access_token,'account_id':settings.robinhood_account_id}))
     try:
         extra = json.loads(settings.broker_profiles_json)
         if not isinstance(extra, list):
@@ -49,7 +52,7 @@ def profiles(settings):
             profile = BrokerProfile(**item)
             if not re.fullmatch(r"[a-z][a-z0-9-]{0,59}", profile.id) or profile.id in ids:
                 raise ValueError()
-            if profile.provider not in {"oanda", "trading212", "tradovate", "tradelocker", "mt5"} or not isinstance(profile.enabled, bool):
+            if profile.provider not in {"oanda", "trading212", "tradovate", "tradelocker", "mt5", "robinhood"} or not isinstance(profile.enabled, bool):
                 raise ValueError()
             if not isinstance(profile.credentials, dict) or not all(isinstance(v, str) for v in profile.credentials.values()):
                 raise ValueError()
@@ -57,7 +60,7 @@ def profiles(settings):
                 raise ValueError()
             profile.environment = profile.environment.strip().lower()
             # Reject invalid environments instead of accidentally choosing a live host.
-            if profile.environment not in ({"practice", "live"} if profile.provider == "oanda" else {"demo", "live"}):
+            if profile.environment not in ({"practice", "live"} if profile.provider == "oanda" else {"live"} if profile.provider == "robinhood" else {"demo", "live"}):
                 raise ValueError()
             ids.add(profile.id); result.append(profile)
     except Exception:
