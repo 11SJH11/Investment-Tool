@@ -47,6 +47,11 @@ function queryString(params) {
 }
 
 export const api = {
+  researchCampaigns: () => request('/strategy-lab/research-campaigns'),
+  researchCampaignPolicy: () => request('/strategy-lab/research-campaigns/policy'),
+  researchCampaign: id => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}`),
+  launchResearchCampaign: payload => request('/strategy-lab/research-campaigns/launch',{method:'POST',body:JSON.stringify(payload)}),
+  controlResearchCampaign: (id,action) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/${action}`,{method:'POST'}),
   marketConcepts: () => request('/strategy-lab/market-concepts'),
   conceptAudits: id => request(`/strategy-lab/research-agent/${id}/concept-audits`),
   researchRegimes: (id,candidate) => request(`/strategy-lab/research-agent/${id}/candidates/${candidate}/regimes`),

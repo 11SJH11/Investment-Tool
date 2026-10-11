@@ -6,6 +6,16 @@ from app.data.instruments import normalize_symbol
 from app.storage.backtest_run_repository import BacktestRunRepository
 from .analysis import analyze, compare, digest
 
+
+def dataset_ids(connection, project_id):
+    """Owned and explicitly shared records; sharing never duplicates unseen state."""
+    ids = {json.loads(r[0])['id'] for r in connection.execute('SELECT document FROM agent_datasets')
+           if json.loads(r[0])['project_id'] == project_id}
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_dataset_memberships'").fetchone():
+        ids.update(r[0] for r in connection.execute('SELECT dataset_id FROM agent_dataset_memberships WHERE project_id=?', (project_id,)))
+    return ids
+
+
 class ResearchRepository:
     def __init__(self,database):
         self.database=database
@@ -21,7 +31,8 @@ class ResearchRepository:
             row=c.execute('SELECT document FROM agent_projects WHERE id=?',(id,)).fetchone()
             if not row:raise ValueError('Unknown research project')
             project=json.loads(row[0])
-            project['datasets']=[json.loads(r[0]) for r in c.execute('SELECT document FROM agent_datasets') if json.loads(r[0])['project_id']==id]
+            accessible=dataset_ids(c,id)
+            project['datasets']=[json.loads(r[0]) for r in c.execute('SELECT document FROM agent_datasets') if json.loads(r[0])['id'] in accessible]
             project['events']=[dict(r) for r in c.execute('SELECT * FROM agent_events WHERE project_id=? ORDER BY id',(id,))]
             project['research_debt']={'uses':sum(e['action']=='inspect_run' for e in project['events']),'hypotheses':sum(e['action']=='hypothesis_preregistered' for e in project['events']),'registered_variants':sum(json.loads(e['detail'])['variants'] for e in project['events'] if e['action']=='hypothesis_preregistered'),'label':'Observed uses only; no mathematically calibrated overfit score.'}
             return project
@@ -67,7 +78,7 @@ class ResearchRepository:
             d=json.loads(row[0])
             project=c.execute('SELECT document FROM agent_projects WHERE id=?',(id,)).fetchone()
             if not project or json.loads(project[0])['state']=='ARCHIVED':raise ValueError('Archived or missing project')
-            if d['project_id']!=id or d['state'] not in {'LOCKED_HOLDOUT','FUTURE_OOS'}:raise ValueError('Dataset is not a locked holdout for this project')
+            if dataset_id not in dataset_ids(c,id) or d['state'] not in {'LOCKED_HOLDOUT','FUTURE_OOS'}:raise ValueError('Dataset is not a locked holdout for this project')
             # Conservative: consume at approval, before any possible result exposure.
             d['state']='INSPECTED_VALIDATION';c.execute('UPDATE agent_datasets SET document=? WHERE id=?',(json.dumps(d),dataset_id))
             c.execute('INSERT INTO agent_events(project_id,dataset_id,action,detail) VALUES (?,?,?,?)',(id,dataset_id,'holdout_approved',acknowledgement))
@@ -84,8 +95,11 @@ class ResearchRepository:
             scope={'symbols':json.loads(run['symbols']),'start':run['start_date'],'end':run['end_date']}
             datasets=[json.loads(r[0]) for r in c.execute('SELECT document FROM agent_datasets')]
             if any(self.overlap(scope,d) and d['state'] in {'LOCKED_HOLDOUT','FUTURE_OOS'} for d in datasets):raise ValueError('Holdout firewall: explicit user approval is required')
-            covered=[d for d in datasets if d['project_id']==id and d['timeframe']==run['primary_timeframe'] and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end']]
+            accessible=dataset_ids(c,id)
+            covered=[d for d in datasets if d['id'] in accessible and d['timeframe']==run['primary_timeframe'] and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end']]
             if not covered:raise ValueError('Run falls outside the project dataset registry')
+            if project.get('campaign_id') and not any(d['state'] in {'DEVELOPMENT','INSPECTED'} for d in covered):
+                raise ValueError('Campaign development inspection cannot read consumed validation; use candidate validation evidence')
             if run['strategy_key']!=project['strategy_key']:raise ValueError('Register child lineage before using another strategy')
             result_row=c.execute('SELECT config_json,result_json FROM backtest_runs WHERE id=?',(run_id,)).fetchone()
             saved={'config':json.loads(result_row[0]),'result':json.loads(result_row[1])}

@@ -24,3 +24,6 @@ api_router.include_router(strategy_workspace_router)
 
 from app.api.research_agent import router as research_agent_router
 api_router.include_router(research_agent_router)
+
+from app.api.research_campaigns import router as research_campaigns_router
+api_router.include_router(research_campaigns_router)

@@ -50,6 +50,66 @@ class Candidates:
         with self.database.connect() as c:
             return [json.loads(r[0]) for r in c.execute('SELECT document FROM agent_candidates WHERE project_id=? ORDER BY rowid',(project_id,))]
 
+    def freeze_reference(self,project_id):
+        """A control anchor, not a selected variant or an accepted strategy.
+
+        A separate, bounded baseline project may use this before structural code
+        exists. It never fabricates a numeric experiment to obtain a parent.
+        """
+        from app.storage.backtest_run_repository import BacktestRunRepository
+        from .trials import check_source
+        project=self.projects.get(project_id)
+        if project['state']!='BASELINE_ANALYSIS' or not project.get('baseline_run_id'):
+            raise ValueError('An active completed development baseline is required')
+        project=self.projects.inspect_run(project_id,project['baseline_run_id'])
+        run=BacktestRunRepository(self.database).get(project['baseline_run_id'])
+        report=project['analyses'][str(project['baseline_run_id'])]
+        if not report['data_fingerprint'] or report['strategy_provenance']!=project['strategy_provenance']:
+            raise ValueError('Verified source and data identity required for a reference')
+        hypothesis=dict(base_config=deepcopy(run['config']),parent_source=report['strategy_provenance'],
+                        parent_concepts=report['concepts'],data_fingerprint=report['data_fingerprint'])
+        check_source(hypothesis)
+        snapshot=dict(configuration=deepcopy(run['config']),source=report['strategy_provenance'],
+                      concepts=report['concepts'],data_fingerprint=report['data_fingerprint'],
+                      result_digest=report['result_digest'],hypothesis=hypothesis,
+                      robustness={'summary':compact(report['summary']),
+                                  'warnings':['Control reference only; not a researched candidate or validation approval.']})
+        document=dict(id=str(uuid4()),project_id=project_id,kind='CONTROL_REFERENCE',
+            trial_id='reference:'+str(run['id']),cell_index=-1,run_id=run['id'],parent_run_id=run['id'],
+            state='REFERENCE',created_at=datetime.now(timezone.utc).isoformat(),
+            reason='Frozen development reference for isolated structural checks',snapshot=snapshot,
+            snapshot_hash=digest(snapshot),validation_granted=False)
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            current=json.loads(c.execute('SELECT document FROM agent_projects WHERE id=?',(project_id,)).fetchone()[0])
+            if current['state']!='BASELINE_ANALYSIS' or current['baseline_run_id']!=run['id']:
+                raise ValueError('Reference project changed')
+            if c.execute("SELECT 1 FROM agent_trials WHERE project_id=? AND json_extract(document,'$.status')='ACTIVE'",(project_id,)).fetchone():
+                raise ValueError('Finish active trials before freezing a reference')
+            previous=c.execute('SELECT document FROM agent_candidates WHERE project_id=? AND trial_id=? AND cell_index=-1',
+                               (project_id,document['trial_id'])).fetchone()
+            if previous:
+                old=json.loads(previous[0])
+                if old['snapshot_hash']!=document['snapshot_hash']:raise ValueError('Frozen reference evidence changed')
+                return old
+            c.execute('INSERT INTO agent_candidates VALUES (?,?,?,?,?)',(document['id'],project_id,
+                document['trial_id'],-1,json.dumps(document,allow_nan=False)))
+            c.execute('INSERT INTO agent_events(project_id,action,detail) VALUES (?,?,?)',
+                      (project_id,'control_reference_frozen',json.dumps({'id':document['id'],'hash':document['snapshot_hash']})))
+        return document
+
+    def verify_sandbox_parent(self,project_id,candidate):
+        if digest(candidate['snapshot'])!=candidate['snapshot_hash']:
+            raise ValueError('Frozen parent integrity failed')
+        if candidate.get('kind')=='CONTROL_REFERENCE':
+            current=self.freeze_reference(project_id)
+            if current['id']!=candidate['id'] or current['snapshot_hash']!=candidate['snapshot_hash']:
+                raise ValueError('Frozen control reference changed')
+            return
+        _,cell,_=self.assess(project_id,candidate['trial_id'],candidate['cell_index'])
+        if cell['comparison']['child']['result_digest']!=candidate['snapshot']['result_digest'] or cell['payload']!=candidate['snapshot']['configuration']:
+            raise ValueError('Frozen candidate evidence changed')
+
     def assess(self,project_id,trial_id,index):
         project=self.projects.get(project_id)
         if project['state']!='BASELINE_ANALYSIS':raise ValueError('Research project must be active')

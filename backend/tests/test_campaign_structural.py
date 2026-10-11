@@ -1,0 +1,208 @@
+from copy import deepcopy
+import json
+import os
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+
+from tests.test_research_trials import research
+from tests.test_research_author import Model
+from tests.test_backtest_jobs import wait_for
+from app.research_agent.author import CodeAuthor, CONSENT
+from app.research_agent.campaigns import Campaigns
+from app.research_agent.campaign_policy import CampaignPolicy, DatasetPolicy
+from app.research_agent.campaign_projects import provision
+from app.research_agent.director import ResearchDirector, permitted
+from app.research_agent.repository import ResearchRepository
+from app.research_agent.sandbox_runs import SandboxRuns
+
+
+class SandboxFixture:
+    def __init__(self):
+        self.docker=SimpleNamespace(image=lambda:'fixture-image')
+        self.thread=None
+        self.calls=[]
+        self.items={}
+
+    def approve(self,pid,cid,did,payload):
+        self.calls.append((pid,cid,did,payload))
+        result=dict(id='sandbox-fixture',status='COMPLETED',control_parity=True,
+                    causality={'prefix_match':True},summary={'n':0})
+        self.items[result['id']]=result
+        return result
+
+    def get(self,identifier):return self.items[identifier]
+    def cancel(self,*args):pass
+
+
+@pytest.fixture
+def structural(research,monkeypatch):
+    db,_,original,_,jobs,backtest=research
+    campaigns=Campaigns(db)
+    policy=CampaignPolicy(code_generation=True,send_development_summaries=True,
+                          dataset=DatasetPolicy(warmup_sessions=1,min_development_sessions=2,min_holdout_sessions=1,internal_windows=2))
+    campaign=campaigns.create(dict(request_key='structural',mode='IMPROVE_STRATEGY',strategy_key=original['strategy_key'],policy=policy.model_dump()))
+    campaign=campaigns.prepare(campaign['id'],[dict(family_id='fixture',strategy_key=original['strategy_key'],reason='Structural fixture')],
+        [dict(symbol='QQQ',timeframe='1m',provider_namespace='fixture',source_fingerprint='fixture',completed_through='2026-01-04',
+              sessions=['2026-01-01','2026-01-02','2026-01-03','2026-01-04'])])
+    links=provision(db,campaign['id'])
+    model=Model()
+    monkeypatch.setattr('app.research_agent.author.archived_parent',lambda *args:dict(source='SYNTHETIC_PARENT',sha256='fixture'))
+    author=CodeAuthor(db,model)
+    sandbox=SandboxFixture()
+    services=SimpleNamespace(database=db,backtest_jobs=jobs,research_author=author,research_sandbox=sandbox,
+                             research_loop=SimpleNamespace(committee=SimpleNamespace(model=model)))
+    director=ResearchDirector(services,start_thread=False)
+    configs={p['project_id']:dict(starting_balance=10000,risk_value=1,commission_per_order=0,
+                               spread_bps=0,slippage_bps=0,max_leverage=1,strategy_params={'skip':0}) for p in links}
+    yield director,campaign,configs,model,backtest
+    director.close()
+    author.close()
+
+
+def until(director,cid,state=None,phase=None):
+    def done():
+        director.tick()
+        item=director.campaigns.get(cid)
+        return item['status']==state if state else item['execution']['entries'][0]['state']==phase
+    wait_for(done)
+    return director.campaigns.get(cid)
+
+
+def test_campaign_authors_then_dispatches_existing_sandbox_without_browser(structural):
+    director,campaign,configs,model,backtest=structural
+    start=director.start_baselines(campaign['id'],configs,structural=True)
+    result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
+    entry=result['execution']['entries'][0]
+    assert entry['state']=='COMPLETED',result
+    assert entry['structural_result']['control_parity']
+    assert len(model.calls)==4 and len(director.services.research_sandbox.calls)==1
+    assert result['reserved']==start['reserved']
+    assert result['reserved']['simulations']==22 and result['reserved']['children']==1
+    assert entry['robustness_windows']==[{'start':'2026-01-02','end':'2026-01-02'},{'start':'2026-01-03','end':'2026-01-03'}]
+    assert director.services.research_sandbox.calls[0][3]['windows']==entry['robustness_windows']
+    assert result['reserved']['llm_calls']==4
+    parent=backtest.runs.get(entry['run_id'])
+    reference=backtest.runs.get(entry['reference_run_id'])
+    assert parent['config']['end_date']=='2026-01-03'
+    assert reference['config']['start_date']==reference['config']['end_date']=='2026-01-02'
+    assert entry['run_id']!=entry['reference_run_id']
+    a=ResearchRepository(director.database).get(entry['project_id'])
+    b=ResearchRepository(director.database).get(entry['reference_project_id'])
+    assert {d['id'] for d in a['datasets']}=={d['id'] for d in b['datasets']}
+    assert any(d['state']=='LOCKED_HOLDOUT' for d in b['datasets'])
+    director.tick()
+    assert len(model.calls)==4 and len(director.services.research_sandbox.calls)==1
+
+
+def test_author_rejection_does_not_dispatch_or_spend_again_after_restart(structural):
+    director,campaign,configs,model,_=structural
+    model.reject=True
+    director.start_baselines(campaign['id'],configs,structural=True)
+    result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
+    assert result['execution']['entries'][0]['state']=='RESEARCH_STOPPED'
+    assert len(model.calls)==3 and not director.services.research_sandbox.calls
+    restarted=ResearchDirector(director.services,start_thread=False)
+    try:
+        restarted.tick()
+        assert len(model.calls)==3
+    finally:restarted.close()
+
+
+def test_campaign_pause_mid_model_call_revokes_author_and_no_docker(structural):
+    director,campaign,configs,model,_=structural
+    def pause(role,result,usage):director.control(campaign['id'],'pause')
+    model.mutate=pause
+    director.start_baselines(campaign['id'],configs,structural=True)
+    item=until(director,campaign['id'],state='PAUSED')
+    director.services.research_author.thread.join(timeout=15)
+    entry=item['execution']['entries'][0]
+    assert not permitted(director.database,entry['reference_project_id'])
+    assert not director.services.research_sandbox.calls and len(model.calls)==1
+    director.control(campaign['id'],'resume')
+    until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
+    assert len(model.calls)==1
+
+
+def test_manual_author_cannot_bypass_campaign_allocation(structural):
+    director,campaign,configs,model,_=structural
+    start=director.start_baselines(campaign['id'],configs,structural=True)
+    item=until(director,campaign['id'],phase='AUTHOR')
+    pid=item['execution']['entries'][0]['reference_project_id']
+    with pytest.raises(ValueError,match='Director allocation'):
+        director.services.research_author.start(pid,dict(request_key='bypass',consent=CONSENT))
+    assert not model.calls
+    from app.research_agent.committee import Committee
+    parent=start['execution']['entries'][0]['project_id']
+    with pytest.raises(ValueError,match='call budget'):
+        Committee(director.database,model).review(parent,'unreserved')
+
+
+def test_forged_campaign_sandbox_parameters_rejected(structural):
+    from app.research_agent.structural import sandbox_authorized
+    director,campaign,configs,_,_=structural
+    director.start_baselines(campaign['id'],configs,structural=True)
+    item=until(director,campaign['id'],phase='SANDBOX')
+    entry=item['execution']['entries'][0]
+    project=ResearchRepository(director.database).get(entry['reference_project_id'])
+    with pytest.raises(ValueError,match='differs'):
+        sandbox_authorized(director.database,project,entry['reference_id'],entry['draft_id'],{})
+    from app.research_agent.sandbox_runs import ACK
+    with pytest.raises(ValueError,match='differs'):
+        sandbox_authorized(director.database,project,entry['reference_id'],entry['draft_id'],dict(
+            control_parameters={'skip':0,'research_feature_enabled':False},
+            candidate_parameters={'skip':0,'research_feature_enabled':True},
+            timeout_seconds=min(600,entry['max_minutes']*60),acknowledgement=ACK,windows=[]))
+
+
+def test_structural_budget_reserves_all_cost_and_window_runs_before_dispatch(structural):
+    director,campaign,configs,model,_=structural
+    with director.database.connect() as c:
+        item=director.campaigns._get(c,campaign['id'])
+        item['request']['policy']['budget']['simulations']=21
+        director.campaigns._save(c,item)
+    with pytest.raises(ValueError,match='budget exhausted'):
+        director.start_baselines(campaign['id'],configs,structural=True)
+    assert not model.calls and not director.services.research_sandbox.calls
+    assert 'execution' not in director.campaigns.get(campaign['id'])
+
+
+@pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
+def test_campaign_full_loop_with_mock_model_and_real_docker(structural):
+    director,campaign,configs,model,backtest=structural
+    original=backtest.prepare
+    def prepare(payload,**kwargs):
+        from app.research_agent.workflow import validate_submission
+        def validate(db,data):
+            if data.get('research_project_id'):validate_submission(db,data)
+        with patch('tests.test_research_trials.validate_submission',validate):
+            data=original(payload,**kwargs)
+        import pandas as pd
+        delta=pd.Timestamp(payload['start_date'])-pd.Timestamp('2026-01-02')
+        data['frames_by_symbol']['QQQ']['1m']['timestamp']+=delta
+        data['start']+=delta;data['end']+=delta
+        return data
+    backtest.prepare=prepare
+    runner=SandboxRuns(director.database,backtest)
+    director.services.research_sandbox=runner
+    try:
+        director.start_baselines(campaign['id'],configs,structural=True)
+        # Existing wait_for uses a short timeout, so wait for the durable dispatch
+        # first and then join the bounded Docker task independently.
+        until(director,campaign['id'],phase='SANDBOX')
+        director.tick()
+        runner.thread.join(timeout=90)
+        assert not runner.thread.is_alive()
+        result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
+        entry=result['execution']['entries'][0]
+        assert entry['state']=='COMPLETED',json.dumps(entry,indent=2)
+        assert entry['structural_result']['causality']['prefix_match']
+        trial=runner.get(entry['sandbox_id'])
+        assert trial['reserved_runs']==20
+        assert len(trial['robustness']['cells'])==4
+        assert all(cell['status']=='COMPLETED' and cell['control_parity'] for cell in trial['robustness']['cells'])
+        assert trial['robustness']['zero_cost_stress']
+        assert len({c['data_fingerprint'] for c in trial['robustness']['cells']})==2
+        assert len(model.calls)==4
+    finally:runner.close()

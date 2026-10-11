@@ -83,6 +83,27 @@ def test_control_failure_does_not_run_candidate(frozen):
     finally:runner.close()
 
 
+@pytest.mark.parametrize('day,expected_preparations', [('2026-01-03',2),('2027-01-01',1)])
+def test_robustness_rejects_wrong_window_data_and_never_fetches_holdout(frozen,day,expected_preparations):
+    runner,project,candidate,draft,request=setup(frozen)
+    prepare=runner.backtest.prepare
+    calls=[]
+    def recorded(payload,**kwargs):
+        calls.append(payload['start_date'])
+        return prepare(payload,**kwargs)
+    runner.backtest.prepare=recorded
+    parent=runner.backtest.runs.get(candidate['run_id'])
+    request['windows']=[{'start':day,'end':day}]
+    try:
+        result=finish(runner,runner.approve(project['id'],candidate['id'],draft['id'],request))
+        assert result['status']=='FAILED' and result['robustness']['status']=='FAILED'
+        assert len(calls)==expected_preparations and '2027-01-01' not in calls
+        assert result['control_parity'] and result['causality']['prefix_match']
+        assert not any(c['status']=='COMPLETED' for c in result['robustness']['cells'])
+        assert runner.backtest.runs.get(candidate['run_id'])==parent
+    finally:runner.close()
+
+
 def test_changed_data_rejected_before_generated_execution(frozen):
     runner,project,candidate,draft,request=setup(frozen)
     runner.backtest.changed=True

@@ -15,6 +15,12 @@ def require_active(connection, project_id, loop_id):
     if not row: raise ValueError('Research loop authorization missing')
     loop=json.loads(row[0])
     if loop['id']!=loop_id or loop['status']!='ACTIVE': raise ValueError('Research loop is not active')
+    if loop.get('campaign_id'):
+        row=connection.execute('SELECT document FROM agent_campaigns WHERE id=?',(loop['campaign_id'],)).fetchone()
+        campaign=json.loads(row[0]) if row else {}
+        entry=next((e for e in campaign.get('execution',{}).get('entries',[]) if e['project_id']==project_id),None)
+        if campaign.get('status') not in {'ACTIVE','STOPPING'} or not entry or entry['state']!='NUMERIC' or datetime.now(timezone.utc)>=datetime.fromisoformat(entry['deadline']) or datetime.now(timezone.utc)>=datetime.fromisoformat(campaign['deadline']):
+            raise ValueError('Campaign research authorization is inactive')
 
 
 def experiment_identity(axes):
@@ -40,18 +46,34 @@ class ResearchLoop:
 
     def permitted(self, loop):
         if self.stop.is_set():return False
+        if loop.get('campaign_id'):
+            try:
+                with self.database.connect() as c:
+                    require_active(c,loop['project_id'],loop['id'])
+                    campaign=json.loads(c.execute('SELECT document FROM agent_campaigns WHERE id=?',(loop['campaign_id'],)).fetchone()[0])
+                if self.committee.model.status()!=campaign['execution']['model']:return False
+            except ValueError:return False
         current=self.get(loop['project_id'])
         return bool(current and current['id']==loop['id'] and current['status']=='ACTIVE' and self.projects.get(loop['project_id'])['state']=='BASELINE_ANALYSIS')
 
-    def start(self, project_id, max_cycles):
+    def start(self, project_id, max_cycles, *, campaign_id=None):
         if type(max_cycles) is not int or not 1<=max_cycles<=10:raise ValueError('Cycle limit must be 1 to 10')
         if not self.committee.model.status()['configured']:raise ValueError('Research model is not configured')
         budget=self.projects.get(project_id).get('research_budget',{})
+        project=self.projects.get(project_id)
+        if project.get('campaign_id') != campaign_id:
+            raise ValueError('Campaign projects require Director authorization')
         if not self.committee.model.status().get('pricing') or not budget.get('max_llm_spend_usd'):
             raise ValueError('Autonomous research requires configured model prices and a positive project monetary budget')
         self.committee._evidence(project_id)  # Source, data, scope and size checks before authorization.
         with self.database.connect() as c:
             c.execute('BEGIN IMMEDIATE')
+            if campaign_id:
+                row=c.execute('SELECT document FROM agent_campaigns WHERE id=?',(campaign_id,)).fetchone()
+                campaign=json.loads(row[0]) if row else {}
+                entry=next((e for e in campaign.get('execution',{}).get('entries',[]) if e['project_id']==project_id),None)
+                if campaign.get('status') not in {'ACTIVE','STOPPING'} or not entry or entry['state']!='NUMERIC' or entry['numeric_cycles']!=max_cycles:
+                    raise ValueError('Campaign numeric authorization is inactive')
             if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_candidates'").fetchone() and c.execute("SELECT 1 FROM agent_candidates WHERE project_id=? AND json_extract(document,'$.state')='FROZEN'",(project_id,)).fetchone():
                 raise ValueError('Candidate frozen; explicit validation approval is required before further autonomous research')
             if c.execute('SELECT 1 FROM agent_loops WHERE project_id=?',(project_id,)).fetchone():
@@ -61,6 +83,7 @@ class ResearchLoop:
             loop={'id':str(uuid4()),'project_id':project_id,'status':'ACTIVE','phase':'REVIEW','revision':0,
                 'created_at':datetime.now(timezone.utc).isoformat(),'max_cycles':max_cycles,'cycles':[],
                 'scope':'Frozen baseline development parameters only; no holdouts, code generation or promotion'}
+            if campaign_id:loop['campaign_id']=campaign_id
             c.execute('INSERT INTO agent_loops VALUES (?,?)',(project_id,json.dumps(loop)))
             c.execute('INSERT INTO agent_events(project_id,action,detail) VALUES (?,?,?)',(project_id,'research_loop_authorized',json.dumps(loop)))
         return loop
@@ -128,7 +151,14 @@ class ResearchLoop:
     def advance(self, loop):
         project_id=loop['project_id']
         if not self.permitted(loop):
+            if loop.get('campaign_id'):return  # Director owns pause/deadline reconciliation.
             loop.update(status='STOPPED',reason='Project paused or archived');self.save(loop);return
+        if loop.get('campaign_id') and loop['phase']=='REVIEW':
+            with self.database.connect() as c:
+                campaign=json.loads(c.execute('SELECT document FROM agent_campaigns WHERE id=?',(loop['campaign_id'],)).fetchone()[0])
+            if campaign['status']=='STOPPING':
+                loop.update(status='COMPLETED',reason='Stopped after current experiment; no further committee review')
+                self.save(loop);return
         if len(loop['cycles'])>=loop['max_cycles']:
             loop.update(status='COMPLETED',reason='Authorized development cycle limit reached; no candidate promoted');self.save(loop);return
         if loop['phase']=='REVIEW':

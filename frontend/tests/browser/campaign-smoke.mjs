@@ -1,0 +1,47 @@
+import {send,evaluate,waitFor,click,errors,close,screenshot} from './cdp.mjs';
+errors.length=0;
+await send('Page.addScriptToEvaluateOnNewDocument',{source:`
+localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Backtest'));
+localStorage.setItem('ledger.ui.backtest.tab',JSON.stringify('Research Agent'));
+window.launches=[];window.controls=[];
+const policy={symbols:['QQQ'],timeframes:['1m'],directions:['long','short'],minimum_trades:30,holdout:'human_approval',budget:{wall_minutes:60,simulations:24,llm_calls:12,llm_usd:2},dataset:{}};
+let campaign=null;
+window.fetch=async(url,opts={})=>{const path=new URL(String(url),location.origin).pathname;let data={items:[]};
+if(path.endsWith('/strategies'))data={strategies:[{key:'fixture',name:'Fixture strategy',timeframes:['1m'],defaults:{},parameters:[]}]};
+else if(path.endsWith('/indicators'))data={indicators:[]};
+else if(path.endsWith('/runs'))data={runs:[]};
+else if(path.endsWith('/jobs'))data={jobs:[],max_workers:1,compute:{}};
+else if(path.endsWith('/research-campaigns/policy'))data={defaults:policy,presets:{QUICK:policy,STANDARD:policy,DEEP:policy}};
+else if(path.endsWith('/research-campaigns/launch')){const request=JSON.parse(opts.body);window.launches.push(request);campaign={id:'campaign-fixture',status:'ACTIVE',created_at:'2026-10-11',request:request.campaign,reserved:{llm_usd:0,simulations:1},plans:{},execution:{entries:[]}};data=campaign;}
+else if(path.endsWith('/research-campaigns'))data={items:campaign?[campaign]:[]};
+else if(path.includes('/research-campaigns/campaign-fixture')){
+ if(opts.method==='POST'){const action=path.split('/').at(-1);window.controls.push(action);campaign.status=action==='pause'?'PAUSED':action==='resume'?'ACTIVE':'CANCELLED';data=campaign;}
+ else data={campaign,worker:{running:true,error:null},summary:{baseline_runs_completed:1,numeric_cycles_completed:0,structural_checks_completed:0,holdout_consumed_by_campaign:false},events:[],morning_report:{families:[{project_id:'p',family_id:'vwap',state:'RUNNING',baseline_summary:{n:8,average_r:.2},verdict:'DEVELOPMENT_ONLY',warnings:['Low sample'],robustness:{cells:[{window:1,start:'2025-01-01',end:'2025-01-07',cost_multiplier:2,status:'COMPLETED',summary:{n:3,average_r:.1,total_r:.3,profit_factor_r:1.2}}]}}],conclusions:['No strategy automatically accepted.']}};
+}
+return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});};
+`});
+await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19283'});
+await waitFor(`document.querySelector('[aria-label="Autonomous research campaigns"]')`);
+await waitFor(`document.body.textContent.includes('Ceilings:')`);
+await evaluate(`(()=>{const label=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('I authorize these settings'));label.querySelector('input').click();})()`);
+await click('Start campaign');
+await waitFor(`document.body.textContent.includes('Backend coordinator running')`);
+if(await evaluate(`window.launches.length!==1||window.launches[0].engine.sizing_mode!=='risk_pct'||window.launches[0].structural!==false`))throw Error('Launch contract');
+await click('pause');await waitFor(`document.body.textContent.includes('PAUSED')`);
+await click('resume');await waitFor(`document.body.textContent.includes('ACTIVE')`);
+await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: development windows and cost checks')).click()`);
+await waitFor(`document.querySelector('[aria-label="vwap robustness samples"]')`);
+if(await evaluate(`!document.querySelector('[aria-label="vwap robustness samples"]').textContent.includes('2025-01-01 to 2025-01-07')`))throw Error('Robustness sample dates missing');
+for(const width of [1024,1440,1920]){
+ await send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
+ await new Promise(r=>setTimeout(r,150));
+ if(await evaluate(`document.documentElement.scrollWidth>innerWidth`))throw Error('Page overflow '+width);
+ await screenshot('campaign-'+width+'.png');
+ console.log('Campaign viewport passed',width);
+}
+await click('Advanced projects');await waitFor(`document.body.textContent.includes('deterministic foundation')`);
+await click('Campaigns');await waitFor(`document.body.textContent.includes('Research report')`);
+if(await evaluate(`window.launches.length!==1`))throw Error('Navigation relaunched campaign');
+if(errors.length)throw Error(errors.join('\n'));
+console.log('PASS: primary campaign UI, explicit settings/consent, launch, pause/resume, report, advanced navigation, three viewports, no runtime errors. Fixture API only.');
+close();

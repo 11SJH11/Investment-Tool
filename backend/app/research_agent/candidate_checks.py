@@ -37,6 +37,8 @@ def approve(database, project_id, candidate_id, request, *, kind, build_scenario
     candidate = next((c for c in candidates.list(project_id) if c['id'] == candidate_id), None)
     if not candidate or digest(candidate['snapshot']) != candidate['snapshot_hash']:
         raise ValueError('Valid frozen candidate required')
+    if candidate.get('kind')=='CONTROL_REFERENCE':
+        raise ValueError('Control references are not robustness candidates')
     _, cell, _ = candidates.assess(project_id, candidate['trial_id'], candidate['cell_index'])
     if cell['payload'] != candidate['snapshot']['configuration'] or cell['comparison']['child']['result_digest'] != candidate['snapshot']['result_digest']:
         raise ValueError('Frozen candidate no longer matches the verified trial')
@@ -108,7 +110,9 @@ def evidence(connection, trial):
         scope = dict(symbols=config['symbols'], start=config['start_date'], end=config['end_date'])
         if any(ResearchRepository.overlap(scope,d) and d['state'] in {'LOCKED_HOLDOUT','FUTURE_OOS'} for d in datasets):
             raise ValueError('Holdout firewall blocked candidate evidence')
-        if not any(d['project_id']==trial['project_id'] and d['state'] in {'DEVELOPMENT','INSPECTED'} and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end'] for d in datasets):
+        from .repository import dataset_ids
+        accessible=dataset_ids(connection,trial['project_id'])
+        if not any(d['id'] in accessible and d['state'] in {'DEVELOPMENT','INSPECTED'} and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end'] for d in datasets):
             raise ValueError('Candidate evidence must remain on development data')
         result = connection.execute('SELECT result_json FROM backtest_runs WHERE id=?', (run_id,)).fetchone()
         return {'config':config, 'result':json.loads(result[0])}

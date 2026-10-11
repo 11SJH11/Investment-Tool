@@ -87,8 +87,12 @@ class HypothesisRepository:
             if not fingerprint:
                 raise ValueError("Baseline has no complete data fingerprint; preregistration requires a verified baseline")
             datasets = [json.loads(r[0]) for r in connection.execute("SELECT document FROM agent_datasets")]
-            owned = {d['id']: d for d in datasets if d['project_id'] == project_id}
+            from .repository import dataset_ids
+            accessible = dataset_ids(connection, project_id)
+            owned = {d['id']: d for d in datasets if d['id'] in accessible}
             for identifier in proposal['discovery_dataset_ids']:
+                if project.get('campaign_id') and identifier in owned and owned[identifier]['state']=='INSPECTED_VALIDATION':
+                    raise ValueError('Campaign hypotheses cannot use consumed validation evidence')
                 if identifier not in owned or owned[identifier]['state'] not in {'DEVELOPMENT', 'INSPECTED', 'INSPECTED_VALIDATION'}:
                     raise ValueError("Discovery evidence must be declared inspected/development data, never a locked holdout")
             scope = {'symbols': base['symbols'], 'start': base['start_date'], 'end': base['end_date']}

@@ -76,6 +76,8 @@ class AppServices:
 
     research_loop: object | None = None
     research_sandbox: object | None = None
+    research_director: object | None = None
+    research_author: object | None = None
 
     def __post_init__(self):
         if self.backtest_jobs:
@@ -90,8 +92,16 @@ class AppServices:
             from app.research_agent.loop import ResearchLoop
             from app.research_agent.llm import OpenAICommitteeModel
             self.research_loop = ResearchLoop(self.database, self.backtest_jobs, OpenAICommitteeModel(self.settings))
+            from app.research_agent.author import CodeAuthor
+            self.research_author = CodeAuthor(self.database, self.research_loop.committee.model)
+            from app.research_agent.director import ResearchDirector
+            self.research_director = ResearchDirector(self)
 
     def close(self) -> None:
+        if self.research_director:
+            self.research_director.close()
+        if self.research_author:
+            self.research_author.close()
         if self.research_sandbox:
             self.research_sandbox.close()
         if self.research_loop:

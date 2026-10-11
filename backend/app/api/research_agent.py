@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.dependencies import get_services
 from app.research_agent.repository import ResearchRepository
 from app.research_agent.hypotheses import Budget, Hypothesis, HypothesisRepository
+from app.research_agent.author import AuthorRequest
 
 router=APIRouter(prefix='/strategy-lab/research-agent',tags=['research-agent'])
 class Input(BaseModel):
@@ -108,6 +109,22 @@ def committee_status(id: str, services=Depends(get_services)):
 @router.post('/{id}/committee')
 def committee_review(id: str, payload: CommitteeRequest, services=Depends(get_services)):
     return operation(lambda: committee_service(services).review(id, payload.request_key))
+
+
+@router.get('/{id}/code-author')
+def author_status(id: str, services=Depends(get_services)):
+    author = getattr(services, 'research_author', None)
+    if author is None:
+        raise HTTPException(409, 'Code author is unavailable')
+    return operation(lambda: {'items': author.list(id)})
+
+
+@router.post('/{id}/code-author')
+def author_start(id: str, payload: AuthorRequest, services=Depends(get_services)):
+    author = getattr(services, 'research_author', None)
+    if author is None:
+        raise HTTPException(409, 'Code author is unavailable')
+    return operation(lambda: author.start(id, payload.model_dump()))
 
 
 @router.post('/{id}/committee/{review_id}/preregister')

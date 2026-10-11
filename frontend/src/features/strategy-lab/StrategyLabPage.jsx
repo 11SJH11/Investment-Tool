@@ -1,4 +1,4 @@
-import ResearchFoundations from "./ResearchFoundations.jsx";
+import ResearchFoundations from "./ResearchHome.jsx";
 import ResearchPack from './ResearchPack.jsx';
 import {notifyActivity} from '../../app/activityEvents.js';
 import IntegratedResearch,{SweepField,sweepAxes} from './ParameterSweep.jsx';

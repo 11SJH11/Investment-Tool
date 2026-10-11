@@ -37,7 +37,8 @@ def verified_validation(connection,candidate):
         raise ValueError('Approved validation criteria or candidate identity changed')
     row=connection.execute('SELECT document FROM agent_datasets WHERE id=?',(approved['dataset_id'],)).fetchone()
     dataset=json.loads(row[0]) if row else None
-    if not dataset or dataset['project_id']!=candidate['project_id'] or dataset['state']!='INSPECTED_VALIDATION':raise ValueError('Approved validation dataset is not available')
+    from .repository import dataset_ids
+    if not dataset or dataset['id'] not in dataset_ids(connection,candidate['project_id']) or dataset['state']!='INSPECTED_VALIDATION':raise ValueError('Approved validation dataset is not available')
     runs=[]
     for cell in validation['cells']:
         row=connection.execute('SELECT config_json,result_json FROM backtest_runs WHERE id=?',(cell.get('run_id'),)).fetchone()

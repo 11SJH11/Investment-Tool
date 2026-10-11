@@ -206,6 +206,9 @@ class BacktestJobs:
         job=self.get(job_id)
         if self.closed or job['cancel_requested']:
             raise JobCancelled()
+        if job['payload'].get('research_campaign_id'):
+            from app.research_agent.director import permitted
+            if not permitted(self.database,job['payload']['research_project_id']):raise JobCancelled()
         if job['payload'].get('research_validation_id'):
             from app.research_agent.validation import active
             if not active(self.database,job['payload']['research_validation_id']):raise JobCancelled()

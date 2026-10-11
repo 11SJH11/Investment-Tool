@@ -96,7 +96,9 @@ def evidence(connection,trial):
             if any(config.get(k)!=v for k,v in expected.items() if k not in {'queue_job_id','save_run','experiment_group','test_role','run_name','run_notes','run_tags'}):raise ValueError('Regime configuration changed')
             scope={'symbols':config['symbols'],'start':config['start_date'],'end':config['end_date']}
             if any(ResearchRepository.overlap(scope,d) and d['state'] in {'LOCKED_HOLDOUT','FUTURE_OOS'} for d in datasets):raise ValueError('Holdout firewall blocked regime evidence')
-            if not any(d['project_id']==trial['project_id'] and d['state'] in {'DEVELOPMENT','INSPECTED'} and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end'] for d in datasets):raise ValueError('Regime evidence outside development data')
+            from .repository import dataset_ids
+            accessible=dataset_ids(connection,trial['project_id'])
+            if not any(d['id'] in accessible and d['state'] in {'DEVELOPMENT','INSPECTED'} and set(scope['symbols'])<=set(d['symbols']) and d['start']<=scope['start'] and scope['end']<=d['end'] for d in datasets):raise ValueError('Regime evidence outside development data')
             result=json.loads(connection.execute('SELECT result_json FROM backtest_runs WHERE id=?',(cell['run_id'],)).fetchone()[0])
             run={'config':config,'result':result};report=analyze(run)
             recorded=cell['comparison']['child'] if not cell['index'] else cell['analysis']

@@ -5,12 +5,22 @@ from datetime import timedelta, date
 from zoneinfo import ZoneInfo
 import json
 from app.data.instruments import instrument_spec, normalize_symbol
-from .repository import ResearchRepository
+from .repository import ResearchRepository, dataset_ids
 
 _active=ContextVar('research_access',default=None)
+_preparing=ContextVar('research_preparation_access',default=None)
 class ResearchAccessError(ValueError):pass
 
-def active():return _active.get() is not None
+def active():return _active.get() is not None or _preparing.get() is not None
+
+
+@contextmanager
+def preparation_scope(database,campaign_id):
+    if not campaign_id:
+        yield;return
+    token=_preparing.set((database,campaign_id))
+    try:yield
+    finally:_preparing.reset(token)
 
 def family(symbol):
     spec=instrument_spec(symbol)
@@ -25,6 +35,18 @@ def scope(database,project_id,validation_id=None):
     finally:_active.reset(token)
 
 def check(symbol,timeframe,start,end,namespace=None):
+    preparing=_preparing.get()
+    if preparing is not None:
+        from datetime import datetime
+        from .preparation import require
+        prep=require(preparing[0],preparing[1],timeframe)
+        if (start.utcoffset() is None or end.utcoffset() is None or
+                symbol not in prep['symbols'] or
+                start < datetime.fromisoformat(prep['start']) or end > datetime.fromisoformat(prep['end'])):
+            raise ResearchAccessError('History request exceeds frozen preparation bounds')
+        if namespace and namespace != prep['namespaces'][symbol]:
+            raise ResearchAccessError('History provider namespace changed')
+        return
     current=_active.get()
     if current is None:return
     repo,id,validation_id=current
@@ -38,18 +60,19 @@ def check(symbol,timeframe,start,end,namespace=None):
         project=json.loads(row[0])
         if project['state'] in {'PAUSED','ARCHIVED','FAILED'}:raise ResearchAccessError('Research is not active')
         datasets=[json.loads(r[0]) for r in c.execute('SELECT document FROM agent_datasets')]
+        accessible=dataset_ids(c,id)
         def same(d):return family(symbol) in {family(s) for s in d['symbols']}
         def overlap(d):return same(d) and begin<=d['end'] and d['start']<=finish
         if any(overlap(d) and d['state'] in {'LOCKED_HOLDOUT','FUTURE_OOS'} for d in datasets):raise ResearchAccessError('Holdout firewall blocked a market-data request')
         # Initial queue path is DEVELOPMENT ONLY; explicit approval never gives an automatic validation grant.
-        granted=[d for d in datasets if d['project_id']==id and d['state'] in {'DEVELOPMENT','INSPECTED'} and same(d) and d['start']<=begin and finish<=d['end']]
+        granted=[d for d in datasets if d['id'] in accessible and d['state'] in {'DEVELOPMENT','INSPECTED'} and same(d) and d['start']<=begin and finish<=d['end']]
         if validation_id:
             row=c.execute('SELECT document FROM agent_validations WHERE id=?',(validation_id,)).fetchone()
             grant=json.loads(row[0]) if row else None
             from .trials import now
             if not grant or grant['project_id']!=id or grant['status']!='ACTIVE' or now()>=grant['deadline']:
                 raise ResearchAccessError('Candidate validation grant is not active')
-            available=[d for d in datasets if d['project_id']==id and same(d) and (d['state'] in {'DEVELOPMENT','INSPECTED'} or (d['id']==grant['dataset_id'] and d['state']=='INSPECTED_VALIDATION'))]
+            available=[d for d in datasets if d['id'] in accessible and same(d) and (d['state'] in {'DEVELOPMENT','INSPECTED'} or (d['id']==grant['dataset_id'] and d['state']=='INSPECTED_VALIDATION'))]
             cursor=date.fromisoformat(begin)
             for d in sorted(available,key=lambda d:d['start']):
                 if date.fromisoformat(d['start'])<=cursor<=date.fromisoformat(d['end']):cursor=date.fromisoformat(d['end'])+timedelta(days=1)

@@ -88,6 +88,28 @@ class MarketWarmupManager:
         self.active.add(job['id'])
         self.executor.submit(self._run, job['id'])
 
+    def start_research(self, campaign_id, timeframe):
+        """Internal fixed-range ingestion; never reuses an unrelated manual job."""
+        from app.research_agent.preparation import require
+        prep = require(self.repository.database, campaign_id, timeframe)
+        identifier = str(uuid.uuid5(uuid.NAMESPACE_URL, 'ledger-campaign-history:'+campaign_id+':'+timeframe))
+        with self.lock:
+            if self.closed: raise RuntimeError('Cache warmer is stopping')
+            if identifier in self.jobs:
+                return deepcopy(self.jobs[identifier])
+            if prep['jobs'].get(timeframe):
+                raise ValueError('Campaign history job was removed; no automatic recreation')
+            job = dict(id=identifier, research_campaign_id=campaign_id, symbols=prep['symbols'],
+                timeframe=timeframe, lookback_days=prep['lookback_days'], refresh=False,
+                status='queued', completed=0, total=len(prep['symbols']), chunks_completed=0,
+                chunk_days=CHUNK_DAYS, current_chunk=None, provider_state='queued', created_at=stamp(),
+                items=[dict(symbol=s,status='queued',requested_start=prep['start'],requested_end=prep['end'],
+                            downloaded_coverage=None,bars=0) for s in prep['symbols']])
+            self.repository.save(job)
+            self.jobs[identifier]=job
+            self._submit(job)
+            return deepcopy(job)
+
     def get(self, job_id):
         with self.lock:
             if job_id not in self.jobs: raise ValueError('Cache warm job not found')
@@ -122,10 +144,24 @@ class MarketWarmupManager:
         with self.lock:
             if self.closed or self.jobs[job_id]['status'] in {'paused', 'pausing'}:
                 raise WarmupPaused()
+            job = self.jobs[job_id]
+            if job.get('research_campaign_id'):
+                from app.research_agent.preparation import require
+                prep = require(self.repository.database, job['research_campaign_id'], job['timeframe'])
+                if job['symbols'] != prep['symbols'] or job['refresh']:
+                    raise ValueError('Campaign warmup identity changed')
+                for item in job['items']:
+                    if (item['requested_start'] != prep['start'] or
+                            datetime.fromisoformat(item['requested_end']) > datetime.fromisoformat(prep['end'])):
+                        raise ValueError('Campaign warmup bounds changed')
+                    if self.market_data.provider_for(item['symbol']).cache_namespace != prep['namespaces'][item['symbol']]:
+                        raise ValueError('Campaign provider namespace changed')
 
     def _run(self, job_id):
         try:
-            with background_market_work(lambda: self._check(job_id)):
+            from app.research_agent.access import preparation_scope
+            with background_market_work(lambda: self._check(job_id)), preparation_scope(
+                    self.repository.database, self.jobs[job_id].get('research_campaign_id')):
                 self._check(job_id)
                 with self.lock: self._save(self.jobs[job_id], status='running', provider_state='preparing')
                 for index in range(len(self.jobs[job_id]['items'])):
@@ -169,6 +205,11 @@ class MarketWarmupManager:
                     persisted = (max(persisted[0], chart[0]), min(persisted[1], chart[1])) if persisted and chart else None
                     if persisted and persisted[0] >= persisted[1]: persisted = None
                 covered = union(covered, persisted)
+            if job.get('research_campaign_id') and covered:
+                # Manual warmer may bridge adjacent cache gaps. Research must
+                # never fetch beyond the exact campaign-authorized interval.
+                covered = (max(start, covered[0]), min(end, covered[1]))
+                if covered[0] >= covered[1]: covered = None
             chunk = next_chunk(start, end, covered)
             if chunk is None:
                 with self.lock:

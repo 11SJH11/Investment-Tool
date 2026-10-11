@@ -17,18 +17,25 @@ def validate_submission(database,payload):
         validate(database,payload)
         return
     project=ResearchRepository(database).get(payload['research_project_id'])
+    if project.get('campaign_id'):
+        from .director import permitted
+        if not permitted(database,project['id']):raise ValueError('Campaign baseline authorization is inactive')
     if project['state'] in {'PAUSED','ARCHIVED','FAILED'}:raise ValueError('Research is not active')
     submitted={k:v for k,v in payload.items() if k!='queue_job_id'}
     if submitted!=project.get('baseline_payload'):raise ValueError('Backtest payload differs from the approved frozen research baseline')
     if project['strategy_provenance']!=strategy_registry.provenance(project['strategy_key']):raise ValueError('Strategy source changed after project creation; create a new lineage project')
 
-def start(services,id,payload):
+def start(services,id,payload,*,campaign_dispatch=False):
     repo=ResearchRepository(services.database);project=repo.get(id)
+    if project.get('campaign_id'):
+        from .director import permitted
+        if not campaign_dispatch or not permitted(services.database,id):raise ValueError('Campaign baselines must be dispatched by the Director')
     if payload['strategy_key']!=project['strategy_key']:raise ValueError('Baseline strategy must match the project')
     symbols=payload['symbols']
     if isinstance(symbols,str):symbols=symbols.replace(',',' ').split()
     if len(symbols)!=1:raise ValueError('Initial research projects run one symbol with independent capital')
     payload={**payload,'symbols':[symbols[0].strip().upper()],'save_run':True,'research_project_id':id,'research_experiment':None}
+    if project.get('campaign_id'):payload['research_campaign_id']=project['campaign_id']
     if project['strategy_provenance']!=strategy_registry.provenance(project['strategy_key']):raise ValueError('Strategy source changed; create a new project')
     if project.get('baseline_payload') and project['baseline_payload']!=payload:raise ValueError('Baseline configuration is frozen')
     if project['state'] not in {'CREATED','BASELINE_PENDING','BASELINE_RUNNING'}:raise ValueError('Baseline already inspected or project is not active')
