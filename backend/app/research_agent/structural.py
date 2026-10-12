@@ -44,7 +44,9 @@ def advance(director, campaign, entry):
         author=services.research_author
         if author.thread and author.thread.is_alive():
             return
-        result=author.start(pid,dict(request_key='campaign-structural-v1',consent=CONSENT),campaign_id=campaign['id'])
+        attempt=len(entry.get('structural_attempts',[]))
+        key='campaign-structural-v1' if attempt==0 else 'campaign-structural-v1-'+str(attempt)
+        result=author.start(pid,dict(request_key=key,consent=CONSENT),campaign_id=campaign['id'])
         if result['status']=='COMPLETED':
             entry.update(state='SANDBOX',author_id=result['id'],draft_id=result['draft_id'])
             director._save(campaign,'STRUCTURAL_SOURCE_QUARANTINED')
@@ -67,7 +69,23 @@ def advance(director, campaign, entry):
         entry['sandbox_id']=result['id']
         director._save(campaign,'STRUCTURAL_DOCKER_DISPATCHED')
     if result['status'] not in {'QUEUED','RUNNING'}:
+        from .research_verdict import assess
+        decision=assess(result,campaign['request']['policy'])
+        attempt=dict(author_id=entry['author_id'],draft_id=entry['draft_id'],sandbox_id=entry['sandbox_id'],
+                     source_sha256=result.get('source_sha256'),summary=result.get('summary'),decision=decision)
+        attempts=entry.setdefault('structural_attempts',[])
+        if not any(a['sandbox_id']==attempt['sandbox_id'] for a in attempts):attempts.append(attempt)
+        entry['research_decision']=decision
+        retry=(result['status']=='COMPLETED' and decision['verdict'] in {'REJECTED_DEVELOPMENT','INSUFFICIENT_EVIDENCE'}
+               and len(attempts)<min(entry.get('structural_cycles',1),campaign['request']['policy']['max_failed_hypotheses_per_family'])
+               and campaign['status']=='ACTIVE')
+        if retry:
+            entry.update(state='AUTHOR')
+            for field in ('author_id','draft_id','sandbox_id'):entry.pop(field,None)
+            director._save(campaign,'STRUCTURAL_NEXT_HYPOTHESIS')
+            return
         entry.update(state='COMPLETED' if result['status']=='COMPLETED' else 'RESEARCH_STOPPED',
+                     family_outcome='REQUIRES_VALIDATION' if decision['verdict']=='PROMISING_DEVELOPMENT' else 'STOPPED_WITHOUT_ACCEPTANCE',
                      structural_result=dict(status=result['status'],control_parity=result.get('control_parity'),
                         causality=result.get('causality'),error=result.get('error'),summary=result.get('summary'),
                         robustness_status=result.get('robustness',{}).get('status'),

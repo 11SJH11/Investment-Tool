@@ -194,10 +194,12 @@ def context_message(ctx):
 
 
 class RemoteStrategy(Strategy):
-    def __init__(self,session,source,key,params):
+    def __init__(self,session,source,key,params,*,modules=None):
         self.session=session; self.params=params; self.trace=[]
         session.provenance['source_sha256']=sha256(source.encode()).hexdigest()
-        response=session.request({'op':'init','source':source,'key':key,'params':params})
+        modules=modules or {}
+        session.provenance['dependency_sha256']=sha256(json.dumps(modules,sort_keys=True).encode()).hexdigest()
+        response=session.request({'op':'init','source':source,'key':key,'params':params,'modules':modules})
         if not isinstance(response,dict) or set(response)!={'spec'} or response['spec'].get('key')!=key:
             raise SandboxError('INVALID_STRATEGY_SPEC')
         # Only presentation fields are accepted. Container declarations confer no host permissions.

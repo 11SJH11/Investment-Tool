@@ -70,6 +70,7 @@ class ResearchDirector:
                 return campaign
             links = provision(self.database, identifier)
             policy = campaign['request']['policy']
+            structural_cycles=policy.get('max_structural_hypotheses_per_family',1) if structural else 0
             model_status = None
             if numeric_cycles or structural:
                 if not policy['send_development_summaries']:
@@ -113,9 +114,10 @@ class ResearchDirector:
                 entries.append(dict(**link, state='QUEUED', payload=payload,
                                     numeric_cycles=numeric_cycles,
                                     structural=structural,
+                                    structural_cycles=structural_cycles,
                                     max_variants=project['research_budget']['max_variants_per_hypothesis'],
                                     max_minutes=min(project['research_budget']['max_trial_minutes'],
-                                                    (policy['budget']['compute_minutes']-campaign['reserved']['compute_minutes'])//len(links)//(1+numeric_cycles+3*structural))))
+                                                    (policy['budget']['compute_minutes']-campaign['reserved']['compute_minutes'])//len(links)//(1+numeric_cycles+int(structural)+2*structural_cycles))))
                 if structural:
                     from .campaign_projects import reference_project
                     from .robustness import plan_windows
@@ -129,11 +131,11 @@ class ResearchDirector:
                 current = self.campaigns._get(c, identifier)
                 if current['status'] != 'PREPARED' or current.get('execution'):
                     raise ValueError('Campaign changed during authorization')
-                calls = (3 * numeric_cycles + 4*structural) * len(entries)
-                required = dict(simulations=sum(1 + numeric_cycles*(e['max_variants']+1)+(5+8*len(e.get('robustness_windows',[])))*structural for e in entries),
-                                hypotheses=(numeric_cycles+structural)*len(entries), children=int(structural)*len(entries), llm_calls=calls,
+                calls = (3 * numeric_cycles + 4*structural_cycles) * len(entries)
+                required = dict(simulations=sum(1 + numeric_cycles*(e['max_variants']+1)+int(structural)+(4+8*len(e.get('robustness_windows',[])))*structural_cycles for e in entries),
+                                hypotheses=(numeric_cycles+structural_cycles)*len(entries), children=structural_cycles*len(entries), llm_calls=calls,
                                 llm_usd=calls*model_status['pricing']['call_reservation_microusd']/1000000 if calls else 0,
-                                compute_minutes=sum(e['max_minutes']*(1+numeric_cycles+3*structural) for e in entries))
+                                compute_minutes=sum(e['max_minutes']*(1+numeric_cycles+int(structural)+2*structural_cycles) for e in entries))
                 for k,v in required.items():
                     if current['reserved'][k] + v > current['request']['policy']['budget'][k]:
                         raise ValueError('Campaign baseline budget exhausted')
@@ -154,8 +156,8 @@ class ResearchDirector:
                 if structural:
                     for e in entries:
                         project=json.loads(c.execute('SELECT document FROM agent_projects WHERE id=?',(e['reference_project_id'],)).fetchone()[0])
-                        project['research_budget'].update(max_trial_runs=4+8*len(e['robustness_windows']),max_trial_minutes=e['max_minutes'],
-                            max_llm_calls=4,max_llm_spend_usd=4*model_status['pricing']['call_reservation_microusd']/1000000)
+                        project['research_budget'].update(max_trial_runs=(4+8*len(e['robustness_windows']))*structural_cycles,max_trial_minutes=e['max_minutes'],
+                            max_llm_calls=4*structural_cycles,max_llm_spend_usd=4*structural_cycles*model_status['pricing']['call_reservation_microusd']/1000000)
                         c.execute('UPDATE agent_projects SET document=? WHERE id=?',(json.dumps(project),project['id']))
                 self.campaigns._save(c, current)
                 self.campaigns._event(c, identifier, 'DEVELOPMENT_AUTHORIZED', {'resources': required, 'request_hash': request_hash})
@@ -310,7 +312,7 @@ class ResearchDirector:
 
     def _structural_next(self,item,current):
         current.update(state='REFERENCE',deadline=min(datetime.fromisoformat(item['deadline']),
-            self.clock()+timedelta(minutes=current['max_minutes']*3)).isoformat())
+            self.clock()+timedelta(minutes=current['max_minutes']*(1+2*current.get('structural_cycles',1)))).isoformat())
 
     def _save(self, item, event):
         with self.database.connect() as c:

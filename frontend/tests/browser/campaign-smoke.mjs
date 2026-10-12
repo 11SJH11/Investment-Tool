@@ -18,15 +18,24 @@ else if(path.includes('/research-campaigns/campaign-fixture')){
  if(opts.method==='POST'){const action=path.split('/').at(-1);window.controls.push(action);campaign.status=action==='pause'?'PAUSED':action==='resume'?'ACTIVE':'CANCELLED';data=campaign;}
  else data={campaign,worker:{running:true,error:null},summary:{baseline_runs_completed:1,numeric_cycles_completed:0,structural_checks_completed:0,holdout_consumed_by_campaign:false},events:[],morning_report:{families:[{project_id:'p',family_id:'vwap',state:'RUNNING',baseline_summary:{n:8,average_r:.2},verdict:'DEVELOPMENT_ONLY',warnings:['Low sample'],robustness:{cells:[{window:1,start:'2025-01-01',end:'2025-01-07',cost_multiplier:2,status:'COMPLETED',summary:{n:3,average_r:.1,total_r:.3,profit_factor_r:1.2}}]}}],conclusions:['No strategy automatically accepted.']}};
 }
+if(data.morning_report)Object.assign(data.morning_report.families[0],{structural_attempts:[{}],research_decision:{verdict:'INSUFFICIENT_EVIDENCE',reasons:['Sample below the frozen minimum.'],limitation:'Development only; holdout remains locked.'}});
 return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});};
 `});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19283'});
 await waitFor(`document.querySelector('[aria-label="Autonomous research campaigns"]')`);
 await waitFor(`document.body.textContent.includes('Ceilings:')`);
+await evaluate(`(()=>{[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Allow paid model review')).querySelector('input').click();})()`);
+await waitFor(`document.body.textContent.includes('Allow structural research:')`);
+await evaluate(`(()=>{[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Allow structural research:')).querySelector('input').click();})()`);
+await waitFor(`document.body.textContent.includes('Maximum structural attempts per family')`);
+await evaluate(`(()=>{const el=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Maximum structural attempts')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,'3');el.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+await evaluate(`(()=>{[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Allow paid model review')).querySelector('input').click();})()`);
 await evaluate(`(()=>{const label=[...document.querySelectorAll('label')].find(l=>l.textContent.includes('I authorize these settings'));label.querySelector('input').click();})()`);
 await click('Start campaign');
 await waitFor(`document.body.textContent.includes('Backend coordinator running')`);
+await waitFor(`document.body.textContent.includes('INSUFFICIENT EVIDENCE')&&document.body.textContent.includes('Sample below the frozen minimum.')`);
 if(await evaluate(`window.launches.length!==1||window.launches[0].engine.sizing_mode!=='risk_pct'||window.launches[0].structural!==false`))throw Error('Launch contract');
+if(await evaluate(`window.launches[0].campaign.policy.max_structural_hypotheses_per_family!==3`))throw Error('Structural attempt limit lost');
 await click('pause');await waitFor(`document.body.textContent.includes('PAUSED')`);
 await click('resume');await waitFor(`document.body.textContent.includes('ACTIVE')`);
 await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: development windows and cost checks')).click()`);

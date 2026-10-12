@@ -8,6 +8,9 @@ def main():
     from dataclasses import asdict
     from datetime import datetime
     import types
+    import importlib.abc
+    import importlib.util
+    import re
     import pandas as pd
     from app.backtesting.context import StrategyContext
     from app.backtesting.models import Position
@@ -24,6 +27,30 @@ def main():
             with open(os.devnull, 'w') as sink, contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
                 if message['op'] == 'init':
                     if strategy is not None: raise ValueError('Already initialized')
+                    modules=message.get('modules',{})
+                    if (not isinstance(modules,dict) or len(modules)>32 or
+                        any(not isinstance(k,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\.py',k)
+                            or k in {'base.py','registry.py','__init__.py'} or k.startswith('__')
+                            or not isinstance(v,str) for k,v in modules.items()) or
+                        sum(len(v.encode()) for v in modules.values())>50000):
+                        raise ValueError('Invalid archived dependency bundle')
+                    # In-memory, process-local archived modules only. Never mounted
+                    # from the repository or installed into the host registry.
+                    class ArchivedLoader(importlib.abc.MetaPathFinder,importlib.abc.Loader):
+                        def find_spec(self,fullname,path=None,target=None):
+                            prefix='app.backtesting.strategies.'
+                            if fullname.startswith(prefix) and fullname[len(prefix):]+'.py' in modules:
+                                return importlib.util.spec_from_loader(fullname,self)
+                            return None
+                        def create_module(self,spec):return None
+                        def exec_module(self,module):
+                            filename=module.__name__.rsplit('.',1)[-1]+'.py'
+                            module.__file__='/scratch/archived/'+filename
+                            exec(compile(modules[filename],module.__file__,'exec'),module.__dict__)
+                    sys.meta_path.insert(0,ArchivedLoader())
+                    registry_module=types.ModuleType('app.backtesting.strategies.registry')
+                    registry_module.strategy_registry=strategy_registry
+                    sys.modules[registry_module.__name__]=registry_module
                     module = types.ModuleType('quarantined_strategy')
                     module.__file__ = '/scratch/quarantined_strategy.py'
                     sys.modules[module.__name__] = module

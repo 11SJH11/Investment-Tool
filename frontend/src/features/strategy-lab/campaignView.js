@@ -14,10 +14,12 @@ export function campaignPayload(form,policy,requestKey){
  if(engine.starting_balance<=0||engine.risk_value<=0||engine.max_leverage<=0)throw new Error('Balance, risk and leverage must be positive.');
  engine.sizing_mode='risk_pct';engine.session='regular';
  if(form.mode==='IMPROVE_STRATEGY'&&!form.strategy_key)throw new Error('Select a strategy.');
+ const structuralCycles=Number(form.structural_cycles??1);
+ if(!Number.isInteger(structuralCycles)||structuralCycles<1||structuralCycles>3)throw new Error('Choose one to three structural attempts.');
  return {campaign:{request_key:requestKey,mode:form.mode,prompt:form.prompt,
    strategy_key:form.mode==='IMPROVE_STRATEGY'?form.strategy_key:null,
    policy:{...policy,symbols,timeframes:[form.timeframe],send_development_summaries:form.model,
-     code_generation:form.model&&form.structural,external_research:false}},engine,
+     code_generation:form.model&&form.structural,max_structural_hypotheses_per_family:structuralCycles,external_research:false}},engine,
    numeric_cycles:form.model?Number(form.numeric_cycles):0,structural:form.model&&form.structural,
    history:form.history,lookback_days:1460,consent:LAUNCH_CONSENT};
 }

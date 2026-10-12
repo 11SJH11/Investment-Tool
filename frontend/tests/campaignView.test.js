@@ -33,3 +33,8 @@ test('Campaign controls reflect backend lifecycle; terminal reports do not poll 
  }
  assert.equal(campaignIsRunning('PREPARING'),true);
 });
+test('Structural attempts are explicit, bounded and preserve the default single attempt',()=>{
+ assert.equal(campaignPayload(form,policy,'one').campaign.policy.max_structural_hypotheses_per_family,1);
+ assert.equal(campaignPayload({...form,model:true,structural_cycles:3},policy,'three').campaign.policy.max_structural_hypotheses_per_family,3);
+ for(const structural_cycles of [0,4,1.5,NaN])assert.throws(()=>campaignPayload({...form,structural_cycles},policy,'bad'));
+});

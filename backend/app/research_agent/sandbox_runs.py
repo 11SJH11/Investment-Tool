@@ -160,6 +160,8 @@ class SandboxRuns:
         try:
             item.update(status='RUNNING',phase='PREPARATION');self._save(item)
             source=export_draft(self.database,item['project_id'],item['candidate_id'],item['draft_id'])['source']
+            from .source_dependencies import sandbox_modules
+            modules=sandbox_modules(self.database,candidate,source)
             from .quarantine import list_drafts
             key=next(d['request']['registry_key'] for d in list_drafts(self.database,item['project_id'],item['candidate_id']) if d['id']==item['draft_id'])
             config=deepcopy(candidate['snapshot']['configuration'])
@@ -186,7 +188,7 @@ class SandboxRuns:
                 started=time.monotonic()
                 session=Session(self.docker,item['image_id'],seconds=max(.1,deadline-time.monotonic()),cancel=self.cancel_event)
                 try:
-                    strategy=RemoteStrategy(session,source,key,parameters)
+                    strategy=RemoteStrategy(session,source,key,parameters,modules=modules)
                     data=prepared or inputs
                     selected_engine=engine_config(payload,data['session']) if payload is not None else engine
                     frames=data['frames_by_symbol']

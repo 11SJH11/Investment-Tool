@@ -110,6 +110,22 @@ def test_author_rejection_does_not_dispatch_or_spend_again_after_restart(structu
     finally:restarted.close()
 
 
+def test_second_structural_iteration_sees_previous_evidence_and_rejects_duplicate_code(structural):
+    director,campaign,configs,model,_=structural
+    with director.database.connect() as c:
+        item=director.campaigns._get(c,campaign['id'])
+        item['request']['policy']['max_structural_hypotheses_per_family']=2
+        director.campaigns._save(c,item)
+    start=director.start_baselines(campaign['id'],configs,structural=True)
+    result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
+    entry=result['execution']['entries'][0]
+    assert start['reserved']['llm_calls']==8 and start['reserved']['simulations']==42
+    assert len(model.calls)==8 and len(director.services.research_sandbox.calls)==1
+    assert entry['reason']=='duplicate_structural_source_no_retest'
+    assert model.calls[4][1]['prior_structural_attempts'][0]['sandbox_id']=='sandbox-fixture'
+    assert entry['structural_attempts'][0]['decision']['verdict']=='INVALID_EXECUTION' or entry['structural_attempts'][0]['decision']['verdict']=='INSUFFICIENT_EVIDENCE'
+
+
 def test_campaign_pause_mid_model_call_revokes_author_and_no_docker(structural):
     director,campaign,configs,model,_=structural
     def pause(role,result,usage):director.control(campaign['id'],'pause')

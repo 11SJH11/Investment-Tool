@@ -1,5 +1,46 @@
 # Research Agent current status / handoff
 
+## Current continuation — 12 October 2026
+
+Starting tree: `01ce536` (Agent foundations), including the user's local confluence
+strategies. Archived parent/dependency selection, container-only dependency loading,
+bounded structural iteration (one by default, at most three), duplicate-source
+suppression and deterministic development triage are implemented. The campaign UI
+now exposes the attempt limit and triage reasons. These are development checks,
+not automatic acceptance or holdout authority. No new database migration.
+
+The additional [performance audit](BACKTEST_PERFORMANCE_AUDIT_2026-10-12.md) is in
+progress. Four bounded profiles identified repeated session normalization as the
+dominant initial cost. One exact-parity normalization optimization is implemented;
+complete three-month cache comparisons show 15.3–18.0% lower wall time with exact
+result parity across D6, MSS15, MidVol and SweepS5.
+
+Final verification completed **13 October 2026**: **1,234 backend passed**, zero
+failures/errors/skips, **563.80 seconds**, including **31 real-Docker tests**.
+**133 frontend tests passed**; production build passed. Browser fixtures passed at
+1024/1440/1920px, including attempt limits and development-verdict reasons, with
+no runtime errors or page overflow. `git diff --check` and document links pass.
+Zero Ledger research containers remain; six unrelated stopped containers are
+unchanged. The isolated browser/server are stopped. Existing Starlette/httpx and
+frontend bundle-size advisories remain. Earlier counts below are historical.
+
+The first full run had 1,233 passes and one Docker image-tag lookup failure.
+Restoring the tag to its same verified immutable image repaired the environment;
+the isolated regression and complete rerun passed without application changes.
+Artifacts: `C:/Users/jamie/Project/director-audit-20261012/`, final backend log/XML,
+frontend test log/build and browser screenshots. No live model/provider calls.
+
+Still required: full-period generated-child execution with sufficient warmup,
+complete robustness/acceptance/abandonment workflow, novel-idea/literature synthesis,
+intelligence benchmarks and overnight/live-provider/model acceptance. The sandbox
+still permits only 10,000 aggregate bars and bounded samples. A long-warmup strategy
+can produce no qualifying trades in these samples; passing control parity alone
+does not make that evidence sufficient. Archived dependencies remain bounded to
+50 KB/32 modules; larger confluence inheritance chains fail closed.
+
+The performance audit also still needs long-range/scaling measurements and progress
+UX improvements. Do not mark checkpoints 3–6 or the complete audit finished.
+
 The authoritative full update is [Research Agent major update - October 2026](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md).
 It consolidates the work since committed boundary `afb73e9` (2026-10-05), including
 Market Concepts, research workflows, storage, UI, provider integration and Docker.

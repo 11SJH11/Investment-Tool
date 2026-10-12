@@ -44,6 +44,7 @@ class CampaignPolicy(Strict):
     holdout: Literal['human_approval', 'one_frozen_candidate'] = 'human_approval'
     max_failed_hypotheses_per_family: int = Field(default=3, ge=1, le=10, strict=True)
     max_parameter_hypotheses_per_family: int = Field(default=2, ge=0, le=10, strict=True)
+    max_structural_hypotheses_per_family: int = Field(default=1, ge=1, le=3, strict=True)
     dataset: DatasetPolicy = Field(default_factory=DatasetPolicy)
     budget: CampaignBudget = Field(default_factory=CampaignBudget)
 

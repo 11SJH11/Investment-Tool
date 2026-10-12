@@ -13,6 +13,102 @@ files to the Docker implementation. The file inventory below is derived from
 
 ## Executive summary
 
+### Current continuation — archived dependencies, bounded iteration and performance audit (2026-10-12)
+
+This continuation starts from **`01ce536` (Agent foundations)**. The complete
+major-update boundary remains `afb73e9`. This section supersedes older current-state
+claims below; checkpoints 3–6 are still only partially complete.
+
+- Archived source imports are resolved statically against the immutable saved-run
+  bundle. Missing/oversized dependencies fail closed; current disk files are never
+  substituted. Exact dependencies are loaded in memory only inside the sandbox.
+  The host never imports generated or archived candidate source.
+- Sandbox provenance now includes a dependency-bundle hash. Existing network,
+  filesystem, resource, guardian, cancellation and quarantine restrictions remain.
+  Built image: `sha256:c2b3696410b9a311e8665dd6ade725b0bd4b720be2caee45bbc21cc641290f78`.
+- Campaign policy supports one to three structural hypotheses per family, default
+  one. Calls, simulations and compute are reserved before dispatch. A completed
+  rejected/insufficient attempt may lead to another distinct hypothesis; failures
+  are not silently retried. Previous evidence and the research objective reach the
+  author. AST-normalized duplicate implementations are not retested under new keys.
+- Development triage checks execution, sample size, costs, expectancy, drawdown and
+  lost large winners. Even a promising verdict grants no validation/deployment
+  authority. Reports retain attempts, reasons, source and evidence/policy hashes.
+- Frontend exposes attempt limits and development reasons. No backend rewrite,
+  schema migration, broker authority or holdout relaxation was added.
+- A separate [performance audit](BACKTEST_PERFORMANCE_AUDIT_2026-10-12.md) profiles
+  real cached QQQ input. The first optimization preserves exact session-normalizer
+  output while reducing pandas allocations. VWAP arithmetic and engine rules are
+  unchanged. Selected historical fingerprints were inspected read-only.
+
+Files in this increment: `research_agent/{author,campaign_policy,campaign_report,
+director,sandbox,sandbox_runs,sandbox_worker,structural,source_dependencies,
+research_verdict}.py`; `vwap_trend_entry_exit_distance_research_v4.py`;
+`tests/{test_campaign_structural,test_research_dependencies,test_research_verdict,
+test_vwap_session_performance_parity}.py`; the frozen normalizer fixture;
+`tools/audit_backtest_performance.py`; frontend `AutonomousResearch.jsx`,
+`campaignView.js`, its test; this document, the short handoff and performance audit.
+Local `vwap_d6_*`, confluence helpers/tools and existing research output belong to
+the starting working tree, not this increment.
+
+Final verification completed **13 October 2026**: **1,234 backend tests passed**,
+zero failures/errors/skips in **563.80 seconds**. This includes **31 real-Docker
+tests**: 18 security/lifecycle, nine loop tests, and one each for reference-parent,
+Code Author, complete campaign and archived dependency integration. Fourteen tests
+cover exact normalizer/engine parity. **133 frontend tests passed**; production
+build passed (154 modules; existing 955 KB bundle advisory). Browser fixture
+acceptance passed at **1024/1440/1920px**, including attempt limits, consent,
+launch, controls, verdict/reasons, robustness samples and navigation; no runtime
+errors or page overflow. No browser or temporary frontend server remains running.
+
+Complete cache comparisons cover all 23,790 primary bars in each of eight serial
+three-month runs. D6/MSS15/MidVol/SweepS5 wall times fell 15.3–18.0%, with exact
+result equality excluding timings/save bookkeeping. The audit document records
+configuration differences from the user's saved runs and unfinished audit phases.
+
+First full run: 1,233 passed, one Docker tag-resolution failure (598.74 seconds).
+Docker listed the tag but could not inspect it. The immutable image ID resolved;
+restoring the same tag repaired lookup. The targeted campaign test then passed
+(39.18 seconds), followed by the clean complete rerun above. No security bypass,
+fallback or application retry was introduced. One existing Starlette/httpx warning.
+
+Final Docker inventory: **zero Ledger research containers**, with the same six
+unrelated stopped containers unchanged. `git diff --check` and documentation-link
+checks passed. Artifacts: `C:/Users/jamie/Project/director-audit-20261012/`;
+`backend-final.log`, `backend-final.xml`, `frontend-tests.log`, `frontend-final/`
+and three viewport screenshots. Prior 1,206/132/30 counts below are historical.
+
+Remaining limitations: 10,000 aggregate sandbox bars, 50 KB/32 archived modules,
+60 KB author evidence, first-session/reference and short-window checks rather than
+full-period generated-child evaluation. Some long-warmup strategies yield no trades
+in those samples. Larger confluence inheritance bundles can exceed the source cap.
+Novel discovery, complete autonomous validation/acceptance, intelligence benchmarks,
+overnight/live-model/provider acceptance and the rest of the performance audit
+remain unfinished. No paid provider/model calls were made in this increment.
+
+Manual checks for this increment:
+
+1. When existing work is idle, restart the backend to load Director changes. Keep
+   Docker Desktop running. The sandbox image above was already built locally;
+   on another machine run `backend/tools/build_research_sandbox.py` with the backend
+   virtual environment before enabling generated-code checks.
+2. Open Backtest → Research Agent → Campaigns. Choose Improve a strategy and a
+   registered strategy. Review the account/cost settings and cached/provider history.
+3. To exercise structural work, configure the existing external model connection
+   and conservative pricing, explicitly enable model/source sharing, enable structural
+   research and select one to three attempts. STANDARD permits more work than QUICK;
+   the backend rejects insufficient total budgets before execution.
+4. Start once and inspect the durable report. Failed or insufficient completed
+   development evidence can trigger a distinct next hypothesis within the frozen
+   limit. An identical implementation under a fresh key stops without another test.
+5. Inspect the development verdict, reasons, attempts and source/dependency hashes.
+   Holdout remains locked. A long-warmup strategy may return insufficient evidence
+   in these bounded samples; do not interpret this as a tested absence of an edge.
+6. For the performance change, refresh trusted strategies when no conflicting work
+   is active, then rerun the same saved configuration as a new run. Historical saved
+   runs remain unchanged. Audit commands and benchmark limits are in the separate
+   performance document. External model/provider acceptance is still operator work.
+
 ### Latest continuation: campaign preparation, Code Author, bounded robustness and primary UI (2026-10-11)
 
 Continuation boundary: committed Research Agent foundation **`8d73ebe`**. The
