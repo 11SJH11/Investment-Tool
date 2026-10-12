@@ -52,19 +52,20 @@ def _normalise_1m(frame):
     if frame is None or frame.empty or "timestamp" not in frame.columns:
         return pd.DataFrame()
 
-    out = frame.copy()
-    ts = pd.to_datetime(out["timestamp"], utc=True).dt.tz_convert(NY)
-    mins_clock = ts.dt.hour * 60 + ts.dt.minute
+    # Row-local calendar fields: identical values without allocating temporary
+    # Series and copying the full input before applying the RTH mask.
+    ts = pd.DatetimeIndex(pd.to_datetime(frame["timestamp"], utc=True)).tz_convert(NY)
+    mins_clock = ts.hour.to_numpy() * 60 + ts.minute.to_numpy()
     mask = (mins_clock >= 570) & (mins_clock < 960)
 
-    out = out.loc[mask].copy()
-    ts = ts.loc[mask]
+    out = frame.loc[mask].copy()
+    ts = ts[mask]
     if out.empty:
         return out
 
     out["_ts_et"] = ts.values
-    out["_date"] = ts.dt.date.values
-    out["_session_minute"] = (mins_clock.loc[mask] - 570).astype(int).values
+    out["_date"] = ts.date
+    out["_session_minute"] = (mins_clock[mask] - 570).astype(int)
     return out.reset_index(drop=True)
 
 
