@@ -196,9 +196,12 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   };
 
   const useSavedSettings = async (runId) => {
-    setError("");
+    if(opening)return;
+    const request=++openRequest.current;
+    setError("");setOpening(`Loading settings for Run #${runId}...`);
     try {
-      const saved = await api.strategyLabRun(runId);
+      const saved = await runSections.get(runId,'settings');
+      if(request!==openRequest.current)return;
       const config = saved.config || {};
       if (config.workspace) {
         setError(`This is a workspace run. Its historical source remains preserved. To make a new run, add a discoverable strategy file and use Refresh strategies. Saved source SHA-256: ${config.workspace.source_sha256}.`);
@@ -225,7 +228,8 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
       setRunMeta({ name: saved.name ? `${saved.name} · copy` : nextRunName(runs), notes: saved.notes || "", tags: (saved.tags || []).join(", "), test_role: "development" });
       setTimeout(() => setParams({ ...(config.strategy_params || {}) }), 0);
       setResult(null); setTab("Backtest");
-    } catch (e) { setError(e.message); }
+    } catch (e) { if(request===openRequest.current)setError(e.message); }
+    finally { if(request===openRequest.current)setOpening(null); }
   };
 
   return <div className={standaloneTab === "Replay" ? "strategy-lab-root replay-root w-full max-w-none" : "dense-page strategy-lab-root min-w-0 w-full max-w-[1600px]"}>

@@ -25,6 +25,12 @@ await evaluate(`(()=>{let e=document.querySelector('[aria-label="Length mode"]')
 await waitFor(`document.body.textContent.includes('2 parameter combinations')`);
 await click('Run 2 tests');await waitFor(`document.body.textContent.includes('Queued. Follow progress')`);
 if(await evaluate(`document.querySelector('[aria-label="Backtest navigation"] [aria-current="page"]').textContent.includes('Viewer')`))throw Error('Auto navigation');
+await click('Runs');await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Open')`);
+await evaluate(`document.querySelector('button[aria-label="Actions for row 1"]').click()`);
+await click('Use settings');
+await waitFor(`document.body.textContent.includes('Loading settings for Run #1')`);
+await waitFor(`document.querySelector('[aria-label="Backtest navigation"] [aria-current="page"]').textContent==='Backtest'`);
+if(!await evaluate(`window.requests.some(p=>p.endsWith('/sections/settings')) && !window.requests.some(p=>p.endsWith('/runs/1'))`))throw Error('Settings fetched full run');
 await click('Runs');await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Open')`);await click('Open');
 await waitFor(`document.body.textContent.includes('Opening Run #1')`);
 await waitFor(`document.querySelector('[aria-label="Run viewer sections"]')`);

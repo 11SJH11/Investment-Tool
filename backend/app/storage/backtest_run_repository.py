@@ -108,20 +108,23 @@ class BacktestRunRepository:
         SQLite must still inspect the original JSON. No destructive migration or
         second copy of historical results is required.
         """
-        if section not in {"summary", "trades", "analysis"}:
+        if section not in {"settings", "summary", "trades", "analysis"}:
             raise ValueError("Unknown run section")
         fields = {
             "trades": ["trades"],
             "analysis": ["analysis", "setups", "rejected_signals"],
         }
-        if section == "summary":
+        if section == "settings":
+            # Copying configuration must not read or parse the immutable result blob.
+            projection = "'{}'"
+        elif section == "summary":
             projection = "json_remove(result_json, '$.trades', '$.analysis', '$.setups', '$.rejected_signals')"
         else:
             projection = "json_object(" + ",".join(f"'{key}',json_extract(result_json, '$.{key}')" for key in fields[section]) + ")"
         with measure("saved_run.sqlite_projection"):
             with self.database.connect() as connection:
                 row = connection.execute(
-                    f"SELECT id,name,notes,test_role,tags,created_at,config_json,{projection} AS result_json FROM backtest_runs WHERE id=?",
+                    f"SELECT id,name,notes,test_role,tags,created_at,strategy_key,symbols,config_json,{projection} AS result_json FROM backtest_runs WHERE id=?",
                     (int(run_id),),
                 ).fetchone()
         if row is None:
@@ -131,6 +134,7 @@ class BacktestRunRepository:
             item["config"] = _loads(item.pop("config_json"), {})
             item["result"] = _loads(item.pop("result_json"), {})
             item["tags"] = _loads(item.get("tags"), [])
+            item["symbols"] = _loads(item.get("symbols"), [])
         if section == "summary":
             curve=item["result"].get("equity_curve") or []
             starting=item["result"].get("metrics",{}).get("starting_balance")
