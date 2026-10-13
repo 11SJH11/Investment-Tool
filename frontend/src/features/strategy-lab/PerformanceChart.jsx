@@ -3,17 +3,24 @@ import {ColorType,LineSeries,CrosshairMode,createChart,createSeriesMarkers} from
 import {resolvedZone} from '../../utils/timezones';
 import {assignRunStyles,prepareCurve,unionDomain,pointAt,chartValue} from './equitySeries.js';
 
+function recordTiming(name,start){
+ const key=`ledger.saved-run.${name}`;
+ if(performance.getEntriesByName(key).length>=20)performance.clearMeasures(key);
+ performance.measure(key,{start,end:performance.now()});
+}
+
 export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null,onCapture=null}){
  const host=useRef(null),chartRef=useRef(null),seriesRef=useRef([]),legendRefs=useRef(new Map()),styles=useRef(runStyles||new Map()),hoverDate=useRef(null);
  const fullRange=useRef(true);
  const [hidden,setHidden]=useState(new Set()),[focus,setFocus]=useState(null);
  const input=useMemo(()=>runs||[{id:'single',name:'Performance',result:{equity_curve:points,metrics:{starting_balance:startingBalance}}}],[runs,points,startingBalance]);
- const curves=useMemo(()=>input.map(run=>({...prepareCurve(run.result?.equity_curve,run.result?.metrics?.starting_balance),id:String(run.id),label:`${run.id==='single'?'':`#${run.id} `}${run.name||run.result?.strategy?.name||'Run'}`,balance:run.result?.metrics?.starting_balance,currency:run.config?.account_currency||run.result?.account_currency||'account units'})),[input]);
+ const curves=useMemo(()=>{const started=performance.now();const value=input.map(run=>({...prepareCurve(run.result?.equity_curve,run.result?.metrics?.starting_balance),id:String(run.id),label:`${run.id==='single'?'':`#${run.id} `}${run.name||run.result?.strategy?.name||'Run'}`,balance:run.result?.metrics?.starting_balance,currency:run.config?.account_currency||run.result?.account_currency||'account units'}));recordTiming('curve-preparation',started);return value},[input]);
  const domain=useMemo(()=>unionDomain(curves),[curves]);assignRunStyles(curves.map(c=>c.id),styles.current);
  const fmt=(value,suffix='')=>value==null?'Unavailable':`${Number(value).toLocaleString('en-GB',{maximumFractionDigits:2})}${suffix}`;
  const reset=()=>{fullRange.current=true;const chart=chartRef.current;if(!chart||!domain)return;chart.timeScale().fitContent();if(domain.from<domain.to)chart.timeScale().setVisibleRange(domain)};
  useEffect(()=>{
   if(!host.current||!domain)return;
+  const chartStarted=performance.now();
   const css=getComputedStyle(document.documentElement),token=(key,fallback)=>css.getPropertyValue(key).trim()||fallback;
   const height=expanded?Math.max(560,innerHeight-230):540;
   const chart=createChart(host.current,{autoSize:true,height,layout:{background:{type:ColorType.Solid,color:token('--ledger-chart-background','#111111')},textColor:token('--ledger-muted','#a8a29e')},grid:{vertLines:{color:token('--ledger-chart-grid','#262626')},horzLines:{color:token('--ledger-chart-grid','#262626')}},timeScale:{minBarSpacing:0.000001,rightOffset:0,timeVisible:true,tickMarkFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),month:'short',year:'2-digit'}).format(new Date(Number(time)*1000))},crosshair:{mode:CrosshairMode.Normal},localization:{timeFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(time)*1000))}});
@@ -33,6 +40,7 @@ export default function PerformanceChart({points=[],startingBalance=0,runs=null,
   }
   chart.panes()[0]?.setStretchFactor(7);chart.panes()[1]?.setStretchFactor(3);
   seriesRef.current=pairs;reset();
+  recordTiming('chart-initialization',chartStarted);
   let frame=0;
   const fitted=()=>{if(!host.current)return;const scale=chart.timeScale();host.current.dataset.startX=String(scale.timeToCoordinate(domain.from));host.current.dataset.endX=String(scale.timeToCoordinate(domain.to));host.current.dataset.plotWidth=String(scale.width())};
   const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{if(fullRange.current)reset();frame=requestAnimationFrame(fitted)})})});
