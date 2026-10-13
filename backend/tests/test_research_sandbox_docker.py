@@ -51,6 +51,33 @@ def test_real_strategy_interface_signal_and_container_policy(docker):
     finally:session.close()
 
 
+def test_delta_stream_retains_history_and_isolates_context_mutations(docker):
+    source='''from app.backtesting.strategies.base import Strategy, StrategySpec
+from app.backtesting.models import EntrySignal
+class Child(Strategy):
+    spec=StrategySpec(key='delta_fixture',name='Delta fixture',timeframes=('1m',))
+    def on_bar(self,ctx):
+        bars=ctx.bars('1m')
+        assert list(bars.close)==list(range(100,100+len(bars)))
+        close=float(bars.close.iloc[-1])
+        ctx._frames['1m'].loc[0,'close']=-999
+        return EntrySignal('long',close-2,metadata={'count':len(bars)})
+'''
+    frame=pd.DataFrame({'timestamp':pd.date_range('2026-01-01T15:00Z',periods=30,freq='min'),
+                        'close':range(100,130)})
+    session=Session(docker,docker.image(),seconds=60)
+    try:
+        remote=RemoteStrategy(session,source,'delta_fixture',{});remote.reset()
+        for n in range(1,31):
+            ctx=StrategyContext(symbol='QQQ',primary_timeframe='1m',decision_time=frame.timestamp.iloc[n-1]+pd.Timedelta(minutes=1),frames={'1m':frame},position=None,equity=10000)
+            signal=remote.on_bar(ctx)
+            assert signal.stop_loss==100+n-3 and signal.metadata['count']==n
+        remote.reset();ctx.decision_time=frame.timestamp.iloc[0]+pd.Timedelta(minutes=1)
+        assert remote.on_bar(ctx).metadata['count']==1
+        assert frame.close.tolist()==list(range(100,130))
+    finally:session.close()
+
+
 def test_hostile_source_cannot_reach_secrets_network_docker_or_write_code(docker):
     attacks='''
 import os, socket

@@ -21,6 +21,7 @@ def main():
     protocol = sys.stdout.buffer
     incoming = sys.stdin.buffer
     strategy = None
+    histories = {}
     for raw in iter(lambda: incoming.readline(MAX_MESSAGE+1), b''):
         try:
             message = decode(raw, MAX_MESSAGE)
@@ -68,13 +69,25 @@ def main():
                     strategy = cls(**message['params'])
                     result = {'spec': spec}
                 elif message['op'] == 'reset':
-                    strategy.reset(); result = None
-                elif message['op'] == 'bar':
+                    strategy.reset(); histories = {}; result = None
+                elif message['op'] in {'bar','bar_delta'}:
                     data = message['context']
-                    frames = {tf:pd.DataFrame(frame['rows'], columns=frame['columns']) for tf,frame in data.pop('frames').items()}
+                    incoming_frames=data.pop('frames')
+                    frames = {tf:pd.DataFrame(frame['rows'], columns=frame['columns']) for tf,frame in incoming_frames.items()}
                     for frame in frames.values():
                         for column in ('timestamp', 'available_at'):
                             if column in frame: frame[column] = pd.to_datetime(frame[column], utc=True)
+                    if message['op']=='bar_delta':
+                        for tf,frame in frames.items():
+                            previous=histories.get(tf)
+                            offset=incoming_frames[tf]['offset']
+                            if type(offset) is not int or offset!=(len(previous) if previous is not None else 0):
+                                raise ValueError('Discontinuous completed history')
+                            if previous is not None and list(previous.columns)!=list(frame.columns):
+                                raise ValueError('Completed history schema changed')
+                            histories[tf]=frame if previous is None else pd.concat([previous,frame],ignore_index=True) if len(frame) else previous
+                        # Strategy mutations cannot alter subsequent canonical context.
+                        frames={tf:frame.copy(deep=True) for tf,frame in histories.items()}
                     data['decision_time'] = datetime.fromisoformat(data['decision_time'])
                     if data['position']:
                         data['position']['entry_time'] = datetime.fromisoformat(data['position']['entry_time'])

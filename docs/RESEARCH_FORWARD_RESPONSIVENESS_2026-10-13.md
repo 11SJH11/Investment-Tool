@@ -196,3 +196,22 @@ Verified: 17 focused backend tests, 133 frontend tests, production build, heavy
 trade paging and no page overflow at 390/1024/1440/1920. No eager Trades/Analysis.
 Viewer item 3 remains open for cancellation-race/Analysis acceptance and final
 full regression. Do not confuse this increment with completion of the major phase.
+
+## Causal transport increment
+
+Generated strategy RPC now sends only newly completed rows with explicit offsets.
+The container reconstructs completed history, rejects discontinuous offsets and
+copies context frames so a strategy's mutation cannot contaminate the next call.
+Reset clears stream offsets and signal trace. Host completion indexes restrict
+the copied/transmitted delta; future rows and derived post-trade columns remain
+excluded. Wire provenance is `completed-bars-delta-json-v2`. The sandbox image was
+rebuilt from its existing allowlisted context; all isolation/resource rules remain.
+
+Synthetic 1,000-bar real-container comparison: legacy 19,613,495 request bytes /
+9.92s; delta 256,780 bytes / 4.87s. This comparison preceded the additional indexed
+host-copy optimization and is not a full-period capacity benchmark.
+19 sandbox unit tests passed. Real Docker: 27 security/lifecycle/research-loop
+tests passed; 31 dependency/author/reference/campaign integration tests passed
+(the latter includes non-Docker tests). New container regression verifies history,
+reset and mutation isolation. Logs reside in `C:/Users/jamie/Project/` with prefix
+`delta-` and date `20261013`. Full-period evaluation remains unfinished.

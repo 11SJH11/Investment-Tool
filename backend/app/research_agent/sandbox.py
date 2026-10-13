@@ -180,22 +180,37 @@ class Session:
         except (SandboxError,ValueError):return None
 
 
-def context_message(ctx):
+def context_message(ctx, offsets=None):
     # _frames is used for its timeframe names only. Future rows never cross IPC.
     frames={}
     from app.data.futures import PROVENANCE_COLUMNS
     allowed={'timestamp','available_at','open','high','low','close','volume',*PROVENANCE_COLUMNS}
     for timeframe in ctx._frames:
-        frame=ctx.bars(timeframe)
+        offset=0 if offsets is None else offsets.get(timeframe,0)
+        indexes=getattr(ctx,'_completion_indexes',None)
+        index=indexes.get(timeframe) if indexes is not None else None
+        if offsets is not None and index is not None and index.is_monotonic_increasing and not index.hasnans:
+            import pandas as pd
+            cutoff=pd.Timestamp(ctx.decision_time)
+            cutoff=cutoff.tz_localize('UTC') if cutoff.tzinfo is None else cutoff.tz_convert('UTC')
+            end=int(index.searchsorted(cutoff,side='right'))
+            if offset>end:raise SandboxError('SANDBOX_HISTORY_REWOUND_WITHOUT_RESET')
+            frame=ctx.bars(timeframe,count=end-offset)
+        else:
+            frame=ctx.bars(timeframe)
+            if offset>len(frame):raise SandboxError('SANDBOX_HISTORY_REWOUND_WITHOUT_RESET')
+            frame=frame.iloc[offset:]
         frame=frame[[column for column in frame.columns if column in allowed]]
         frames[timeframe]={'columns':list(frame.columns),'rows':json.loads(frame.to_json(orient='values',date_format='iso',date_unit='ns',double_precision=15))}
+        if offsets is not None:frames[timeframe]['offset']=offset
     return {'symbol':ctx.symbol,'primary_timeframe':ctx.primary_timeframe,'decision_time':ctx.decision_time,
             'frames':frames,'position':asdict(ctx.position) if ctx.position else None,'equity':ctx.equity}
 
 
 class RemoteStrategy(Strategy):
     def __init__(self,session,source,key,params,*,modules=None):
-        self.session=session; self.params=params; self.trace=[]
+        self.session=session; self.params=params; self.trace=[];self.offsets={}
+        session.provenance['protocol']='completed-bars-delta-json-v2'
         session.provenance['source_sha256']=sha256(source.encode()).hexdigest()
         modules=modules or {}
         session.provenance['dependency_sha256']=sha256(json.dumps(modules,sort_keys=True).encode()).hexdigest()
@@ -205,11 +220,13 @@ class RemoteStrategy(Strategy):
         # Only presentation fields are accepted. Container declarations confer no host permissions.
         self.spec=StrategySpec(key=key,name=str(response['spec'].get('name',key))[:200])
 
-    def reset(self): self.session.request({'op':'reset'})
+    def reset(self):
+        self.session.request({'op':'reset'});self.offsets={};self.trace=[]
 
     def on_bar(self,ctx):
-        message={'op':'bar','context':context_message(ctx)}
+        message={'op':'bar_delta','context':context_message(ctx,self.offsets)}
         result=self.session.request(message)
+        self.offsets={tf:frame['offset']+len(frame['rows']) for tf,frame in message['context']['frames'].items()}
         self.trace.append(sha256(encode(result)).hexdigest())
         try:return signal_from_json(result)
         except (ValueError,TypeError,KeyError,OverflowError):raise SandboxError('INVALID_STRATEGY_SIGNAL') from None
