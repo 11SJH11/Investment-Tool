@@ -6,6 +6,8 @@ await send('Page.addScriptToEvaluateOnNewDocument',{source:`
 localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Backtest'));
 localStorage.setItem('ledger.ui.backtest.tab',JSON.stringify('Runs'));
 window.requests=[];window.longTasks=[];
+const benchmarkApi=${JSON.stringify(process.env.LEDGER_BENCHMARK_API||'')};
+const realFetch=window.fetch.bind(window);
 new PerformanceObserver(list=>window.longTasks.push(...list.getEntries().map(e=>({start:e.startTime,duration:e.duration})))).observe({type:'longtask',buffered:true});
 const strategy={key:'heavy_fixture',name:'Heavy fixture',timeframes:['1m'],defaults:{},parameters:[]};
 const config={strategy_key:strategy.key,symbols:['QQQ'],starting_balance:100000};
@@ -16,6 +18,7 @@ const result={strategy,symbols:['QQQ'],metrics:{trades:3000,starting_balance:100
 const bodies={summary:JSON.stringify({id:1,name:'Heavy fixture',config,result}),trades:JSON.stringify({id:1,result:{trades}}),analysis:JSON.stringify({id:1,result:{analysis:{},setups:[],rejected_signals:[]}})};
 window.fixtureBytes=Object.fromEntries(Object.entries(bodies).map(([k,v])=>[k,v.length]));
 window.fetch=async(url)=>{const path=new URL(String(url),location.origin).pathname;window.requests.push(path);let data={items:[]};
+if(path.includes('/sections/')&&benchmarkApi)return realFetch(benchmarkApi+path);
 if(path.includes('/sections/'))return new Response(bodies[path.split('/').at(-1)]||'{}',{headers:{'Content-Type':'application/json'}});
 if(path.endsWith('/strategies'))data={strategies:[strategy]};
 else if(path.endsWith('/runs'))data={runs:[{id:1,name:'Heavy fixture',strategy_key:strategy.key,strategy_name:strategy.name,symbols:['QQQ'],trades:3000,tags:[],created_at:'2026-10-13',test_role:'development'}]};
@@ -27,15 +30,28 @@ return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/j
 await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1080,deviceScaleFactor:1,mobile:false});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19383'});
 await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Open')`);
-await evaluate(`window.longTasks=[];performance.clearMeasures();window.openStarted=performance.now()`);
+await evaluate(`window.longTasks=[];performance.clearMeasures();window.openStarted=performance.now();const observer=new MutationObserver(()=>{if(document.querySelector('[aria-label="Run viewer sections"]')){window.headlineMs=performance.now()-window.openStarted;observer.disconnect()}});observer.observe(document.body,{childList:true,subtree:true})`);
 await click('Open');
 await waitFor(`document.querySelector('.performance-canvas canvas')`);
 await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{window.chartPaintMs=performance.now()-window.openStarted;resolve()})))`);
 const scroll=await evaluate(`new Promise(resolve=>{let previous=performance.now(),gaps=[],n=0;function frame(now){gaps.push(now-previous);previous=now;window.scrollTo(0,(n%20)*40);if(++n<120)requestAnimationFrame(frame);else resolve({maxFrameGapMs:Math.max(...gaps),framesOver32ms:gaps.filter(x=>x>32).length})}requestAnimationFrame(frame)})`);
-const browser=await evaluate(`({chartPaintMs:window.chartPaintMs,bytes:window.fixtureBytes,requests:window.requests,domNodes:document.querySelectorAll('*').length,longTasks:window.longTasks,measures:performance.getEntriesByType('measure').map(e=>({name:e.name,ms:e.duration})),heapBytes:performance.memory?.usedJSHeapSize})`);
+const browser=await evaluate(`({headlineMs:window.headlineMs,chartPaintMs:window.chartPaintMs,fixtureBytes:window.fixtureBytes,requests:[...window.requests],domNodes:document.querySelectorAll('*').length,longTasks:[...window.longTasks],measures:performance.getEntriesByType('measure').map(e=>({name:e.name,ms:e.duration})),heapBytes:performance.memory?.usedJSHeapSize})`);
 if(browser.requests.some(p=>p.endsWith('/sections/trades')||p.endsWith('/sections/analysis')))throw Error('Eager heavy section');
 const metrics=await send('Performance.getMetrics');
-const report={browser,scroll,metrics:metrics.metrics,errors};
+await evaluate(`document.querySelectorAll('[aria-label="Run viewer sections"] button')[1].click()`);
+await waitFor(`document.body.textContent.includes('View chart')`);
+await click('Show 100');
+await waitFor(`document.querySelectorAll('tbody tr').length===100`);
+await click('Next trades');
+await waitFor(`document.body.textContent.includes('Showing 101–200')`);
+const viewports=[];
+for(const width of [390,1024,1440,1920]){
+ await send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:width<500});
+ await evaluate(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+ const overflow=await evaluate(`document.documentElement.scrollWidth>innerWidth`);
+ viewports.push({width,overflow});if(overflow)throw Error('Page overflow '+width);
+}
+const report={browser,scroll,metrics:metrics.metrics,viewports,errors};
 console.log(JSON.stringify(report,null,2));
 if(process.env.LEDGER_PERFORMANCE_REPORT)fs.writeFileSync(process.env.LEDGER_PERFORMANCE_REPORT,JSON.stringify(report,null,2));
 close();

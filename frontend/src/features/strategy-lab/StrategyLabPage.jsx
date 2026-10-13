@@ -15,7 +15,7 @@ import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { api } from "../../api/client";
 import SymbolSearch from "../../components/SymbolSearch";
 import { TIMEZONE_OPTIONS } from "../../utils/timezones";
-import PerformanceChart from "./PerformanceChart";
+import PerformanceChart from "./SavedPerformanceChart";
 import TradeAuditChart from "./TradeAuditChart";
 import ValidationPanel from "./ValidationPanel";
 import ResearchExperimentPanel from './ResearchExperimentPanel.jsx';
@@ -33,6 +33,7 @@ import RunComparison from "./RunComparison.jsx";
 import ComputeControl from "./ComputeControl.jsx";
 
 const runSections=createSectionCache((id,section)=>api.strategyLabRunSection(id,section));
+const EMPTY_TRADES=Object.freeze([]);
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
 function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
@@ -82,6 +83,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [result, setResult] = useState(null);
   const [opening,setOpening]=useState(null);
   const openRequest=useRef(0);
+  useEffect(()=>()=>{openRequest.current++},[]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [savedExperiment, setSavedExperiment] = useState(null);
@@ -173,10 +175,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   };
 
   const openSavedRun = async (runId) => {
-    if(opening)return;
     const request=++openRequest.current;setError("");setOpening(`Opening Run #${runId}...`);setTab("Run Viewer");setResult(null);
     try {
-      const saved=await runSections.get(runId,'summary');
+      const saved=await runSections.get(runId,'overview');
       if(request!==openRequest.current)return;
       setResult({...saved.result,config:saved.config,_lazy:true,saved_run:{id:saved.id,name:saved.name,test_role:saved.test_role,created_at:saved.created_at}});
     }catch(e){if(request===openRequest.current)setError(e.message);}
@@ -337,6 +338,7 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
   const [sectionBusy,setSectionBusy]=useState(''),[sectionError,setSectionError]=useState('');
   const loaded=useRef(new Set(initialResult._lazy?['summary']:['summary','trades','analysis']));
   const generation=useRef(0);
+  useEffect(()=>()=>{generation.current++},[]);
   useEffect(()=>{generation.current++;setResult(initialResult);loaded.current=new Set(initialResult._lazy?['summary']:['summary','trades','analysis']);setSectionBusy('');setSectionError('');},[initialResult]);
   const loadSection=async(section)=>{
     if(loaded.current.has(section))return result;
@@ -363,7 +365,8 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
   const [chartZone, setChartZone] = useState("America/New_York");
   const [expandedChart, setExpandedChart] = useState(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
-  const trades = result.trades || [];
+  const [tradePage,setTradePage]=useState(0);
+  const trades = result.trades || EMPTY_TRADES;
   const filtered = useMemo(() => trades.filter((trade) =>
     (filters.symbol === "all" || trade.symbol === filters.symbol) &&
     (filters.direction === "all" || trade.direction === filters.direction) &&
@@ -372,7 +375,11 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
     (!tradeDates.from || String(trade.entry_time).slice(0,10)>=tradeDates.from) &&
     (!tradeDates.to || String(trade.entry_time).slice(0,10)<=tradeDates.to)
   ).sort((a,b)=>tradeOrder==='r'?Number(b.r_multiple??-Infinity)-Number(a.r_multiple??-Infinity):(Date.parse(a.entry_time)-Date.parse(b.entry_time))*(tradeOrder==='newest'?-1:1)), [trades, filters,tradeDates,tradeOrder]);
-  const visibleTrades = showAllTrades ? filtered : filtered.slice(0, 20);
+  const tradePageSize=showAllTrades?100:20;
+  const page=Math.min(tradePage,Math.max(0,Math.ceil(filtered.length/tradePageSize)-1));
+  const visibleTrades=filtered.slice(page*tradePageSize,(page+1)*tradePageSize);
+  const tradeIndexes=useMemo(()=>new Map(trades.map((trade,index)=>[trade,index])),[trades]);
+  useEffect(()=>setTradePage(0),[filters,tradeDates,tradeOrder,showAllTrades]);
   const exitReasons = [...new Set(trades.map((trade) => trade.exit_reason).filter(Boolean))].sort();
   useEffect(() => { setViewerTab("Summary"); setAuditTrade(null); setSelectedTrades(new Set()); setExpandedChart(null); }, [result.saved_run?.id]);
   const openEventTrade = useCallback((event) => {
@@ -413,11 +420,11 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
       <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">Performance</h3><p className="mt-1 text-xs text-stone-500">Hover for exact values. Click a trade marker to audit that trade.</p></div><div className="flex flex-wrap items-end gap-2"><Field label="Timezone"><select className="input min-w-[190px]" value={chartZone} onChange={(e) => setChartZone(e.target.value)}>{TIMEZONE_OPTIONS.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select></Field><span className="pb-2 text-xs text-stone-500">Data: {String(result.data?.feed || "—").toUpperCase()} · adjustment {result.data?.adjustment || "—"}</span></div></div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2">{[["equity","Equity"],["return","Return %"],["r","Cumulative R"]].map(([key,label]) => <button key={key} onClick={() => setPerformanceMode(key)} className={`rounded-md border px-3 py-2 text-xs ${performanceMode === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300"}`}>{label}</button>)}</div><button onClick={() => setExpandedChart("performance")} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Expand performance</button></div>
-        <PerformanceChart points={result.equity_curve || []} startingBalance={m.starting_balance} mode={performanceMode} timeZone={chartZone} onTradeSelect={openEventTrade} />
+        {!expandedChart&&<PerformanceChart key={runId} runId={runId} points={result.equity_curve} startingBalance={m.starting_balance} mode={performanceMode} timeZone={chartZone} onTradeSelect={openEventTrade} />}
 
       </section>
 
-      {expandedChart && <div className="fixed inset-3 z-40 overflow-auto rounded-xl border border-stone-300 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{expandedChart === "drawdown" ? "Drawdown" : performanceMode === "equity" ? "Equity" : performanceMode === "return" ? "Return" : "Cumulative R"}</h3><p className="mt-1 text-xs text-stone-500">{TIMEZONE_OPTIONS.find((item) => item.value === chartZone)?.label || chartZone}</p></div><button onClick={() => setExpandedChart(null)} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Close expanded chart</button></div><PerformanceChart points={result.equity_curve || []} startingBalance={m.starting_balance} mode={expandedChart === "drawdown" ? "drawdown" : performanceMode} timeZone={chartZone} expanded onTradeSelect={openEventTrade} /></div>}
+      {expandedChart && <div className="fixed inset-3 z-40 overflow-auto rounded-xl border border-stone-300 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{expandedChart === "drawdown" ? "Drawdown" : performanceMode === "equity" ? "Equity" : performanceMode === "return" ? "Return" : "Cumulative R"}</h3><p className="mt-1 text-xs text-stone-500">{TIMEZONE_OPTIONS.find((item) => item.value === chartZone)?.label || chartZone}</p></div><button onClick={() => setExpandedChart(null)} className="rounded-md border border-stone-300 px-3 py-2 text-xs font-medium">Close expanded chart</button></div><PerformanceChart key={runId} runId={runId} points={result.equity_curve} startingBalance={m.starting_balance} mode={expandedChart === "drawdown" ? "drawdown" : performanceMode} timeZone={chartZone} expanded onTradeSelect={openEventTrade} /></div>}
 
       {result.strategy?.key === "momentum_vcp_breakout_baseline_v1" && <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5">
         <h3 className="font-semibold">Detected breakout setups</h3><p className="mt-1 text-xs text-stone-500">All qualifying breakouts, including entries rejected at the next open. Setup counts are separate from portfolio performance.</p>
@@ -428,12 +435,12 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
     </>}
 
     {viewerTab === "Trades" && loaded.current.has("trades") && <>
-      <div className="ui-toolbar mt-4"><label>From (UTC date)<input className="input" type="date" value={tradeDates.from} onChange={e=>setTradeDates({...tradeDates,from:e.target.value})}/></label><label>Through (UTC date)<input className="input" type="date" value={tradeDates.to} onChange={e=>setTradeDates({...tradeDates,to:e.target.value})}/></label><label>Trade order<select className="input" value={tradeOrder} onChange={e=>setTradeOrder(e.target.value)}><option value="oldest">Oldest first</option><option value="newest">Newest first</option><option value="r">Highest R first</option></select></label><button className="mini-btn" onClick={()=>setSelectedTrades(new Set(filtered.map(t=>trades.indexOf(t))))}>Select matching trades</button><button className="mini-btn" onClick={()=>setSelectedTrades(new Set())}>Clear selection ({selectedTrades.size})</button></div>
+      <div className="ui-toolbar mt-4"><label>From (UTC date)<input className="input" type="date" value={tradeDates.from} onChange={e=>setTradeDates({...tradeDates,from:e.target.value})}/></label><label>Through (UTC date)<input className="input" type="date" value={tradeDates.to} onChange={e=>setTradeDates({...tradeDates,to:e.target.value})}/></label><label>Trade order<select className="input" value={tradeOrder} onChange={e=>setTradeOrder(e.target.value)}><option value="oldest">Oldest first</option><option value="newest">Newest first</option><option value="r">Highest R first</option></select></label><button className="mini-btn" onClick={()=>setSelectedTrades(new Set(filtered.map(t=>tradeIndexes.get(t))))}>Select matching trades</button><button className="mini-btn" onClick={()=>setSelectedTrades(new Set())}>Clear selection ({selectedTrades.size})</button></div>
       <ResearchPack key={result.saved_run?.id} run={result} filtered={filtered} selected={selectedTrades}/>
     </>}
     {viewerTab === "Trades" && loaded.current.has("trades") && <section className="mt-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-      <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter the complete run and open any trade on its historical chart. MFE/MAE are conservative lower bounds: exit-bar OHLC ordering is unknown. Giveback = MFE minus realised R.</p></div><div className="ui-toolbar"><span className="text-xs text-stone-500">Showing {visibleTrades.length} of {filtered.length} matching trades</span>{filtered.length>20&&<button className="mini-btn" onClick={()=>setShowAllTrades(v=>!v)}>{showAllTrades?"Show 20":"Expand all"}</button>}</div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Select","Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","MFE (R)","MAE (R)","Hold minutes","Giveback (R)","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleTrades.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`} aria-selected={auditTrade===trade}><td className="px-3 py-3"><input type="checkbox" aria-label={`Select trade ${trades.indexOf(trade)+1}`} checked={selectedTrades.has(trades.indexOf(trade))} onChange={()=>setSelectedTrades(old=>{const next=new Set(old);const id=trades.indexOf(trade);next.has(id)?next.delete(id):next.add(id);return next})}/></td><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td>{["mfe_r","mae_r","minutes_in_trade","giveback_r"].map(key=><td key={key} className="px-3 py-3">{displayDiagnostic(tradeDiagnostics(trade)[key])}</td> )}<td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
+      <div className="border-b border-stone-100 px-5 py-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Simulated trades</h3><p className="mt-1 text-xs text-stone-500">Filter the complete run and open any trade on its historical chart. MFE/MAE are conservative lower bounds: exit-bar OHLC ordering is unknown. Giveback = MFE minus realised R.</p></div><div className="ui-toolbar"><span className="text-xs text-stone-500">Showing {page*tradePageSize+1}–{page*tradePageSize+visibleTrades.length} of {filtered.length} matching trades</span><button className="mini-btn" disabled={!page} onClick={()=>setTradePage(page-1)}>Previous trades</button><button className="mini-btn" disabled={(page+1)*tradePageSize>=filtered.length} onClick={()=>setTradePage(page+1)}>Next trades</button>{filtered.length>20&&<button className="mini-btn" onClick={()=>setShowAllTrades(v=>!v)}>{showAllTrades?"Show 20":"Show 100"}</button>}</div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterSelect label="Symbol" value={filters.symbol} onChange={(value) => setFilters({ ...filters, symbol: value })} options={["all", ...(result.symbols || [])]} /><FilterSelect label="Direction" value={filters.direction} onChange={(value) => setFilters({ ...filters, direction: value })} options={["all","long","short"]} /><FilterSelect label="Result" value={filters.result} onChange={(value) => setFilters({ ...filters, result: value })} options={["all","win","loss","breakeven"]} /><FilterSelect label="Exit reason" value={filters.exit_reason} onChange={(value) => setFilters({ ...filters, exit_reason: value })} options={["all", ...exitReasons]} /></div></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500"><tr>{["Select","Symbol","Direction","Entry time (ET)","Entry","Stop","Target","Exit time (ET)","Exit","Exit reason","Planned R:R","Realised R","MFE (R)","MAE (R)","Hold minutes","Giveback (R)","Net P&L","Result","Audit"].map((h) => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{visibleTrades.map((trade, index) => <tr key={`${trade.symbol}-${trade.entry_time}-${index}`} aria-selected={auditTrade===trade}><td className="px-3 py-3"><input type="checkbox" aria-label={`Select trade ${tradeIndexes.get(trade)+1}`} checked={selectedTrades.has(tradeIndexes.get(trade))} onChange={()=>setSelectedTrades(old=>{const next=new Set(old);const id=tradeIndexes.get(trade);next.has(id)?next.delete(id):next.add(id);return next})}/></td><td className="px-3 py-3 font-mono font-semibold">{trade.symbol}</td><td className="px-3 py-3">{trade.direction}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.entry_time)}</td><td className="px-3 py-3">{number(trade.entry_price)}</td><td className="px-3 py-3">{number(trade.stop_loss)}</td><td className="px-3 py-3">{number(trade.take_profit)}</td><td className="whitespace-nowrap px-3 py-3">{formatDate(trade.exit_time)}</td><td className="px-3 py-3">{number(trade.exit_price)}</td><td className="px-3 py-3 text-xs text-stone-500">{trade.exit_reason}</td><td className="px-3 py-3">{trade.planned_rr == null ? "—" : `${number(trade.planned_rr)}:1`}</td><td className="px-3 py-3">{r(trade.r_multiple)}</td>{["mfe_r","mae_r","minutes_in_trade","giveback_r"].map(key=><td key={key} className="px-3 py-3">{displayDiagnostic(tradeDiagnostics(trade)[key])}</td> )}<td className={`px-3 py-3 ${Number(trade.net_pnl) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(trade.net_pnl)}</td><td className={`px-3 py-3 font-medium ${trade.result === "win" ? "text-emerald-700" : trade.result === "loss" ? "text-red-700" : ""}`}>{trade.result.toUpperCase()}</td><td className="px-3 py-3"><button onClick={() => setAuditTrade(trade)} className="text-xs font-medium underline">View chart</button><button className="mini-btn" onClick={()=>open("Charts",{...trade,timeframe:result.primary_timeframe})}>Open Charts</button><button className="mini-btn" onClick={()=>open("Replay",{...trade,timeframe:result.primary_timeframe})}>Replay trade</button></td></tr>)}</tbody></table></div>
       {!filtered.length && <p className="p-8 text-center text-sm text-stone-500">No trades match these filters.</p>}
     </section>}
 

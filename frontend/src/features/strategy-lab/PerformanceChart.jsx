@@ -9,7 +9,7 @@ function recordTiming(name,start){
  performance.measure(key,{start,end:performance.now()});
 }
 
-export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null,onCapture=null}){
+export default function PerformanceChart({points=[],startingBalance=0,runs=null,runStyles=null,mode='equity',expanded=false,timeZone='America/New_York',onTradeSelect=null,onCapture=null,projected=false}){
  const host=useRef(null),chartRef=useRef(null),seriesRef=useRef([]),legendRefs=useRef(new Map()),styles=useRef(runStyles||new Map()),hoverDate=useRef(null);
  const fullRange=useRef(true);
  const [hidden,setHidden]=useState(new Set()),[focus,setFocus]=useState(null);
@@ -22,8 +22,10 @@ export default function PerformanceChart({points=[],startingBalance=0,runs=null,
   if(!host.current||!domain)return;
   const chartStarted=performance.now();
   const css=getComputedStyle(document.documentElement),token=(key,fallback)=>css.getPropertyValue(key).trim()||fallback;
+  const dateFormat=new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'});
+  const tickFormat=new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),month:'short',year:'2-digit'});
   const height=expanded?Math.max(560,innerHeight-230):540;
-  const chart=createChart(host.current,{autoSize:true,height,layout:{background:{type:ColorType.Solid,color:token('--ledger-chart-background','#111111')},textColor:token('--ledger-muted','#a8a29e')},grid:{vertLines:{color:token('--ledger-chart-grid','#262626')},horzLines:{color:token('--ledger-chart-grid','#262626')}},timeScale:{minBarSpacing:0.000001,rightOffset:0,timeVisible:true,tickMarkFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),month:'short',year:'2-digit'}).format(new Date(Number(time)*1000))},crosshair:{mode:CrosshairMode.Normal},localization:{timeFormatter:time=>new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(time)*1000))}});
+  const chart=createChart(host.current,{autoSize:true,height,layout:{background:{type:ColorType.Solid,color:token('--ledger-chart-background','#111111')},textColor:token('--ledger-muted','#a8a29e')},grid:{vertLines:{color:token('--ledger-chart-grid','#262626')},horzLines:{color:token('--ledger-chart-grid','#262626')}},timeScale:{minBarSpacing:0.000001,rightOffset:0,timeVisible:true,tickMarkFormatter:time=>tickFormat.format(new Date(Number(time)*1000))},crosshair:{mode:CrosshairMode.Normal},localization:{timeFormatter:time=>dateFormat.format(new Date(Number(time)*1000))}});
   chartRef.current=chart;
   chart.timeScale().subscribeVisibleTimeRangeChange(range=>{if(host.current&&range){host.current.dataset.visibleFrom=String(range.from);host.current.dataset.visibleTo=String(range.to)}});
   const pairs=[];const markers=new Map();
@@ -48,7 +50,7 @@ export default function PerformanceChart({points=[],startingBalance=0,runs=null,
   const manual=()=>{fullRange.current=false};const element=host.current;element.addEventListener('wheel',manual,{passive:true});element.addEventListener('pointerdown',manual);
 
   chart.subscribeCrosshairMove(event=>{
-   if(hoverDate.current)hoverDate.current.textContent=event.time?new Intl.DateTimeFormat('en-GB',{timeZone:resolvedZone(timeZone),dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(event.time)*1000)):'Hover either pane to inspect';
+   if(hoverDate.current)hoverDate.current.textContent=event.time?dateFormat.format(new Date(Number(event.time)*1000)):'Hover either pane to inspect';
    for(const curve of curves){const el=legendRefs.current.get(curve.id);if(!el)continue;const p=event.time?pointAt(curve,Number(event.time)):null;el.textContent=p?`Equity ${fmt(p.equity)} / Return ${fmt(chartValue(p,'return',curve.balance),'%')} / DD ${fmt(p.drawdown_pct,'%')}${p.time!==Number(event.time)?' / prior observation':''}`:'No observation';}
   });
   if(onTradeSelect)chart.subscribeClick(event=>{const trade=markers.get(String(event.hoveredObjectId));if(trade)onTradeSelect(trade)});
@@ -61,5 +63,5 @@ export default function PerformanceChart({points=[],startingBalance=0,runs=null,
  <p className="text-xs muted">Saved account equity and running-peak drawdown. Separate runs retain their own dates and capital. {mode==='return'?'Returns use each run’s starting balance.':'Compare different capitals using normalized return; verify account currencies before comparing absolute equity.'} Zoom/pan in either pane; both share one time axis.</p>
  <div className="performance-layout"><div className="min-w-0"><div ref={host} className="performance-canvas" style={{height:expanded?Math.max(560,innerHeight-230):540}}/>{!domain&&<p>No saved equity observations.</p>}</div>
  <aside className="performance-legend" aria-label="Run colour key"><p ref={hoverDate} className="text-xs muted">Hover either pane to inspect</p>{curves.map(curve=><div key={curve.id} className="performance-key" onMouseEnter={()=>setFocus(curve.id)} onMouseLeave={()=>setFocus(null)} onFocus={()=>setFocus(curve.id)} onBlur={()=>setFocus(null)}><button className="mini-btn" aria-pressed={!hidden.has(curve.id)} onClick={()=>setHidden(old=>{const next=new Set(old);next.has(curve.id)?next.delete(curve.id):next.add(curve.id);return next})}><span className="run-swatch" style={{background:styles.current.get(curve.id).color}}/>{curve.label}</button><button className="mini-btn" onClick={()=>setHidden(new Set(curves.filter(c=>c.id!==curve.id).map(c=>c.id)))}>Isolate</button><p className="text-xs" ref={el=>{if(el)legendRefs.current.set(curve.id,el);else legendRefs.current.delete(curve.id)}}>Hover to inspect</p></div>)}</aside></div>
- <p className="text-xs muted">Full history by default. Only exact unchanged plateau interiors are omitted; peaks, troughs, recovery transitions and trade events remain. A one-second initial balance anchor is shown when the first observation already changed equity.</p></section>;
+ <p className="text-xs muted">{projected?'Display projection across the full period; intermediate observations are omitted. Load full chart detail for precise zoom inspection.':'Full history by default. Only exact unchanged plateau interiors are omitted; peaks, troughs, recovery transitions and trade events remain.'} A one-second initial balance anchor is shown when the first observation already changed equity.</p></section>;
 }

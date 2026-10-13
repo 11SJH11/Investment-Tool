@@ -156,3 +156,43 @@ transient frontend test-process failure; explicit writable test directories and
 serial frontend tests passed. The build initially encountered cache permissions
 and transient unresolved imports for existing files; the authorized retry passed
 without modifying those files. No migrations or strategy-rule changes.
+
+## Viewer increment: 13 October
+
+Reproducible tools: `backend/tools/benchmark_saved_run_viewer.py` (isolated SQLite,
+660,000 observations, 3,000 trades) and
+`frontend/tests/browser/heavy-run-performance.mjs` (opt-in CDP benchmark).
+The before browser fixture mocked serialized summary responses; the after run
+uses the actual isolated repository HTTP fixture and additionally retains 3,000
+trade events. These are local development-mode samples, not p95 or production
+network measurements. React StrictMode explains two chart setup calls.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Chart useful paint | 11,426.7ms | 3,665.3ms |
+| Headline available | Not separately captured | 344.3ms |
+| Summary payload | 103,581,823 bytes | 440 bytes |
+| Deferred performance payload | Included above | 1,017,334 bytes |
+| Browser JSON parse | 229.7ms | 0.1ms headline / 2.4ms performance |
+| Curve preparation | 456–466ms per call | 2.3–3ms per call |
+| Chart setup | 1,298–1,430ms per call | 12.6–19.3ms per call |
+| Largest recorded long task | 2,783ms | None recorded during summary/chart/scroll sample |
+| Maximum scrolling frame gap | 900ms | 5.7ms (headless, not a physical-display FPS claim) |
+| Live DOM elements | 181 | 183 |
+
+Artifacts: `C:/Users/jamie/Project/heavy-run-before-20261013.json`,
+`heavy-run-after-20261013.json`, and `heavy-viewer-20261013/measurements.json`.
+Fixture memory includes synthetic response strings; do not interpret its heap
+as an application-only memory benchmark. Server projection still takes about
+3.2 seconds for this cold full-curve read; it no longer blocks headline use.
+
+Implemented: new overview/performance sections preserving legacy summary API;
+deterministic display-only bucket extrema/event projection; explicit full detail;
+stable empty trade data; cached Intl formatters; 20/100-row trade pagination and
+indexed selection; unmount/request-generation guards. Snapshot/metric values
+remain immutable. All original observations remain in full exports/detail.
+
+Verified: 17 focused backend tests, 133 frontend tests, production build, heavy
+trade paging and no page overflow at 390/1024/1440/1920. No eager Trades/Analysis.
+Viewer item 3 remains open for cancellation-race/Analysis acceptance and final
+full regression. Do not confuse this increment with completion of the major phase.

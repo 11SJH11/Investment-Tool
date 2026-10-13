@@ -108,15 +108,19 @@ class BacktestRunRepository:
         SQLite must still inspect the original JSON. No destructive migration or
         second copy of historical results is required.
         """
-        if section not in {"settings", "summary", "trades", "analysis"}:
+        if section not in {"settings", "overview", "performance", "performance-full", "summary", "trades", "analysis"}:
             raise ValueError("Unknown run section")
         fields = {
             "trades": ["trades"],
             "analysis": ["analysis", "setups", "rejected_signals"],
+            "performance": ["equity_curve", "metrics"],
+            "performance-full": ["equity_curve", "metrics"],
         }
         if section == "settings":
             # Copying configuration must not read or parse the immutable result blob.
             projection = "'{}'"
+        elif section == "overview":
+            projection = "json_remove(result_json, '$.equity_curve', '$.trades', '$.analysis', '$.setups', '$.rejected_signals')"
         elif section == "summary":
             projection = "json_remove(result_json, '$.trades', '$.analysis', '$.setups', '$.rejected_signals')"
         else:
@@ -135,13 +139,19 @@ class BacktestRunRepository:
             item["result"] = _loads(item.pop("result_json"), {})
             item["tags"] = _loads(item.get("tags"), [])
             item["symbols"] = _loads(item.get("symbols"), [])
-        if section == "summary":
+        if section in {"summary", "performance", "performance-full"}:
             curve=item["result"].get("equity_curve") or []
             starting=item["result"].get("metrics",{}).get("starting_balance")
             if starting is not None and any("drawdown_pct" not in point or "return_pct" not in point for point in curve):
                 from app.backtesting.engine import _decorate_equity_curve
                 calculated=_decorate_equity_curve(float(starting),curve)
                 item["result"]["equity_curve"]=[{**derived,**original} for derived,original in zip(calculated,curve)]
+        if section == "performance":
+            from app.storage.equity_display import display_curve
+            curve=item['result'].get('equity_curve') or []
+            item['result']['equity_curve']=display_curve(curve)
+            item['result']['display_projection']={'source_points':len(curve),
+                'display_points':len(item['result']['equity_curve']), 'method':'bucket_extrema_and_events_v1'}
         item["section"] = section
         return item
 

@@ -225,7 +225,7 @@ def trade_review(run_id: int, trade_index: int, before: int = Query(50, ge=0, le
 @router.get("/runs/{run_id}/sections/{section}")
 def backtest_run_section(run_id: int, section: str, services: AppServices = Depends(get_services)):
     from app.performance import Profile
-    if section not in {"settings", "summary", "trades", "analysis"}:
+    if section not in {"settings", "overview", "performance", "performance-full", "summary", "trades", "analysis"}:
         raise HTTPException(status_code=400, detail="Unknown run section")
     try:
         if services.backtest.runs is None:
