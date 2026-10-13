@@ -1,5 +1,14 @@
 # Research Agent current status / handoff
 
+## Next major phase — 13 October 2026
+
+The current [research / forward validation / responsiveness audit and checklist](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
+starts at `8754cff`. Initial audit and the configuration-only Use settings fix
+are complete and verified. Heavy Run Viewer profiling, full autonomous research,
+and shadow/paper execution remain open. Paper execution remains disabled.
+The previous full-suite results below are historical, not verification of this
+new phase. Current focused verification is recorded in the linked ledger.
+
 ## Current continuation — 12 October 2026
 
 Starting tree: `01ce536` (Agent foundations), including the user's local confluence
