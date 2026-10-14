@@ -123,7 +123,9 @@ class ResearchDirector:
                 if structural:
                     from .campaign_projects import reference_project
                     from .robustness import plan_windows
-                    entries[-1]['robustness_windows']=plan_windows(plan)
+                    full_windows=full_period and policy.get('structural_robustness','bounded_samples')=='full_windows'
+                    entries[-1]['full_robustness_windows']=full_windows
+                    entries[-1]['robustness_windows']=plan_windows(plan,full_windows=full_windows)
                     entries[-1]['full_period']=full_period
                     entries[-1]['reference_project_id']=reference_project(self.database,identifier,project['id'],full_period=full_period)
                     entries[-1]['reference_payload']={**payload,'end_date':payload['end_date'] if full_period else payload['start_date']}
@@ -147,7 +149,7 @@ class ResearchDirector:
                                deadline=current.get('deadline') or (self.clock()+timedelta(minutes=current['request']['policy']['budget']['wall_minutes'])).isoformat(),
                                execution=dict(version='campaign_development_v1', request_hash=request_hash,
                                               entries=entries, model=model_status,
-                                              limitation='Generated children use the frozen evaluation scope plus bounded development cost samples. Neither grants unseen validation or automatic promotion.'))
+                                              limitation='Generated children use the frozen evaluation and development cost-check scopes. Neither grants unseen validation or automatic promotion.'))
                 # Cap the existing services themselves: other entry points cannot
                 # spend beyond the campaign's conservative prepaid allocation.
                 for e in entries:

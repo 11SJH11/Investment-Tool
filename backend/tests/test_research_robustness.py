@@ -30,6 +30,34 @@ def test_legacy_approval_defaults_to_no_extra_simulations():
     assert request.windows==[]
 
 
+def test_full_windows_preserve_complete_preregistered_boundaries_and_require_authority():
+    plan={'internal_development_windows':[{'start':'2025-01-01','end':'2025-03-31'},
+                                         {'start':'2025-04-01','end':'2025-06-30'}]}
+    windows=plan_windows(plan,full_windows=True)
+    assert windows==plan['internal_development_windows']
+    payload=dict(control_parameters={},candidate_parameters={},acknowledgement=ACK,windows=windows)
+    with pytest.raises(ValueError,match='seven-day'):
+        Approval(**payload,full_period=True)
+    with pytest.raises(ValueError,match='authority'):
+        Approval(**payload,full_robustness_windows=True)
+    approved=Approval(**payload,full_period=True,full_robustness_windows=True)
+    assert approved.model_dump(mode='json')['windows']==windows
+    assert simulation_count(windows)==20
+
+
+def test_full_window_cost_runs_do_not_truncate_periods_or_change_warmup():
+    _,config,prepare,simulate,save,preparations,*_=fixture()
+    config['warmup_start_date']='2024-01-01'
+    windows=[{'start':'2025-01-01','end':'2025-03-31'}]
+    result=execute(windows,config,prepare,simulate,save,full_windows=True)
+    assert len(preparations)==2
+    assert all(p['start_date']=='2025-01-01' and p['end_date']=='2025-03-31' and
+               p['warmup_start_date']=='2024-01-01' for p in preparations)
+    assert [p['commission_per_order'] for p in preparations]==[2,4]
+    assert result['version']=='full_window_development_cost_checks_v1'
+    assert all(c['control_parity'] for c in result['cells'])
+
+
 def fixture():
     windows=[{'start':'2025-01-01','end':'2025-01-02'},{'start':'2025-02-01','end':'2025-02-02'}]
     config={'commission_per_order':2,'spread_bps':3,'slippage_bps':4}

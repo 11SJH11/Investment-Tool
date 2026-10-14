@@ -29,6 +29,7 @@ ACTIVE = {'QUEUED','RUNNING'}
 
 class Approval(Strict):
     full_period: bool = Field(default=False,strict=True)
+    full_robustness_windows: bool = Field(default=False,strict=True)
     control_parameters: dict[str, int|float|bool|str] = Field(max_length=40)
     candidate_parameters: dict[str, int|float|bool|str] = Field(max_length=40)
     timeout_seconds: int = Field(default=120,ge=10,le=21600,strict=True)
@@ -37,6 +38,10 @@ class Approval(Strict):
 
     @model_validator(mode='after')
     def ordered(self):
+        if self.full_robustness_windows and not self.full_period:
+            raise ValueError('Full robustness windows require full-period execution authority')
+        if not self.full_robustness_windows and any((w.end-w.start).days>6 for w in self.windows):
+            raise ValueError('Bounded robustness samples retain the seven-day limit')
         if not self.full_period and self.timeout_seconds>600:
             raise ValueError('Bounded samples retain the 600-second deadline')
         if any(a.end>=b.start for a,b in zip(self.windows,self.windows[1:])):
@@ -272,7 +277,8 @@ class SandboxRuns:
                     return simulate(params,phase,prefix,prepared=data,payload=payload)
                 def save_windows(cells):
                     item['robustness']={'status':'RUNNING','cells':cells};self._save(item)
-                item['robustness']=execute(item['request']['windows'],config,prepare_window,simulate_window,save_windows)
+                item['robustness']=execute(item['request']['windows'],config,prepare_window,simulate_window,save_windows,
+                    full_windows=item['request'].get('full_robustness_windows',False))
                 item['robustness']['status']='COMPLETED'
             self._guard(item,deadline)
             item.update(status='COMPLETED',phase='DEVELOPMENT_REVIEW_REQUIRED')

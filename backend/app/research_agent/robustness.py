@@ -12,13 +12,13 @@ class Window(Strict):
 
     @model_validator(mode='after')
     def bounded(self):
-        if not 0 <= (self.end-self.start).days <= 6:
-            raise ValueError('Robustness samples must contain one to seven calendar days')
+        if not 0 <= (self.end-self.start).days <= 36525:
+            raise ValueError('Robustness windows must be ordered and span at most 100 years')
         return self
 
 
-def plan_windows(plan):
-    windows=[Window(start=w['start'],end=min(date.fromisoformat(w['end']),
+def plan_windows(plan, *, full_windows=False):
+    windows=[Window(start=w['start'],end=date.fromisoformat(w['end']) if full_windows else min(date.fromisoformat(w['end']),
              date.fromisoformat(w['start'])+timedelta(days=6))).model_dump(mode='json')
              for w in plan['internal_development_windows']]
     if len(windows)>3:
@@ -31,7 +31,7 @@ def simulation_count(windows):
     return 4+8*len(windows)
 
 
-def execute(windows, config, prepare, simulate, save):
+def execute(windows, config, prepare, simulate, save, *, full_windows=False):
     """Callbacks retain the sandbox's existing firewall, deadline and Docker path."""
     cells=[]
     for index,window in enumerate(windows):
@@ -65,6 +65,6 @@ def execute(windows, config, prepare, simulate, save):
                         parent_result=parent,result=child,summary=summary(child['trades']),
                         comparison=compare({'config':identity,'result':parent},{'config':identity,'result':child}))
             save(cells)
-    return dict(version='bounded_development_cost_checks_v1',cells=cells,
+    return dict(version='full_window_development_cost_checks_v1' if full_windows else 'bounded_development_cost_checks_v1',cells=cells,
                 zero_cost_stress=not any(config.get(k,0) for k in ('commission_per_order','spread_bps','slippage_bps')),
-                limitation='First seven calendar days of each preregistered development window, independently reset accounts. Not full-period, portfolio or unseen validation.')
+                limitation=('Complete preregistered development windows at original and doubled costs, independently reset accounts. Not a combined portfolio or unseen validation.' if full_windows else 'First seven calendar days of each preregistered development window, independently reset accounts. Not full-period, portfolio or unseen validation.'))

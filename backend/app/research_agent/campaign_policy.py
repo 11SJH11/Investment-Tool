@@ -39,6 +39,7 @@ class CampaignPolicy(Strict):
     costs: Literal['require_explicit_engine_configuration'] = 'require_explicit_engine_configuration'
     code_generation: bool = False
     structural_evaluation: Literal['full_period','bounded_samples'] = 'full_period'
+    structural_robustness: Literal['full_windows','bounded_samples'] = 'full_windows'
     concept_research: bool = True
     external_research: bool = False
     send_development_summaries: bool = False

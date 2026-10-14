@@ -268,3 +268,26 @@ Verified: 115 focused backend tests passed with real Docker enabled in 222.59s,
 including oversized dependency inheritance inside Docker, author/campaign spending,
 full-period parity, security, cancellation and crash cleanup. No research containers
 remained after the run. The image was rebuilt from the allowlisted context.
+
+## Complete development-window robustness — 14 October
+
+New campaigns default to complete preregistered development windows at 1x and 2x
+engine commission/spread/slippage. Parent, generated control, child and causal
+prefix checks use the existing engine and isolated execution services. Warmup
+remains separate from each evaluation period. Accounts reset independently per
+window; these results are not summed into portfolio returns. Zero configured costs
+remain explicitly insufficient cost-stress evidence.
+
+The approval records `full_robustness_windows`; it requires full-period authority.
+Older campaign snapshots without `structural_robustness` retain their original
+seven-day samples. Dates remain fixed before results. Simulation counts are
+unchanged (4 anchor runs plus 8 per window); time and memory bounds remain enforced.
+This broadens development coverage, not locked-holdout access or deployment rights.
+
+Verification: 99 focused tests passed with Docker enabled, including the mocked-
+model/container campaign loop, cost parity and causality. An additional persisted-
+policy regression verifies no silent scope upgrade. 133 frontend tests passed;
+production build passed after a transient Windows dependency access-denied retry.
+No production source change was needed for that build retry. The bundle-size
+advisory remains. This is not completion of autonomous candidate acceptance or
+forward/paper execution.
