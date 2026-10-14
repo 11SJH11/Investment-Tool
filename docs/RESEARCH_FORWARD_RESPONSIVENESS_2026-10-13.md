@@ -4,7 +4,10 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current-state audit
+## Initial audit at the 13 October boundary
+
+This table records the starting gaps. Completed increments and current verification
+are recorded below; it is not a description of the final current tree.
 
 | Area | Status | Concrete implementation and remaining work |
 | --- | --- | --- |
@@ -27,7 +30,7 @@ No inspected path has yet been established as obsolete/dead. Do not delete worki
 manual candidate workflows merely because autonomous orchestration is incomplete.
 This audit identifies integration gaps; it does not certify every reachable path.
 
-## Why the agent is not yet fully autonomous
+## Initial autonomy gaps
 
 1. Full-period generated-child evidence cannot fit the current bounded sample
    execution design; long daily warmup can leave samples with no trades.
@@ -111,8 +114,8 @@ responsiveness blocker forward and put causal execution before autonomous use.
 
 - [x] 1. Current-state audit and acceptance ledger (small; this document).
 - [x] 2. Initial heavy-run backend measurements and configuration-only settings copy (small).
-- [ ] 3. Profiled progressive loading, chart and trade-table improvements (medium).
-- [ ] 4. Scalable causal sandbox transport and complex archived dependencies (large).
+- [x] 3. Profiled progressive loading, chart and trade-table improvements (medium).
+- [x] 4. Incremental causal sandbox transport and bounded complex archived dependencies (large; full-period capacity ceilings are not throughput guarantees).
 - [ ] 5. Full-period diagnostics and robustness integration (large).
 - [ ] 6. Autonomous candidate lifecycle, authority and restart coverage (large).
 - [ ] 7. Campaign UX and end-to-end discipline benchmark (medium/large).
@@ -291,3 +294,18 @@ production build passed after a transient Windows dependency access-denied retry
 No production source change was needed for that build retry. The bundle-size
 advisory remains. This is not completion of autonomous candidate acceptance or
 forward/paper execution.
+
+## Remaining Run Viewer acceptance — 14 October
+
+The synthetic benchmark now computes canonical analysis breakdowns for its 3,000
+trades. Deferred Analysis painted in 438.6ms, rendered 706 DOM elements, made one
+Analysis request and did not mount a hidden performance chart. One 60ms long task
+was recorded. No Analysis overflow at 1024/1440/1920; trade paging also passed at
+390px. Headline appeared in 408.4ms and deferred chart in 3,919ms on this sample.
+These are local headless development measurements while backend regression ran,
+not production latency guarantees. Artifact: `heavy-analysis-browser-20261014.json`.
+
+`run-open-races.mjs` verifies that a later selected run wins when responses arrive
+out of order and that a late response cannot reopen an unmounted viewer. Integrated
+settings, Trade Review, activity and navigation smoke also passed at three desktop
+widths without runtime errors. No additional application changes were necessary.

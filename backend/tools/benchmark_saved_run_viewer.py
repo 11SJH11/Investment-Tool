@@ -12,9 +12,12 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import sys
 from time import perf_counter
+from zoneinfo import ZoneInfo
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app.storage.database import Database
 from app.storage.backtest_run_repository import BacktestRunRepository
+from app.backtesting.engine import calculate_analysis
+from app.backtesting.models import BacktestTrade
 
 
 def main():
@@ -29,9 +32,13 @@ def main():
     curve=[dict(timestamp=stamp(i),equity=100000+i*.01+math.sin(i/30)*100,return_pct=i*.00001,
         drawdown_pct=-abs(math.sin(i/30)),cumulative_r=i*.0001) for i in range(660000)]
     for i,t in enumerate(trades):curve[i*220+30]['closed_trades']=[{k:t[k] for k in ('symbol','exit_time','exit_reason')}]
+    analysis=calculate_analysis([BacktestTrade(**{**t,'entry_time':datetime.fromisoformat(t['entry_time']),
+        'exit_time':datetime.fromisoformat(t['exit_time'])},quantity=10,stop_loss=99,take_profit=101,
+        initial_risk_amount=10,gross_pnl=10,fees=0,pnl_pct=1,planned_rr=1) for t in trades],ZoneInfo('America/New_York'))
+    analysis['diagnostics']=['x'*500]*3000
     result=dict(strategy={'key':'heavy_fixture','name':'Heavy fixture'},symbols=['QQQ'],
         metrics={'trades':3000,'starting_balance':100000,'ending_balance':106600},
-        equity_curve=curve,trades=trades,analysis={'diagnostics':['x'*500]*3000},execution_model={})
+        equity_curve=curve,trades=trades,analysis=analysis,execution_model={})
     repo.create(config={'strategy_key':'heavy_fixture','symbols':['QQQ'],'starting_balance':100000},result=result)
     del result,curve,trades;gc.collect()
     measurements=[]

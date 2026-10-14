@@ -51,7 +51,17 @@ for(const width of [390,1024,1440,1920]){
  const overflow=await evaluate(`document.documentElement.scrollWidth>innerWidth`);
  viewports.push({width,overflow});if(overflow)throw Error('Page overflow '+width);
 }
-const report={browser,scroll,metrics:metrics.metrics,viewports,errors};
+await evaluate(`window.longTasks=[];window.analysisStarted=performance.now();document.querySelectorAll('[aria-label="Run viewer sections"] button')[2].click()`);
+await waitFor(`document.body.textContent.includes('Why is it working / not working?')`);
+await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+const analysis=await evaluate(`({paintMs:performance.now()-window.analysisStarted,domNodes:document.querySelectorAll('*').length,longTasks:[...window.longTasks],requests:window.requests.filter(p=>p.endsWith('/sections/analysis')),hiddenChart:!!document.querySelector('.performance-canvas canvas')})`);
+if(analysis.hiddenChart||analysis.requests.length!==1)throw Error('Analysis mounts hidden chart or repeats request');
+for(const width of [1024,1440,1920]){
+ await send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
+ await evaluate(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+ if(await evaluate(`document.documentElement.scrollWidth>innerWidth`))throw Error('Analysis overflow '+width);
+}
+const report={browser,scroll,analysis,metrics:metrics.metrics,viewports,errors};
 console.log(JSON.stringify(report,null,2));
 if(process.env.LEDGER_PERFORMANCE_REPORT)fs.writeFileSync(process.env.LEDGER_PERFORMANCE_REPORT,JSON.stringify(report,null,2));
 close();
