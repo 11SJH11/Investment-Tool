@@ -279,4 +279,21 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
                 Validations(director.database).approve(entry['reference_project_id'],frozen['id'],'any',{})
             director.tick()
             assert len([c for c in Candidates(director.database).list(entry['reference_project_id']) if c.get('kind')=='GENERATED_DEVELOPMENT'])==1
+            project=ResearchRepository(director.database).get(entry['reference_project_id'])
+            dataset=next(d for d in project['datasets'] if d['state']=='LOCKED_HOLDOUT')
+            before_jobs=len(director.services.backtest_jobs.list())
+            before_runs=len(backtest.runs.list())
+            grant=runner.approve_validation(project['id'],frozen['id'],dataset['id'],{'minimum_trades':1})
+            runner.thread.join(timeout=90)
+            assert not runner.thread.is_alive()
+            validation=Validations(director.database).get(grant['id'])
+            assert validation['status']=='COMPLETED',validation
+            assert validation['control_parity'] and validation['causality']['prefix_match']
+            assert validation['provenance']['source_sha256']==frozen['snapshot']['source_sha256']
+            assert validation['data_fingerprint']!=frozen['snapshot']['data_fingerprint']
+            assert len(director.services.backtest_jobs.list())==before_jobs
+            assert len(backtest.runs.list())==before_runs
+            assert runner.approve_validation(project['id'],frozen['id'],dataset['id'],{'minimum_trades':1})['id']==grant['id']
+            assert Candidates(director.database).list(project['id'])[-1]==frozen
+            assert next(d for d in ResearchRepository(director.database).get(project['id'])['datasets'] if d['id']==dataset['id'])['state']=='INSPECTED_VALIDATION'
     finally:runner.close()

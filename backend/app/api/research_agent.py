@@ -238,6 +238,16 @@ def approve_candidate_validation(id: str,candidate_id: str,payload: ValidationAp
     return operation(lambda:Validations(services.database).approve(id,candidate_id,payload.dataset_id,payload.criteria.model_dump()))
 
 
+@router.post('/{id}/candidates/{candidate_id}/validate-isolated')
+def approve_isolated_validation(id: str,candidate_id: str,payload: ValidationApproval,services=Depends(get_services)):
+    return operation(lambda:services.research_sandbox.approve_validation(id,candidate_id,payload.dataset_id,payload.criteria.model_dump()))
+
+
+@router.post('/{id}/validations/{validation_id}/cancel-isolated')
+def cancel_isolated_validation(id: str,validation_id: str,services=Depends(get_services)):
+    return operation(lambda:services.research_sandbox.cancel_validation(id,validation_id))
+
+
 from app.research_agent.decisions import Decision
 
 @router.get('/{id}/decisions')

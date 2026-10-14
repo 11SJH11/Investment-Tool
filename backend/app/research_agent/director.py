@@ -119,7 +119,9 @@ class ResearchDirector:
                                     structural_cycles=structural_cycles,
                                     max_variants=project['research_budget']['max_variants_per_hypothesis'],
                                     max_minutes=min(project['research_budget']['max_trial_minutes'],
-                                                    (policy['budget']['compute_minutes']-campaign['reserved']['compute_minutes'])//len(links)//(1+numeric_cycles+int(structural)+2*structural_cycles))))
+                                                    # Leave one phase of compute capacity for an explicitly
+                                                    # approved isolated validation; this grants no data access.
+                                                    (policy['budget']['compute_minutes']-campaign['reserved']['compute_minutes'])//len(links)//(1+numeric_cycles+2*int(structural)+2*structural_cycles))))
                 if structural:
                     from .campaign_projects import reference_project
                     from .robustness import plan_windows

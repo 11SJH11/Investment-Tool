@@ -110,12 +110,14 @@ class Validations:
     def tick(self,jobs):
         for document in self.list():
             if document['status']!='ACTIVE':continue
+            if document.get('kind')=='GENERATED_ISOLATED':continue  # Owned exclusively by the Docker runner.
             try:self.advance(document,jobs)
             except Exception:
                 document.update(status='FAILED',error='Validation gate failed; inspect saved jobs. Dataset remains inspected. No automatic retry.')
                 self.save(document)
 
     def advance(self,document,jobs):
+        if document.get('kind')=='GENERATED_ISOLATED':raise ValueError('Generated validation requires Docker')
         if not active(self.database,document['id']):
             document.update(status='FAILED',error='Validation stopped by project state or time budget');self.save(document)
             for cell in document['cells']:
@@ -153,6 +155,7 @@ def active(database,id):
 
 def validate(database,payload,identity=None):
     document=Validations(database).get(payload['research_validation_id']);index=payload.get('research_validation_cell')
+    if document.get('kind')=='GENERATED_ISOLATED':raise ValueError('Generated validation cannot enter the host job queue')
     if not active(database,document['id']) or type(index) is not int or index not in (0,1):raise ValueError('Validation is not active')
     if {k:v for k,v in payload.items() if k!='queue_job_id'}!=document['cells'][index]['payload']:raise ValueError('Payload differs from frozen validation grant')
     job=lookup_job(database,key(document,index))

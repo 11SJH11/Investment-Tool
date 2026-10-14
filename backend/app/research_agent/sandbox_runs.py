@@ -115,7 +115,24 @@ class SandboxRuns:
                     if item['status'] in ACTIVE:
                         item.update(status='INTERRUPTED',error='RESTART_INTERRUPTED_NO_AUTOMATIC_RETRY')
                         c.execute('UPDATE agent_sandbox_runs SET document=? WHERE id=?',(json.dumps(item),row['id']))
+                if c.execute("SELECT 1 FROM sqlite_master WHERE name='agent_validations'").fetchone():
+                    for row in c.execute("SELECT id,document FROM agent_validations WHERE json_extract(document,'$.kind')='GENERATED_ISOLATED' AND json_extract(document,'$.status')='ACTIVE'").fetchall():
+                        item=json.loads(row['document'])
+                        item.update(status='INTERRUPTED',error='RESTART_INTERRUPTED_NO_AUTOMATIC_RETRY',revision=item['revision']+1)
+                        c.execute('UPDATE agent_validations SET document=? WHERE id=?',(json.dumps(item),row['id']))
             self.recovered=True
+
+    def approve_validation(self,project_id,candidate_id,dataset_id,criteria):
+        from .generated_validation import approve
+        return approve(self,project_id,candidate_id,dataset_id,criteria)
+
+    def cancel_validation(self,project_id,identifier):
+        from .validation import Validations
+        with self.lock:
+            item=Validations(self.database).get(identifier)
+            if item['project_id']!=project_id or item.get('kind')!='GENERATED_ISOLATED':raise ValueError('Unknown isolated validation')
+            if item['status']=='ACTIVE':self.cancel_event.set()
+            return item
 
     def approve(self,project_id,candidate_id,draft_id,payload):
         request=Approval.model_validate(payload).model_dump(mode='json')

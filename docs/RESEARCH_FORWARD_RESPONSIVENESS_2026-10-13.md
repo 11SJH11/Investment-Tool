@@ -361,3 +361,85 @@ The missing sandbox image was restored through the existing allowlisted builder.
 No research containers remained. `git diff --check` passed.
 The 1,256-test full-suite result above predates this increment; it is not claimed
 as a full-suite run against these additional changes.
+
+## Explicit isolated generated-candidate validation — 14 October
+
+Frozen generated candidates now have a separate Docker validation action in
+Research Agent → Advanced projects → candidate details. Select an untouched
+dataset, enter fixed criteria, and explicitly approve its consumption. The
+existing validation table and dataset firewall own the grant; no schema migration
+or second validation registry is introduced.
+
+Approval verifies the frozen source/dependency bundle, development evidence and
+freeze audit identity, requires the exact development image, and reserves four
+simulations before exposing data. The trusted parent runs in the ordinary engine;
+generated control, candidate and prefix replay run only through Docker RPC. They
+share the prepared validation data. Completed results retain comparisons, result
+hashes, source/image/data/configuration identity and host implementation hashes.
+Generated validation is explicitly rejected by the host job queue.
+
+New structural campaign allocations leave one phase of compute capacity for
+explicit validation. Approval atomically allocates it from the remaining campaign
+budget to the reference project. It does not enlarge campaign limits. Existing
+campaign reservations are unchanged: exhausted or expired campaigns fail closed.
+No paid model calls are needed for this validation step.
+
+Cancellation, timeout, provider failure, project pause and restart do not restore
+unseen status. Restart marks an active generated validation interrupted, preserves
+numeric validations, cleans this database's sandbox containers, and never retries
+automatically. Repeating an identical approval returns its original grant.
+The same runner lock serializes development and validation containers.
+
+The browser supports consent, progress, result inspection and cancellation.
+Acceptance remains separate: a validation pass does not activate/register source,
+record final research acceptance or enable paper/live orders. Automatic
+`one_frozen_candidate` orchestration, generated final decisions, simplification
+and regime orchestration, and the forward/paper phase remain unfinished.
+
+Verification results for this increment are recorded in the current handoff.
+The earlier full-suite result is historical; this increment uses focused backend
+regressions plus the complete frontend tests/build and mocked browser acceptance.
+
+Final exact results: **137 focused backend tests passed**, 235.21s, with
+`LEDGER_TEST_DOCKER=1`; one existing Starlette/httpx deprecation warning.
+Log: `C:/Users/jamie/Project/generated-validation-closeout-20261014.log`.
+Files run: `test_generated_validation.py`, `test_campaign_structural.py`,
+`test_research_validation.py`, `test_research_decisions.py`,
+`test_structural_candidates.py`, `test_research_director.py`,
+`test_research_campaigns.py`, `test_campaign_projects.py`,
+`test_campaign_launch.py`, `test_sandbox_research_loop.py`.
+Frontend: **133 passed**, zero failed/skipped, using
+`node --test --test-concurrency=1 tests/*.test.js`. `npm.cmd run build` passed
+(156 modules; existing bundle-size advisory). Mocked browser acceptance passed at
+1024/1440/1920 with no runtime exceptions or page overflow. The initial browser
+fixture lacked the current Campaigns policy response/navigation; the fixture was
+corrected, without changing application navigation.
+Final Docker state: no labelled Ledger research containers. The isolated browser
+and Vite server were closed. `git diff --check` passed; user confluence strategies
+and research-output files remain untouched and untracked.
+
+Significant files in this increment:
+
+- New `backend/app/research_agent/generated_validation.py`: frozen-bundle checks,
+  atomic grants/budgets, isolated execution and durable outcomes.
+- `backend/app/research_agent/{sandbox_runs,validation,director}.py`: shared runner
+  lifecycle, host-queue exclusion and capacity for explicit validation.
+- `backend/app/api/research_agent.py`: explicit isolated approval/cancel routes.
+- `frontend/src/features/strategy-lab/{ResearchCandidates,ResearchValidation}.jsx`:
+  generated-candidate controls using the existing validation presentation.
+- New `backend/tests/test_generated_validation.py` and extended
+  `backend/tests/test_campaign_structural.py`: grant guards, failures/recovery,
+  API consent and complete mocked-model/real-Docker development-to-validation path.
+- New `frontend/tests/browser/generated-validation.mjs`: consent, endpoint choice,
+  polling, cancellation, dataset exposure and three-viewport browser acceptance.
+- This ledger and `RESEARCH_AGENT_FOUNDATION.md`: current status and limitations.
+
+Manual check: in Backtest → Research Agent → Advanced projects, open the campaign's
+reference project and its frozen generated candidate. Choose a still-untouched
+dataset, set criteria, tick the consumption acknowledgement, and approve validation.
+Observe the saved grant/result or cancel it while active. The dataset must remain
+inspected after cancellation or failure. A repeat request must reuse the same grant.
+An expired campaign or unavailable/mismatched sandbox image must refuse execution.
+This requires an existing promising frozen candidate; a mocked passing fixture is
+not evidence that a real strategy has an edge. No provider credentials or real
+model calls were used in this increment's automated acceptance.
