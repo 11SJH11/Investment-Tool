@@ -107,6 +107,8 @@ class ResearchDirector:
                 expected = dict(strategy_key=project['strategy_key'], symbols=[plan['coverage']['symbol']],
                                 start_date=plan['development']['start'], end_date=plan['development']['end'],
                                 primary_timeframe=plan['coverage']['timeframe'])
+                full_period=structural and policy.get('structural_evaluation','bounded_samples')=='full_period'
+                if full_period:expected['warmup_start_date']=plan['warmup']['start']
                 if any(k in raw and raw[k] != v for k,v in expected.items()):
                     raise ValueError('Configuration cannot move the frozen strategy, market or dataset boundaries')
                 payload = BacktestRequest.model_validate({**raw, **expected, 'save_run': True,
@@ -122,8 +124,9 @@ class ResearchDirector:
                     from .campaign_projects import reference_project
                     from .robustness import plan_windows
                     entries[-1]['robustness_windows']=plan_windows(plan)
-                    entries[-1]['reference_project_id']=reference_project(self.database,identifier,project['id'])
-                    entries[-1]['reference_payload']={**payload,'end_date':payload['start_date']}
+                    entries[-1]['full_period']=full_period
+                    entries[-1]['reference_project_id']=reference_project(self.database,identifier,project['id'],full_period=full_period)
+                    entries[-1]['reference_payload']={**payload,'end_date':payload['end_date'] if full_period else payload['start_date']}
             if any(e['max_minutes'] < 1 for e in entries):
                 raise ValueError('Campaign compute budget cannot fund these project cycles')
             with self.database.connect() as c:
@@ -144,7 +147,7 @@ class ResearchDirector:
                                deadline=current.get('deadline') or (self.clock()+timedelta(minutes=current['request']['policy']['budget']['wall_minutes'])).isoformat(),
                                execution=dict(version='campaign_development_v1', request_hash=request_hash,
                                               entries=entries, model=model_status,
-                                              limitation='Generated children receive bounded preregistered development samples and cost reruns; not full-period or unseen validation. No automatic promotion.'))
+                                              limitation='Generated children use the frozen evaluation scope plus bounded development cost samples. Neither grants unseen validation or automatic promotion.'))
                 # Cap the existing services themselves: other entry points cannot
                 # spend beyond the campaign's conservative prepaid allocation.
                 for e in entries:

@@ -24,6 +24,7 @@ class BacktestRequest(BaseModel):
     symbols: list[str] | str
     start_date: str
     end_date: str
+    warmup_start_date: str | None = None
     primary_timeframe: str = "5m"
     additional_timeframes: list[str] = Field(default_factory=list)
     session: str = "regular"

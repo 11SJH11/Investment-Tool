@@ -77,6 +77,24 @@ def test_remote_reset_clears_delta_offsets_and_signal_trace():
     assert transport.provenance['protocol']=='completed-bars-delta-json-v2'
 
 
+def test_initial_warmup_chunks_do_not_evaluate_strategy_early():
+    class Transport:
+        def __init__(self):self.provenance={};self.messages=[]
+        def request(self,message):
+            self.messages.append(message)
+            return {'spec':{'key':'child'}} if message['op']=='init' else None
+    transport=Transport();remote=RemoteStrategy(transport,'inert','child',{})
+    frame=pd.DataFrame({'timestamp':pd.date_range('2026-01-01',periods=2502,freq='min',tz='UTC'),'close':range(2502)})
+    ctx=StrategyContext(symbol='QQQ',primary_timeframe='1m',decision_time=frame.timestamp.iloc[2500]+pd.Timedelta(minutes=1),frames={'1m':frame},position=None,equity=10000)
+    remote.on_bar(ctx)
+    assert [m['op'] for m in transport.messages]==['init','history_delta','history_delta','bar_delta']
+    staged=[m['frames']['1m'] for m in transport.messages[1:3]]
+    final=transport.messages[-1]['context']['frames']['1m']
+    assert [p['offset'] for p in [*staged,final]]==[0,1000,2000]
+    assert [len(p['rows']) for p in [*staged,final]]==[1000,1000,501]
+    assert remote.offsets=={'1m':2501} and len(remote.trace)==1
+
+
 def test_indexed_delta_equals_causal_full_prefix_with_delayed_daily_bars():
     from app.backtesting.context import completion_indexes
     frames={'1m':pd.DataFrame({'timestamp':pd.date_range('2026-01-01',periods=4,freq='min',tz='UTC'),'close':[1,2,999,1000]}),

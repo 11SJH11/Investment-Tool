@@ -127,6 +127,11 @@ class BacktestService:
         if start_date > end_date:
             raise ValueError("start_date must be on or before end_date")
         start = datetime.combine(start_date, time.min, tzinfo=NY).astimezone(timezone.utc)
+        history_start=start
+        if payload.get('warmup_start_date'):
+            warmup_date=_as_date(payload['warmup_start_date'],'warmup_start_date')
+            if warmup_date>start_date:raise ValueError('Warmup must begin on or before evaluation')
+            history_start=datetime.combine(warmup_date,time.min,tzinfo=NY).astimezone(timezone.utc)
         end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=NY).astimezone(timezone.utc)
         delay = max(self._delay(symbol) for symbol in symbols)
         latest_allowed = datetime.now(timezone.utc) - timedelta(minutes=delay + (1 if delay else 0))
@@ -167,7 +172,7 @@ class BacktestService:
                         if isinstance(exc,ResearchAccessError):raise
                         diagnostic_warnings.append(f"{symbol}: ORB research daily history unavailable; daily ATR and historical-volume diagnostics are null and enabled filters reject missing values.")
                     continue
-                frames[timeframe] = self._load_timeframe(symbol, timeframe, start, end, session)
+                frames[timeframe] = self._load_timeframe(symbol, timeframe, history_start, end, session)
                 if momentum:
                     frames[timeframe] = completed_daily_frame(frames[timeframe], end)
             frames_by_symbol[symbol] = frames
@@ -269,6 +274,7 @@ class BacktestService:
                 strategies=strategies,
                 primary_timeframe=primary,
                 progress=lambda done, total: progress('running', done, total),
+                evaluation_start=start if payload.get('warmup_start_date') else None,
             )
         result.update({
             "strategy": {"key": strategy_spec.key, "name": strategy_spec.name, "params": params, "implementation": provenance, "review_config": review_contract(strategy_spec), "concepts": concepts},
@@ -778,7 +784,7 @@ def _optional_positive_float(value) -> float | None:
 def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) -> dict:
     """Keep the user-facing run definition needed to reproduce/duplicate a run."""
     keys = (
-        "start_date", "end_date", "primary_timeframe", "additional_timeframes", "session",
+        "start_date", "end_date", "warmup_start_date", "primary_timeframe", "additional_timeframes", "session",
         "strategy_params", "starting_balance", "sizing_mode", "risk_value",
         "commission_per_order", "slippage_bps", "spread_bps", "max_leverage",
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",

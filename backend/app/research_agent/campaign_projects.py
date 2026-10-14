@@ -18,8 +18,8 @@ def identity(campaign_id, kind, key):
     return str(uuid5(NAMESPACE_URL, 'ledger-campaign:' + campaign_id + ':' + kind + ':' + key))
 
 
-def reference_project(database, campaign_id, parent_id):
-    """Predeclare a one-session control check; never replace the full baseline.
+def reference_project(database, campaign_id, parent_id, *, full_period=False):
+    """Predeclare a frozen control reference; legacy campaigns retain one session.
 
     Membership reuses the campaign's existing datasets/holdout state. Dates are
     fixed by the plan, not selected using trade performance.
@@ -35,10 +35,10 @@ def reference_project(database, campaign_id, parent_id):
             if json.loads(old[0]).get('campaign_reference_for') != parent_id:
                 raise ValueError('Reference identity changed')
             return pid
-        child = {**parent, 'id': pid, 'name': parent['name'] + ' / bounded control',
+        child = {**parent, 'id': pid, 'name': parent['name'] + (' / full-period control' if full_period else ' / bounded control'),
                  'state': 'CREATED', 'baseline_run_id': None, 'analyses': {}, 'lineage': [],
                  'campaign_reference_for': parent_id,
-                 'reference_limitation': 'First planned development session only. Control/causality check, not full-period performance.'}
+                 'reference_limitation': ('Complete planned development period with declared warmup. Not unseen validation.' if full_period else 'First planned development session only. Control/causality check, not full-period performance.')}
         c.execute('INSERT INTO agent_projects VALUES (?,?)', (pid, json.dumps(child)))
         c.execute('INSERT INTO agent_dataset_memberships SELECT ?,dataset_id FROM agent_dataset_memberships WHERE project_id=?', (pid, parent_id))
     return pid

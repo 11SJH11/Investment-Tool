@@ -21,6 +21,15 @@ def test_promising_development_never_grants_acceptance_or_holdout():
     assert result['evidence_sha256'] and data==before
 
 
+def test_good_samples_cannot_hide_bad_full_period_results():
+    data=trial();cell=deepcopy(data['robustness']['cells'][0])
+    data.update(request={'full_period':True},summary={'n':3000,'average_r':-.1},
+                comparison=cell['comparison'],result=cell['result'])
+    assert assess(data,POLICY)['verdict']=='REJECTED_DEVELOPMENT'
+    data['summary']={'n':0,'average_r':None}
+    assert assess(data,POLICY)['verdict']=='INSUFFICIENT_EVIDENCE'
+
+
 @pytest.mark.parametrize('change,expected',[
     ('sample','INSUFFICIENT_EVIDENCE'),('zero_cost','INSUFFICIENT_EVIDENCE'),
     ('drawdown','REJECTED_DEVELOPMENT'),('winner_loss','REJECTED_DEVELOPMENT'),

@@ -78,6 +78,29 @@ class Child(Strategy):
     finally:session.close()
 
 
+def test_full_period_delta_engine_parity_with_warmup_across_sessions(docker):
+    from app.backtesting.engine import BacktestEngine
+    from app.backtesting.models import BacktestConfig
+    from tests.test_phase52_saved_runs_and_chart_series import HoldToEnd
+    from app.research_agent.sandbox_runs import core,check_input_limits
+    source=SOURCE.replace("float(ctx.current_bar['close'])-2", "float(ctx.current_bar['close'])-50,take_profit=float(ctx.current_bar['close'])+100,reason='hold_to_end'")
+    frame=pd.DataFrame({'timestamp':pd.date_range('2026-01-01T14:30Z',periods=10020,freq='min'),
+                        'open':100.,'high':101.,'low':99.,'close':100.,'volume':100.})
+    frames={'QQQ':{'1m':frame}};start=frame.timestamp.iloc[1000]
+    check_input_limits({'symbols':['QQQ'],'frames_by_symbol':frames},full_period=True)
+    config=BacktestConfig(starting_balance=10000,sizing_mode='quantity',risk_value=1,allow_overnight=True)
+    expected=BacktestEngine(config).run(symbol_frames=frames,strategies={'QQQ':HoldToEnd()},primary_timeframe='1m',evaluation_start=start)
+    session=Session(docker,docker.image(),seconds=600)
+    try:
+        remote=RemoteStrategy(session,source,'research_child_fixture',{})
+        actual=BacktestEngine(config).run(symbol_frames=frames,strategies={'QQQ':remote},primary_timeframe='1m',evaluation_start=start)
+        assert core(actual)==core(expected)
+        assert len(remote.trace)==9020 and len(actual['trades'])==1
+        assert pd.Timestamp(actual['trades'][0]['entry_time'])>start
+        assert actual['trades'][0]['exit_reason']=='end_of_data'
+    finally:session.close()
+
+
 def test_hostile_source_cannot_reach_secrets_network_docker_or_write_code(docker):
     attacks='''
 import os, socket

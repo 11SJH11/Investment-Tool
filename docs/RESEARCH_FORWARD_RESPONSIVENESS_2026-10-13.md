@@ -215,3 +215,35 @@ tests passed; 31 dependency/author/reference/campaign integration tests passed
 (the latter includes non-Docker tests). New container regression verifies history,
 reset and mutation isolation. Logs reside in `C:/Users/jamie/Project/` with prefix
 `delta-` and date `20261013`. Full-period evaluation remains unfinished.
+
+## Full-period evaluation and historical warmup increment
+
+New structural campaigns now pin the entire planned development period and its
+historical warmup. Existing campaign documents without the new scope field keep
+their original bounded authorization. An optional engine evaluation boundary
+exposes completed warmup bars to strategy context without allowing orders,
+positions or equity observations before the development period. Ordinary engine
+runs retain the original default behaviour. Saved settings preserve that boundary.
+
+Generated execution remains inside Docker. Full-period approval permits up to
+1,000,000 aggregate input rows / 192 MiB of prepared frames for one symbol, within
+the existing 512 MiB container and campaign time budget (absolute ceiling six
+hours). Bounded approvals retain the 10,000-row / 600-second ceiling. Large initial
+history is staged in 1,000-row chunks without calling strategy logic early or
+raising the wire message-size limit. Timeout, memory exhaustion and discontinuous
+history fail closed. This is a capacity ceiling, not a throughput guarantee.
+
+Development triage now checks the full-period result alongside the preregistered
+cost samples; good short windows cannot conceal a failing full-period result.
+The cost samples remain bounded, and no unseen validation or deployment authority
+is introduced. The larger autonomous acceptance/validation lifecycle is still open.
+
+Focused verification: 78 engine/VWAP parity/Gold/Replay/research regressions passed;
+13 warmup/campaign/real-container checks passed, including exact engine parity over
+10,020 bars with 1,000 warmup bars and one continuous position across sessions.
+The final full suite additionally covers the subsequent chunked warmup transfer.
+133 frontend tests and the production build passed. Browser workflow regression
+passed at 1024/1440/1920 without runtime errors. The complete backend run passed
+1,250 tests in 613.70 seconds with real Docker acceptance enabled (one existing
+Starlette/httpx deprecation warning). Log: `fullperiod-full-suite-20261013.log`.
+No schema migration; additive saved configuration and campaign document fields.

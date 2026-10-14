@@ -5,7 +5,10 @@ from .analysis import digest
 
 def assess(trial,policy):
     reasons=[]
-    cells=trial.get('robustness',{}).get('cells',[])
+    cells=list(trial.get('robustness',{}).get('cells',[]))
+    if cells and trial.get('request',{}).get('full_period'):
+        cells.append(dict(status=trial.get('status'),summary=trial.get('summary',{}),
+            comparison=trial.get('comparison',{}),result=trial.get('result',{})))
     if trial.get('status')!='COMPLETED' or not trial.get('control_parity') or not trial.get('causality',{}).get('prefix_match'):
         verdict='INVALID_EXECUTION';reasons.append('Control, causality or execution did not complete.')
     elif not cells or any(c.get('status')!='COMPLETED' for c in cells):

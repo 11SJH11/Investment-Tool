@@ -4,10 +4,13 @@
 
 The current [research / forward validation / responsiveness audit and checklist](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
 starts at `8754cff`. Initial audit and the configuration-only Use settings fix
-are complete and verified. Heavy Run Viewer profiling, full autonomous research,
-and shadow/paper execution remain open. Paper execution remains disabled.
-The previous full-suite results below are historical, not verification of this
-new phase. Current focused verification is recorded in the linked ledger.
+are complete and verified. Measured progressive Run Viewer loading and causal
+Docker delta transport are committed. Full-period development evaluation with
+separate historical warmup passed 1,250 backend tests with Docker enabled,
+133 frontend tests, the production build and three-viewport browser regression.
+Full autonomous acceptance and shadow/paper execution remain open. Paper execution
+remains disabled. Detailed measurements and limits are in the linked checklist.
+The older full-suite results below refer to previous increments.
 
 ## Current continuation — 12 October 2026
 

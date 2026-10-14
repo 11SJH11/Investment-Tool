@@ -23,6 +23,7 @@ def evidence_report(database,campaign):
                 trial=json.loads(row[0]) if row else {}
                 comparison=trial.get('comparison',{})
                 item.update(sandbox_id=entry['sandbox_id'],reference_run_id=entry.get('reference_run_id'),
+                            evaluation_scope='full_period' if trial.get('request',{}).get('full_period') else 'bounded_samples',
                             child_summary=trial.get('summary'),control_parity=trial.get('control_parity'),
                             prefix_causality=trial.get('causality'),source_sha256=trial.get('source_sha256'),
                             path={k:comparison.get(k) for k in ('retained','removed','introduced','removed_large_winners','removed_session_close_winners')})
@@ -40,7 +41,7 @@ def evidence_report(database,campaign):
                         if any(cell.get('summary',{}).get('n',0)<campaign['request']['policy']['minimum_trades'] for cell in robustness.get('cells',[])):
                             item['warnings'].append('At least one development sample is below the campaign minimum; no acceptance.')
                     else:
-                        item['warnings'].append('Child was checked on the first development session only. No full-period or out-of-sample performance claim.')
+                        item['warnings'].append('Development cost/robustness checks are incomplete; no acceptance.' if trial.get('request',{}).get('full_period') else 'Child was checked on the first development session only. No full-period or out-of-sample performance claim.')
                     if trial.get('summary',{}).get('n',0)<campaign['request']['policy']['minimum_trades']:
                         item['warnings'].append('Child sample is below the campaign minimum; no acceptance.')
                     if comparison.get('removed_large_winners',{}).get('n',0):

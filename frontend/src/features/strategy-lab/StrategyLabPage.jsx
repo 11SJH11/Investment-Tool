@@ -149,6 +149,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
   const buildPayload = (overrides = {}) => ({
     strategy_key: strategyKey, symbols, start_date: form.start_date, end_date: form.end_date,
+    warmup_start_date:form.warmup_start_date||null,
     primary_timeframe: form.primary_timeframe, additional_timeframes: [], session: form.session,
     strategy_params: normaliseParams(strategy, params), starting_balance: Number(form.starting_balance),
     sizing_mode: form.sizing_mode, risk_value: Number(form.risk_value), commission_per_order: Number(form.commission_per_order),
@@ -213,6 +214,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
       setForm((old) => ({
         ...old,
         start_date: config.start_date || old.start_date, end_date: config.end_date || old.end_date,
+        warmup_start_date:config.warmup_start_date||null,
         primary_timeframe: config.primary_timeframe || old.primary_timeframe, session: config.session || old.session,
         starting_balance: String(config.starting_balance ?? old.starting_balance), sizing_mode: config.sizing_mode || old.sizing_mode,
         risk_value: String(config.risk_value ?? old.risk_value), commission_per_order: String(config.commission_per_order ?? 0),

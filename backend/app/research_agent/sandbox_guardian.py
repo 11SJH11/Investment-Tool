@@ -11,7 +11,7 @@ from threading import Event, Thread
 
 def main():
     name=sys.argv[-2]; seconds=float(sys.argv[-1]); command=sys.argv[1:-2]
-    if not re.fullmatch(r'[a-f0-9]{64}',name) or not 0<seconds<=600:
+    if not re.fullmatch(r'[a-f0-9]{64}',name) or not 0<seconds<=21600:
         raise SystemExit(2)
     closed=Event()
     def eof():

@@ -86,7 +86,10 @@ def test_campaign_authors_then_dispatches_existing_sandbox_without_browser(struc
     parent=backtest.runs.get(entry['run_id'])
     reference=backtest.runs.get(entry['reference_run_id'])
     assert parent['config']['end_date']=='2026-01-03'
-    assert reference['config']['start_date']==reference['config']['end_date']=='2026-01-02'
+    assert reference['config']['start_date']=='2026-01-02'
+    assert reference['config']['end_date']==parent['config']['end_date']=='2026-01-03'
+    assert reference['config']['warmup_start_date']==parent['config']['warmup_start_date']
+    assert entry['full_period'] is True
     assert entry['run_id']!=entry['reference_run_id']
     a=ResearchRepository(director.database).get(entry['project_id'])
     b=ResearchRepository(director.database).get(entry['reference_project_id'])
@@ -182,6 +185,19 @@ def test_structural_budget_reserves_all_cost_and_window_runs_before_dispatch(str
         director.start_baselines(campaign['id'],configs,structural=True)
     assert not model.calls and not director.services.research_sandbox.calls
     assert 'execution' not in director.campaigns.get(campaign['id'])
+
+
+def test_legacy_campaign_policy_keeps_original_bounded_reference(structural):
+    director,campaign,configs,_,_=structural
+    with director.database.connect() as c:
+        item=director.campaigns._get(c,campaign['id'])
+        item['request']['policy'].pop('structural_evaluation',None)
+        director.campaigns._save(c,item)
+    started=director.start_baselines(campaign['id'],configs,structural=True)
+    entry=started['execution']['entries'][0]
+    assert not entry['full_period']
+    assert entry['reference_payload']['end_date']==entry['reference_payload']['start_date']
+    assert not entry['reference_payload'].get('warmup_start_date')
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')

@@ -50,6 +50,7 @@ class BacktestEngine:
         strategies: dict[str, Strategy],
         primary_timeframe: str,
         progress=None,
+        evaluation_start: datetime | None = None,
     ) -> dict[str, Any]:
         self._validate()
         if not symbol_frames:
@@ -63,6 +64,11 @@ class BacktestEngine:
                 validate_execution_frame(symbol,frame)
             prepared[symbol] = {timeframe: _prepare_frame(frame) for timeframe, frame in frames.items()}
             primary = prepared[symbol].get(primary_timeframe)
+            if primary is not None and evaluation_start is not None:
+                boundary=pd.Timestamp(evaluation_start)
+                if boundary.tzinfo is None:raise ValueError('Evaluation start must be timezone aware')
+                # Warmup remains in the causal context, never in the fill timeline.
+                primary=primary.loc[primary['timestamp']>=boundary]
             if primary is None or primary.empty:
                 continue
             rows = {pd.Timestamp(row.timestamp): row for row in primary.itertuples(index=False)}

@@ -16,7 +16,8 @@ def sandbox_authorized(database,project,candidate_id,draft_id,request):
     parameters=dict(entry['payload'].get('strategy_params',{}))
     expected=dict(control_parameters={**parameters,'research_feature_enabled':False},
                   candidate_parameters={**parameters,'research_feature_enabled':True},
-                  timeout_seconds=min(600,entry['max_minutes']*60),acknowledgement=ACK,
+                  timeout_seconds=min(21600 if entry.get('full_period') else 600,entry['max_minutes']*60),acknowledgement=ACK,
+                  full_period=entry.get('full_period',False),
                   windows=entry.get('robustness_windows',[]))
     expected=Approval.model_validate(expected).model_dump(mode='json')
     if candidate_id!=entry['reference_id'] or draft_id!=entry['draft_id'] or request!=expected:
@@ -64,7 +65,8 @@ def advance(director, campaign, entry):
         result=runner.approve(pid,entry['reference_id'],entry['draft_id'],dict(
             control_parameters={**parameters,'research_feature_enabled':False},
             candidate_parameters={**parameters,'research_feature_enabled':True},
-            timeout_seconds=min(600,entry['max_minutes']*60),acknowledgement=ACK,
+            timeout_seconds=min(21600 if entry.get('full_period') else 600,entry['max_minutes']*60),acknowledgement=ACK,
+            full_period=entry.get('full_period',False),
             windows=entry.get('robustness_windows',[])))
         entry['sandbox_id']=result['id']
         director._save(campaign,'STRUCTURAL_DOCKER_DISPATCHED')
@@ -89,5 +91,5 @@ def advance(director, campaign, entry):
                      structural_result=dict(status=result['status'],control_parity=result.get('control_parity'),
                         causality=result.get('causality'),error=result.get('error'),summary=result.get('summary'),
                         robustness_status=result.get('robustness',{}).get('status'),
-                        limitation='Bounded development checks only; no full-period, portfolio or unseen profitability claim.'))
+                        limitation=('Full development-period evaluation with warmup and bounded cost samples; no unseen validation or deployment authority.' if entry.get('full_period') else 'Bounded development checks only; no full-period, portfolio or unseen profitability claim.')))
         director._save(campaign,'STRUCTURAL_CHECK_FINISHED')

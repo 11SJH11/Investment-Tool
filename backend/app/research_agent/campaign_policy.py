@@ -38,6 +38,7 @@ class CampaignPolicy(Strict):
     # Cost identity must come from the normal, instrument-aware engine configuration.
     costs: Literal['require_explicit_engine_configuration'] = 'require_explicit_engine_configuration'
     code_generation: bool = False
+    structural_evaluation: Literal['full_period','bounded_samples'] = 'full_period'
     concept_research: bool = True
     external_research: bool = False
     send_development_summaries: bool = False

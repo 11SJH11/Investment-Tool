@@ -95,7 +95,7 @@ class Session:
                 or not any('no-new-privileges' in s for s in h['SecurityOpt'])):
                 raise SandboxError('CONTAINER_POLICY_MISMATCH')
             self.guardian=subprocess.Popen([sys.executable,'-I',str(Path(__file__).with_name('sandbox_guardian.py')),
-                *docker.command,self.container_id,str(min(600,max(.1,self.deadline-time.monotonic())))],env=docker.env,
+                *docker.command,self.container_id,str(min(21600,max(.1,self.deadline-time.monotonic())))],env=docker.env,
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
             self.process=subprocess.Popen([*docker.command,'start','-ai',self.name],env=docker.env,
@@ -225,6 +225,13 @@ class RemoteStrategy(Strategy):
 
     def on_bar(self,ctx):
         message={'op':'bar_delta','context':context_message(ctx,self.offsets)}
+        for tf,frame in message['context']['frames'].items():
+            rows=frame['rows'];sent=0
+            while len(rows)-sent>1000:
+                self.session.request({'op':'history_delta','frames':{tf:{'columns':frame['columns'],
+                    'rows':rows[sent:sent+1000],'offset':frame['offset']+sent}}})
+                sent+=1000
+            if sent:frame.update(rows=rows[sent:],offset=frame['offset']+sent)
         result=self.session.request(message)
         self.offsets={tf:frame['offset']+len(frame['rows']) for tf,frame in message['context']['frames'].items()}
         self.trace.append(sha256(encode(result)).hexdigest())

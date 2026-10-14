@@ -28,17 +28,29 @@ ACTIVE = {'QUEUED','RUNNING'}
 
 
 class Approval(Strict):
+    full_period: bool = Field(default=False,strict=True)
     control_parameters: dict[str, int|float|bool|str] = Field(max_length=40)
     candidate_parameters: dict[str, int|float|bool|str] = Field(max_length=40)
-    timeout_seconds: int = Field(default=120,ge=10,le=600,strict=True)
+    timeout_seconds: int = Field(default=120,ge=10,le=21600,strict=True)
     acknowledgement: Literal['Run this quarantined source in Docker on frozen development data only']
     windows: list[Window] = Field(default_factory=list,max_length=3)
 
     @model_validator(mode='after')
     def ordered(self):
+        if not self.full_period and self.timeout_seconds>600:
+            raise ValueError('Bounded samples retain the 600-second deadline')
         if any(a.end>=b.start for a,b in zip(self.windows,self.windows[1:])):
             raise ValueError('Robustness windows must be chronological and disjoint')
         return self
+
+
+def check_input_limits(inputs, *, full_period=False):
+    frames=[f for per_symbol in inputs['frames_by_symbol'].values() for f in per_symbol.values()]
+    limit=1000000 if full_period else 10000
+    if len(inputs['symbols'])!=1 or sum(len(f) for f in frames)>limit:
+        raise SandboxError('SANDBOX_DATA_LIMIT_SINGLE_SYMBOL_'+str(limit)+'_BARS')
+    if sum(int(f.memory_usage(index=True,deep=True).sum()) for f in frames)>192*1024**2:
+        raise SandboxError('SANDBOX_INPUT_MEMORY_LIMIT')
 
 
 def engine_config(payload,session):
@@ -178,8 +190,7 @@ class SandboxRuns:
                 if input_identity(inputs)!=candidate['snapshot']['data_fingerprint']:raise SandboxError('DATA_FINGERPRINT_MISMATCH')
                 from .trials import check_source
                 check_source(candidate['snapshot']['hypothesis'])
-                if len(inputs['symbols'])!=1 or sum(len(f) for frames in inputs['frames_by_symbol'].values() for f in frames.values())>10000:
-                    raise SandboxError('SANDBOX_DATA_LIMIT_SINGLE_SYMBOL_10000_BARS')
+                check_input_limits(inputs,full_period=item['request'].get('full_period',False))
                 parent=self.backtest.run(config,prepared=inputs,progress=lambda *args:self._guard(item,deadline))
             if digest(core(parent))!=candidate['snapshot']['result_digest']:raise SandboxError('PARENT_CONTROL_MISMATCH')
             engine=engine_config(config,inputs['session']); symbol=inputs['symbols'][0]
@@ -195,8 +206,15 @@ class SandboxRuns:
                     if prefix:
                         frames=deepcopy(frames)
                         primary=frames[symbol][data['primary']]
-                        frames[symbol][data['primary']]=primary.iloc[:max(1,len(primary)//2)].copy()
-                    result=BacktestEngine(selected_engine).run(symbol_frames=frames,strategies={symbol:strategy},primary_timeframe=data['primary'],progress=lambda *a:self._guard(item,deadline))
+                        active_payload=payload if payload is not None else config
+                        if active_payload.get('warmup_start_date'):
+                            warmup_count=int((primary['timestamp']<data['start']).sum())
+                            end=warmup_count+max(1,(len(primary)-warmup_count)//2)
+                        else:end=max(1,len(primary)//2)
+                        frames[symbol][data['primary']]=primary.iloc[:end].copy()
+                    active_payload=payload if payload is not None else config
+                    result=BacktestEngine(selected_engine).run(symbol_frames=frames,strategies={symbol:strategy},primary_timeframe=data['primary'],progress=lambda *a:self._guard(item,deadline),
+                        evaluation_start=data['start'] if active_payload.get('warmup_start_date') else None)
                     return result,strategy.trace,session.provenance
                 finally:
                     item.setdefault('resource_usage',[]).append({'phase':phase,'wall_seconds':round(time.monotonic()-started,4),'docker_terminal_sample':session.usage(),'sample_is_peak':False})
@@ -236,13 +254,14 @@ class SandboxRuns:
                         check(symbol,inputs['primary'],begin,end)
                         check_source(candidate['snapshot']['hypothesis'])
                         data=self.backtest.prepare(payload,progress=lambda *a:self._guard(item,deadline))
-                        if data['symbols']!=[symbol] or sum(len(f) for fs in data['frames_by_symbol'].values() for f in fs.values())>10000:
-                            raise SandboxError('SANDBOX_DATA_LIMIT_SINGLE_SYMBOL_10000_BARS')
+                        if data['symbols']!=[symbol]:raise SandboxError('ROBUSTNESS_SYMBOL_CHANGED')
+                        check_input_limits(data,full_period=item['request'].get('full_period',False))
                         for frames in data['frames_by_symbol'].values():
                             for tf,frame in frames.items():
                                 if not frame.empty:
                                     check(symbol,tf,frame['timestamp'].min(),frame['timestamp'].max()+timeframe_delta(tf))
-                                    if (tf==data['primary'] and frame['timestamp'].min()<begin) or frame['timestamp'].max()>=end:
+                                    allowed_begin=datetime.combine(date.fromisoformat(payload.get('warmup_start_date') or payload['start_date']),day_time.min,zone)
+                                    if (tf==data['primary'] and frame['timestamp'].min()<allowed_begin) or frame['timestamp'].max()>=end:
                                         raise SandboxError('ROBUSTNESS_DATA_WINDOW_MISMATCH')
                         if data.get('source_namespaces')!=inputs.get('source_namespaces'):
                             raise SandboxError('ROBUSTNESS_PROVIDER_CHANGED')
