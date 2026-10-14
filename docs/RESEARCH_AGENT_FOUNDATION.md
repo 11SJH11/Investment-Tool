@@ -1,16 +1,26 @@
 # Research Agent current status / handoff
 
-## Next major phase — 13 October 2026
+## Current phase — verified 14 October 2026
 
 The current [research / forward validation / responsiveness audit and checklist](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
 starts at `8754cff`. Initial audit and the configuration-only Use settings fix
 are complete and verified. Measured progressive Run Viewer loading and causal
-Docker delta transport are committed. Full-period development evaluation with
-separate historical warmup passed 1,250 backend tests with Docker enabled,
-133 frontend tests, the production build and three-viewport browser regression.
+Docker delta transport are committed. Full-period evaluation with historical
+warmup, complete development-window cost checks and larger archived dependencies
+passed 1,256 backend tests with Docker enabled, 133 frontend tests, the production
+build and three-viewport browser regression. Heavy Analysis and delayed-response
+acceptance passed; no Ledger research containers remained.
 Full autonomous acceptance and shadow/paper execution remain open. Paper execution
 remains disabled. Detailed measurements and limits are in the linked checklist.
 The older full-suite results below refer to previous increments.
+
+Latest implementation commits: `f9ce0c1` (full-period/warmup), `37dfcf5` (archived
+dependencies/spending), `e0b5709` (complete development-window cost checks),
+`e5ffdde` (heavy Analysis and response-race acceptance). No schema migration.
+Next unresolved integration: autonomous structural candidate freeze/validation,
+simplification/regime orchestration and final family disposition, followed by
+independent forward shadows, paper-only execution, reconciliation and Journal UI.
+Do not describe the full Research Agent or requested forward phase as complete.
 
 ## Current continuation — 12 October 2026
 

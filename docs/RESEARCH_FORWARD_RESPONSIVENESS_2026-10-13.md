@@ -309,3 +309,24 @@ not production latency guarantees. Artifact: `heavy-analysis-browser-20261014.js
 out of order and that a late response cannot reopen an unmounted viewer. Integrated
 settings, Trade Review, activity and navigation smoke also passed at three desktop
 widths without runtime errors. No additional application changes were necessary.
+
+## Verification closeout for these increments — 14 October
+
+- Complete backend: **1,256 passed**, 616.71s, with `LEDGER_TEST_DOCKER=1`.
+  One existing Starlette/httpx deprecation warning. XML/log artifacts:
+  `C:/Users/jamie/Project/research-full-suite-20261014.{xml,log}`.
+- Frontend: **133 passed**, zero failed/skipped; production build passed.
+- Real Docker: included in the complete run; focused dependency/security/campaign
+  run also passed 115 tests, followed by 99 robustness/campaign tests and one
+  additional immutable-policy regression. These overlapping suites are not additive.
+- Browser: integrated Trade Review/settings/navigation at 1024/1440/1920;
+  heavy trade paging at 390/1024/1440/1920; Analysis at desktop widths; out-of-order
+  and unmounted-result checks all passed. No runtime errors or page overflow.
+- `git diff --check` passed. No Ledger research containers remained. Temporary
+  benchmark servers and the isolated browser were closed. User strategy files and
+  research outputs remain untracked and untouched. No schema migration.
+
+This verifies commits through `e5ffdde`; it does not complete checklist items 6–12.
+Item 5 now has full-period diagnostics and full development-window cost reruns;
+autonomous regime/simplification and final candidate acceptance remain to integrate.
+No live LLM/provider acceptance or paper execution was performed or enabled.
