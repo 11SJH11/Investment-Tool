@@ -16,6 +16,8 @@ def evidence_report(database,campaign):
             item['research_decision']=entry.get('research_decision')
             item['structural_attempts']=entry.get('structural_attempts',[])
             item['family_outcome']=entry.get('family_outcome')
+            item['frozen_candidate_id']=entry.get('frozen_candidate_id')
+            item['frozen_candidate_hash']=entry.get('frozen_candidate_hash')
             if baseline.get('summary') and baseline['summary']['n']<campaign['request']['policy']['minimum_trades']:
                 item['warnings'].append('Baseline sample is below the campaign minimum.')
             if entry.get('sandbox_id'):

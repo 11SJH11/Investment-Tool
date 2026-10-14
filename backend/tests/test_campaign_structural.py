@@ -215,8 +215,22 @@ def test_existing_full_period_policy_does_not_gain_full_window_authority(structu
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
-def test_campaign_full_loop_with_mock_model_and_real_docker(structural):
+@pytest.mark.parametrize('promising',[False,True])
+def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising):
     director,campaign,configs,model,backtest=structural
+    if promising:
+        with director.database.connect() as c:
+            item=director.campaigns._get(c,campaign['id'])
+            item['request']['policy']['minimum_trades']=1
+            director.campaigns._save(c,item)
+        # This synthetic four-day calendar includes Saturday; explicitly enable
+        # its fixture session rather than weakening the minimum-sample gate.
+        for config in configs.values():
+            config['commission_per_order']=.01
+            config['trading_weekdays']=list(range(7))
+        def keep_entries(role,result,usage):
+            if role=='CodeAuthor':result['source']=result['source'].replace("if self.params['research_feature_enabled']:return None",'if False:return None')
+        model.mutate=keep_entries
     original=backtest.prepare
     def prepare(payload,**kwargs):
         from app.research_agent.workflow import validate_submission
@@ -248,7 +262,21 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural):
         assert trial['reserved_runs']==20
         assert len(trial['robustness']['cells'])==4
         assert all(cell['status']=='COMPLETED' and cell['control_parity'] for cell in trial['robustness']['cells'])
-        assert trial['robustness']['zero_cost_stress']
+        assert trial['robustness']['zero_cost_stress'] is (not promising)
         assert len({c['data_fingerprint'] for c in trial['robustness']['cells']})==2
         assert len(model.calls)==4
+        if promising:
+            from app.research_agent.structural_candidates import freeze
+            from app.research_agent.candidates import Candidates
+            frozen=next(c for c in Candidates(director.database).list(entry['reference_project_id']) if c['id']==entry['frozen_candidate_id'])
+            assert entry['family_outcome']=='FROZEN_REQUIRES_VALIDATION'
+            assert frozen['state']=='FROZEN_DEVELOPMENT' and not frozen['validation_granted']
+            assert not frozen['execution_enabled']
+            assert freeze(director.database,campaign['id'],entry['reference_project_id'],entry['sandbox_id'])==frozen
+            assert any(d['state']=='LOCKED_HOLDOUT' for d in ResearchRepository(director.database).get(entry['reference_project_id'])['datasets'])
+            from app.research_agent.validation import Validations
+            with pytest.raises(ValueError,match='Frozen candidate required'):
+                Validations(director.database).approve(entry['reference_project_id'],frozen['id'],'any',{})
+            director.tick()
+            assert len([c for c in Candidates(director.database).list(entry['reference_project_id']) if c.get('kind')=='GENERATED_DEVELOPMENT'])==1
     finally:runner.close()

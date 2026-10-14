@@ -2,6 +2,14 @@
 
 ## Current phase — verified 14 October 2026
 
+Latest increment: promising generated children now freeze automatically as immutable
+development candidates after full-period and complete cost-window evidence is
+reverified. Exact source/dependencies stay inert; no holdout or execution authority
+is granted. Campaign reports link the candidate, and the UI distinguishes it from
+numeric variants. **52 focused backend tests with Docker, 133 frontend tests and
+production build passed**. No schema migration or research-container leftovers.
+The 1,256-test full-suite result below is from the preceding increment.
+
 The current [research / forward validation / responsiveness audit and checklist](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
 starts at `8754cff`. Initial audit and the configuration-only Use settings fix
 are complete and verified. Measured progressive Run Viewer loading and causal
@@ -17,7 +25,7 @@ The older full-suite results below refer to previous increments.
 Latest implementation commits: `f9ce0c1` (full-period/warmup), `37dfcf5` (archived
 dependencies/spending), `e0b5709` (complete development-window cost checks),
 `e5ffdde` (heavy Analysis and response-race acceptance). No schema migration.
-Next unresolved integration: autonomous structural candidate freeze/validation,
+Next unresolved integration: isolated validation of frozen structural candidates,
 simplification/regime orchestration and final family disposition, followed by
 independent forward shadows, paper-only execution, reconciliation and Journal UI.
 Do not describe the full Research Agent or requested forward phase as complete.

@@ -330,3 +330,34 @@ This verifies commits through `e5ffdde`; it does not complete checklist items 6â
 Item 5 now has full-period diagnostics and full development-window cost reruns;
 autonomous regime/simplification and final candidate acceptance remain to integrate.
 No live LLM/provider acceptance or paper execution was performed or enabled.
+
+## Generated development-candidate freezing â€” 14 October
+
+Promising full-period children with complete preregistered 1x/2x cost windows now
+freeze into the existing candidate store as `GENERATED_DEVELOPMENT`, with state
+`FROZEN_DEVELOPMENT`. The snapshot preserves exact inert source and archived
+dependencies, parameters, parent identity, data/result fingerprints, Docker
+provenance, frozen policy and development verdict. There is no schema migration.
+
+Before freezing, the service rechecks result digests, recomputes summaries and
+parent/child comparisons, checks the exact ordered cost-window coverage, verifies
+control/prefix evidence and identical implementation/data across cost scenarios.
+Insertion and its audit event are atomic, campaign-bound and idempotent. A restart
+after insertion can reuse the same record rather than create another candidate.
+
+The campaign report links the frozen candidate and records
+`FROZEN_REQUIRES_VALIDATION`. The candidate UI distinguishes this from numeric
+variants and does not offer their incompatible validation controls. This is a
+development freeze, not acceptance, registration, activation, unseen-data approval
+or deployment. Isolated generated-candidate validation remains the next integration
+step; the existing numeric candidate/validation workflows remain intact.
+
+Verification: **52 focused backend tests passed** in 159.02s with real Docker
+enabled, including promising/non-promising campaign paths, evidence tampering,
+immutable retry, untouched locked holdout and rejection by the incompatible numeric
+validation endpoint. **133 frontend tests passed**, and production build passed
+(existing bundle advisory; transient Windows file-access error cleared on retry).
+The missing sandbox image was restored through the existing allowlisted builder.
+No research containers remained. `git diff --check` passed.
+The 1,256-test full-suite result above predates this increment; it is not claimed
+as a full-suite run against these additional changes.

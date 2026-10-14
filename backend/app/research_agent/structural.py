@@ -88,8 +88,13 @@ def advance(director, campaign, entry):
             for field in ('author_id','draft_id','sandbox_id'):entry.pop(field,None)
             director._save(campaign,'STRUCTURAL_NEXT_HYPOTHESIS')
             return
+        if decision['verdict']=='PROMISING_DEVELOPMENT' and entry.get('full_robustness_windows'):
+            from .structural_candidates import freeze
+            frozen=freeze(director.database,campaign['id'],pid,entry['sandbox_id'])
+            entry['frozen_candidate_id']=frozen['id']
+            entry['frozen_candidate_hash']=frozen['snapshot_hash']
         entry.update(state='COMPLETED' if result['status']=='COMPLETED' else 'RESEARCH_STOPPED',
-                     family_outcome='REQUIRES_VALIDATION' if decision['verdict']=='PROMISING_DEVELOPMENT' else 'STOPPED_WITHOUT_ACCEPTANCE',
+                     family_outcome=('FROZEN_REQUIRES_VALIDATION' if entry.get('frozen_candidate_id') else 'REQUIRES_VALIDATION') if decision['verdict']=='PROMISING_DEVELOPMENT' else 'STOPPED_WITHOUT_ACCEPTANCE',
                      structural_result=dict(status=result['status'],control_parity=result.get('control_parity'),
                         causality=result.get('causality'),error=result.get('error'),summary=result.get('summary'),
                         robustness_status=result.get('robustness',{}).get('status'),
