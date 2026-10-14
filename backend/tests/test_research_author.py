@@ -78,7 +78,7 @@ def test_author_roles_shared_reservations_lineage_and_no_host_execution(author, 
     assert result['status'] == 'COMPLETED', result
     assert [r for r, _ in model.calls] == ['Researcher', 'Devil', 'Manager', 'CodeAuthor']
     assert 'Devil' in model.calls[2][1]['prior_roles']
-    assert result['reserved_calls'] == 4 and result['reserved_cost_microusd'] == 408000
+    assert result['reserved_calls'] == 4 and result['reserved_cost_microusd'] == 1008000
     assert result['execution_enabled'] is False
     draft = export_draft(service.database, pid, result['candidate_id'], result['draft_id'])
     assert draft['source'] == model.source.strip() and not sentinel.exists()
@@ -112,6 +112,18 @@ def test_author_and_numeric_committee_share_call_budget(author):
     assert len(model.calls) == 4
 
 
+def test_larger_parent_is_sent_exactly_and_reserves_updated_cost(author, monkeypatch):
+    service, model, pid = author
+    source = '#'+('x'*70000)
+    monkeypatch.setattr('app.research_agent.author.archived_parent',
+                        lambda *args: dict(source=source, sha256='fixture'))
+    result = finish(service, pid, 'large-parent')
+    assert result['status']=='COMPLETED',result.get('error')
+    assert len(model.calls)==4
+    assert all(evidence['archived_parent']['source']==source for _,evidence in model.calls)
+    assert result['reserved_cost_microusd']==4*model.status()['pricing']['call_reservation_microusd']
+
+
 @pytest.mark.parametrize('fault', ['unknown_ref', 'excess_usage', 'pause'])
 def test_author_fails_closed_without_retries(author, research, fault):
     service, model, pid = author
@@ -119,7 +131,7 @@ def test_author_fails_closed_without_retries(author, research, fault):
         if fault == 'unknown_ref':
             result['evidence_refs'] = ['invented']
         elif fault == 'excess_usage':
-            usage['input_tokens'] = 100001
+            usage['input_tokens'] = model.status()['pricing']['input_token_reservation'] + 1
         else:
             research[1].transition(pid, 'PAUSED')
     model.mutate = mutate

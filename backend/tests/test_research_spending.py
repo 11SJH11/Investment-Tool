@@ -19,21 +19,21 @@ def priced(registered, budget):
 
 
 def test_exact_reservation_enforces_budget_after_restart(registered):
-    committee,model,pid=priced(registered,.306)
+    committee,model,pid=priced(registered,.756)
     review=committee.review(pid,'one')
     assert review['status']=='COMPLETED',review
-    assert review['reserved_cost_microusd']==306000
+    assert review['reserved_cost_microusd']==756000
     assert review['usage']['Researcher']['estimated_cost_microusd']==300
-    assert committee.public(pid)['reserved_cost_usd']==.306
+    assert committee.public(pid)['reserved_cost_usd']==.756
     with pytest.raises(ValueError,match='monetary budget'):Committee(committee.database,model).review(pid,'two')
     assert len(model.calls)==3
     assert committee.review(pid,'one')['id']==review['id'] and len(model.calls)==3
 
 
 def test_failure_never_refunds_unknown_paid_calls(registered):
-    committee,model,pid=priced(registered,.306);model.fault=lambda role:{'invalid':'response'}
+    committee,model,pid=priced(registered,.756);model.fault=lambda role:{'invalid':'response'}
     assert committee.review(pid,'bad')['status']=='FAILED'
-    assert committee.public(pid)['reserved_cost_usd']==.306
+    assert committee.public(pid)['reserved_cost_usd']==.756
     with pytest.raises(ValueError,match='monetary budget'):committee.review(pid,'again')
     assert len(model.calls)==1
 
@@ -65,7 +65,7 @@ def test_changed_price_stops_remaining_roles(registered):
 def test_usage_above_reservation_blocks_all_later_calls(registered):
     committee,model,pid=priced(registered,10);generate=model.generate
     def unexpected(*args):
-        result,usage=generate(*args);usage['input_tokens']=100001;return result,usage
+        result,usage=generate(*args);usage['input_tokens']=model.status()['pricing']['input_token_reservation']+1;return result,usage
     model.generate=unexpected
     review=committee.review(pid,'unexpected')
     assert review['error']=='usage_exceeded_cost_reservation'

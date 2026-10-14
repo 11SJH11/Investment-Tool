@@ -12,6 +12,7 @@ def main():
     import importlib.util
     import re
     import pandas as pd
+    from app.research_agent.input_limits import ARCHIVED_SOURCE_BYTES
     from app.backtesting.context import StrategyContext
     from app.backtesting.models import Position
     from app.backtesting.strategies.base import Strategy, StrategySpec
@@ -47,7 +48,7 @@ def main():
                         any(not isinstance(k,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\.py',k)
                             or k in {'base.py','registry.py','__init__.py'} or k.startswith('__')
                             or not isinstance(v,str) for k,v in modules.items()) or
-                        sum(len(v.encode()) for v in modules.values())>50000):
+                        sum(len(v.encode()) for v in modules.values())>ARCHIVED_SOURCE_BYTES):
                         raise ValueError('Invalid archived dependency bundle')
                     # In-memory, process-local archived modules only. Never mounted
                     # from the repository or installed into the host registry.

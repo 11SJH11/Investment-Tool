@@ -6,7 +6,8 @@ import shutil
 
 TAG = 'ledger-research-sandbox:v1'
 FILES = ('backtesting/context.py','backtesting/models.py','backtesting/strategies/base.py',
-         'research_agent/sandbox_wire.py','research_agent/sandbox_worker.py')
+         'research_agent/sandbox_wire.py','research_agent/sandbox_worker.py',
+         'research_agent/input_limits.py')
 PACKAGES = ('indicators', 'market_concepts')
 DOCKERFILE = '''ARG BASE
 FROM ${BASE}

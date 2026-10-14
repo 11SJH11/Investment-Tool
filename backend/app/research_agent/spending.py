@@ -1,10 +1,10 @@
 """Conservative quote-based local reservations, not an invoice reconciliation."""
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 import math
+from .input_limits import MODEL_INPUT_TOKEN_RESERVATION
 
-# Adapter limits the entire serialized request to 90 KB, including schema/instructions.
-# Reserve 100k input tokens, including an overhead allowance and no cache discounts.
-INPUT_TOKEN_RESERVATION = 100000
+# Keep the reservation above the bounded serialized request including schemas.
+INPUT_TOKEN_RESERVATION = MODEL_INPUT_TOKEN_RESERVATION
 
 
 def quote(settings):

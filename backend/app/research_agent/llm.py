@@ -3,6 +3,7 @@ import json
 import re
 import httpx
 from .spending import quote
+from .input_limits import MODEL_REQUEST_BYTES
 
 
 class ModelFailure(ValueError):
@@ -42,7 +43,7 @@ class OpenAICommitteeModel:
                 'instructions': instructions, 'input': json.dumps(evidence, allow_nan=False),
                 'max_output_tokens': self.settings.research_llm_max_output_tokens,
                 'text': {'format': {'type': 'json_schema', 'name': role, 'strict': True, 'schema': strict_schema(model)}}}
-        if len(json.dumps(body).encode()) > 90000:
+        if len(json.dumps(body).encode()) > MODEL_REQUEST_BYTES:
             raise ModelFailure('model_input_limit')
         try:
             with httpx.Client(timeout=60, follow_redirects=False, transport=self.transport, trust_env=False) as client:

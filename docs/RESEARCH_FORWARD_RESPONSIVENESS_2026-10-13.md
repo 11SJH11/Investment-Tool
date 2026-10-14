@@ -247,3 +247,24 @@ passed at 1024/1440/1920 without runtime errors. The complete backend run passed
 1,250 tests in 613.70 seconds with real Docker acceptance enabled (one existing
 Starlette/httpx deprecation warning). Log: `fullperiod-full-suite-20261013.log`.
 No schema migration; additive saved configuration and campaign document fields.
+
+## Archived dependency capacity — 14 October
+
+The source-author and container now share a 128,000-byte bound for the complete
+archived parent dependency closure (still at most 32 modules). Missing dependencies
+fail closed; no current source substitution or truncation is permitted. Modules
+remain inert on the host and are loaded only inside the isolated container.
+Author evidence is bounded to 200,000 serialized bytes and the whole model request,
+including instructions/schema/prior roles, to 240,000 bytes. Generated child source
+retains its existing 50,000-character author limit.
+
+The conservative input reservation increases to 250,000 tokens per call, without
+cache discounts. Existing immutable monetary budgets are not enlarged. Campaigns
+whose recorded provider quote no longer matches fail closed rather than silently
+spending more. A new campaign may need a larger explicit budget; no paid model call
+was made during this implementation. Automated boundary checks preserve exact
+source bytes, reject an oversized bundle and reject oversized requests before HTTP.
+Verified: 115 focused backend tests passed with real Docker enabled in 222.59s,
+including oversized dependency inheritance inside Docker, author/campaign spending,
+full-period parity, security, cancellation and crash cleanup. No research containers
+remained after the run. The image was rebuilt from the allowlisted context.

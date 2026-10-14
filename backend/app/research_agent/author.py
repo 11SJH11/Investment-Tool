@@ -20,6 +20,7 @@ from .quarantine import store
 from .repository import ResearchRepository
 from .spending import limit_microusd, usage_cost
 from .source_dependencies import archived_parent
+from .input_limits import AUTHOR_EVIDENCE_BYTES
 
 CONSENT = 'Send archived strategy source and development evidence to the configured model; quarantine generated source only'
 
@@ -127,7 +128,7 @@ class CodeAuthor:
                 snapshot['research_objective']=campaign['request']['prompt']
                 entry=next(e for e in campaign['execution']['entries'] if e.get('reference_project_id')==project_id)
                 snapshot['prior_structural_attempts']=entry.get('structural_attempts',[])
-            if len(json.dumps(snapshot).encode()) > 60000:
+            if len(json.dumps(snapshot).encode()) > AUTHOR_EVIDENCE_BYTES:
                 raise ValueError('Structural evidence exceeds model input bound')
             item = dict(id=identifier, kind='CODE_AUTHOR', project_id=project_id,
                         campaign_id=campaign_id, evidence_project_id=evidence_project,

@@ -86,6 +86,16 @@ def test_adapter_request_has_no_tools_or_storage_and_parses_schema(registered):
     assert set(schema['required'])==set(schema['properties']) and schema['additionalProperties'] is False
 
 
+def test_oversized_serialized_request_fails_before_provider_call():
+    from app.research_agent.input_limits import MODEL_REQUEST_BYTES,MODEL_INPUT_TOKEN_RESERVATION
+    calls=[]
+    adapter=OpenAICommitteeModel(settings(),httpx.MockTransport(lambda request:calls.append(request)))
+    with pytest.raises(ModelFailure,match='model_input_limit'):
+        adapter.generate('Researcher','',{'source':'x'*MODEL_REQUEST_BYTES},Researcher)
+    assert not calls
+    assert MODEL_INPUT_TOKEN_RESERVATION>MODEL_REQUEST_BYTES
+
+
 @pytest.mark.parametrize('status',[302,401,429,500])
 def test_provider_errors_never_echo_secrets_or_retry(status):
     calls=[]

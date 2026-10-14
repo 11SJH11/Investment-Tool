@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from tests.test_strategy_source_archive import repository, save
 from app.research_agent.source_dependencies import archived_parent, sandbox_modules
+from app.research_agent.input_limits import ARCHIVED_SOURCE_BYTES
 
 
 def test_archive_transitive_dependencies_are_exact_inert_and_not_current_files(repository,tmp_path):
@@ -25,7 +26,7 @@ def test_archive_transitive_dependencies_are_exact_inert_and_not_current_files(r
 @pytest.mark.parametrize('source,other,match',[
     (b'from .missing import X',{},'missing'),
     (b'from ..models import X',{},'escapes'),
-    (b'from .helper import X',{'helper.py':b'#'+b'x'*50000},'bound'),
+    (b'from .helper import X',{'helper.py':b'#'+b'x'*ARCHIVED_SOURCE_BYTES},'bound'),
 ])
 def test_missing_unsafe_or_oversize_dependencies_fail_without_substitution(repository,source,other,match):
     run=save(repository,{'fixture.py':source,**other})
@@ -44,12 +45,24 @@ def test_vwap_v5_real_archive_captures_inherited_v4_without_other_strategies(rep
     assert set(bundle['dependencies'])=={names[1]}
 
 
+def test_large_archived_bundle_is_exact_at_bound_and_rejects_one_more_byte(repository):
+    parent=b'from .helper import X\n'
+    helper=b'X=1\n#'+b'x'*(ARCHIVED_SOURCE_BYTES-len(parent)-5)
+    assert len(parent)+len(helper)==ARCHIVED_SOURCE_BYTES
+    run=save(repository,{'fixture.py':parent,'helper.py':helper})
+    bundle=archived_parent(repository.database,run['id'],run['result']['strategy']['implementation'])
+    assert bundle['dependencies']['helper.py'].encode()==helper
+    too_large=save(repository,{'fixture.py':parent,'helper.py':helper+b'x'})
+    with pytest.raises(ValueError,match='bound'):
+        archived_parent(repository.database,too_large['id'],too_large['result']['strategy']['implementation'])
+
+
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in archived dependency Docker acceptance')
 def test_archived_parent_inheritance_runs_only_inside_docker(repository,tmp_path):
     from app.research_agent.sandbox import Docker,Session,RemoteStrategy
     from tests.test_research_sandbox_docker import context, SOURCE
     marker=tmp_path/'host-marker'
-    parent=SOURCE.replace('research_child_fixture','archived_parent')
+    parent=SOURCE.replace('research_child_fixture','archived_parent')+'\n#'+('x'*65000)
     sources={'fixture.py':parent.encode()}
     run=save(repository,sources)
     candidate={'run_id':run['id'],'snapshot':{'source':run['result']['strategy']['implementation']}}

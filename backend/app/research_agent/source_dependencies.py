@@ -1,10 +1,11 @@
 """Static selection of archived strategy dependencies. Never imports source."""
 import ast
 import base64
+from .input_limits import ARCHIVED_SOURCE_BYTES
 
 PREFIX='app.backtesting.strategies.'
 CANONICAL={'base','registry','strategy_registry'}
-MAX_SOURCE_BYTES=50000
+MAX_SOURCE_BYTES=ARCHIVED_SOURCE_BYTES
 
 
 def imports(source):
