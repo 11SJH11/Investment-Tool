@@ -4,6 +4,62 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: declared generated development regimes (16 October)
+
+New campaigns may preregister up to three named, chronological, disjoint regime
+periods within each family's frozen development range. Each needs a definition
+and evidence source. Labels are user assumptions, not verified classifications;
+Ledger does not choose periods from profitable results. Empty is the default.
+Existing campaigns retain their saved authority.
+
+The Director reserves eight additional engine simulations per regime per
+structural attempt before model work. Original compute/deadline limits remain.
+The author receives the fixed declarations. Execution reuses the existing Docker
+parent/control/child/prefix path at original and doubled costs, with the dataset
+firewall and identical data checks. Regime cells remain separate from chronological
+windows, with independent account resets; they are not a portfolio or holdout.
+Missing, low-sample or adverse regime evidence blocks development promotion.
+Freezing checks labels/dates, source/image identities, result hashes, paired
+comparisons and causality evidence. No new execution or acceptance authority.
+
+UI: enable structural research, expand Optional declared development regimes,
+add periods/definitions/sources, review costs and consent, then start. Dates must
+fit the automatically prepared development range for every selected family;
+invalid dates or insufficient budget stop before model calls. Reports show the
+declared definitions and parent/child N and expectancy separately at each cost.
+
+Files: backend research-agent `regime_plan.py` (new), `campaign_policy.py`,
+`director.py`, `author.py`, `structural.py`, `sandbox_runs.py`,
+`structural_candidates.py`, `research_verdict.py`, `campaign_report.py`;
+`test_generated_regimes.py` (new), `test_campaign_structural.py`; frontend
+`CampaignRegimes.jsx` (new), `AutonomousResearch.jsx`, `campaignView.js`,
+`campaignView.test.js`, `tests/browser/campaign-smoke.mjs`; this ledger and handoff.
+No schema migration, trading rule, engine-accounting or Replay changes.
+
+Verification: **163 backend tests passed**, zero failures/skips, 288.19s with
+`LEDGER_TEST_DOCKER=1`, including six real-Docker campaign scenarios. Suites:
+`test_generated_regimes`, `test_campaign_structural`, `test_research_verdict`,
+`test_structural_candidates`, `test_research_campaigns`, `test_campaign_report`,
+`test_research_director`, `test_campaign_validation`, `test_feature_ablation`,
+`test_family_disposition`. Log: `C:/Users/jamie/Project/regimes-docker-1016.log`.
+The new Docker case asserts 28 trial simulations, separate regime cells at both
+cost levels, control/prefix evidence and compact parent/child reporting.
+Also passed: 136 frontend tests, production build (158 modules; existing large
+bundle warning), mocked browser acceptance at 1024/1440/1920 with no runtime
+errors/page overflow, 75 backend compatibility tests (one opt-in Docker skip),
+and two additional development-bound/budget authorization tests. An earlier
+focused run passed 100 tests with six opt-in Docker skips. Counts overlap and
+must not be summed. Full backend suite has not been rerun in this increment.
+Final Docker inspection found no Ledger research containers; the same six
+unrelated stopped containers were untouched. Test browser/server were closed.
+`git diff --check` passed. No paid model or live provider was called.
+
+Remaining broader phase: real-model research quality/lifecycle acceptance,
+independent frozen forward shadows, paper-only B execution, risk/reconciliation,
+Journal/Forward Validation linkage and final phase-wide verification. Regime
+classification is not automatically inferred or validated. No paper orders are
+enabled by this work.
+
 ## Continuation: iterative campaign / coordinator restart acceptance (15 October)
 
 Extended the existing real-Docker campaign acceptance with two distinct synthetic

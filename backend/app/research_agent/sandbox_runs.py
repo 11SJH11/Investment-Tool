@@ -11,6 +11,7 @@ from typing import Literal
 from uuid import uuid4
 from pydantic import Field, model_validator
 from .robustness import Window, simulation_count
+from .regime_plan import DeclaredRegime, validate_windows
 from app.backtesting.engine import BacktestEngine
 from app.backtesting.models import BacktestConfig
 from app.services.backtest import _entry_windows, _weekdays, _optional_clock, _optional_positive_int, _optional_positive_float, SESSION_ENDS
@@ -35,9 +36,13 @@ class Approval(Strict):
     timeout_seconds: int = Field(default=120,ge=10,le=21600,strict=True)
     acknowledgement: Literal['Run this quarantined source in Docker on frozen development data only']
     windows: list[Window] = Field(default_factory=list,max_length=3)
+    regime_windows: list[DeclaredRegime] = Field(default_factory=list,max_length=3)
 
     @model_validator(mode='after')
     def ordered(self):
+        validate_windows([w.model_dump(mode='json') for w in self.regime_windows])
+        if self.regime_windows and not self.full_robustness_windows:
+            raise ValueError('Declared regimes require full robustness windows')
         if self.full_robustness_windows and not self.full_period:
             raise ValueError('Full robustness windows require full-period execution authority')
         if not self.full_robustness_windows and any((w.end-w.start).days>6 for w in self.windows):
@@ -147,10 +152,12 @@ class SandboxRuns:
             draft=export_draft(self.database,project_id,candidate_id,draft_id)['draft']
             candidate=next(c for c in Candidates(self.database).list(project_id) if c['id']==candidate_id)
             Candidates(self.database).verify_sandbox_parent(project_id,candidate)
+            config=candidate['snapshot']['configuration']
+            validate_windows(request['regime_windows'],config['start_date'],config['end_date'])
             if draft['parent_hash']!=candidate['snapshot_hash']:raise ValueError('Draft parent changed')
             image=self.docker.image()
             item=dict(id=str(uuid4()),project_id=project_id,candidate_id=candidate_id,draft_id=draft_id,
-                      status='QUEUED',phase='APPROVED',request=request,reserved_runs=simulation_count(request['windows']),image_id=image,
+                      status='QUEUED',phase='APPROVED',request=request,reserved_runs=simulation_count(request['windows'])+8*len(request['regime_windows']),image_id=image,
                       candidate_hash=candidate['snapshot_hash'],source_sha256=draft['source_sha256'],
                       created_at=datetime.now(timezone.utc).isoformat(),control_parity=None,causality=None)
             with self.database.connect() as c:
@@ -263,7 +270,7 @@ class SandboxRuns:
                             'host_environment':environment_snapshot(),'host_implementation':{p:sha256((app_root/p).read_bytes()).hexdigest() for p in host_files}},
                 result=result,summary=summary(result['trades']),comparison=comparison,
                 result_sha256=digest(result))
-            if item['request'].get('windows'):
+            if item['request'].get('windows') or item['request'].get('regime_windows'):
                 from .robustness import execute
                 def prepare_window(payload):
                     from datetime import date, time as day_time, timedelta
@@ -297,6 +304,14 @@ class SandboxRuns:
                 item['robustness']=execute(item['request']['windows'],config,prepare_window,simulate_window,save_windows,
                     full_windows=item['request'].get('full_robustness_windows',False))
                 item['robustness']['status']='COMPLETED'
+                if item['request'].get('regime_windows'):
+                    declared=item['request']['regime_windows']
+                    def save_regimes(cells):
+                        item['regime_checks']={'status':'RUNNING','declared_windows':declared,'cells':cells}
+                        self._save(item)
+                    item['regime_checks']=execute(declared,config,prepare_window,simulate_window,save_regimes,full_windows=True)
+                    item['regime_checks'].update(status='COMPLETED',declared_windows=declared,
+                        limitation='User-declared development regimes; labels are assumptions, not verified classifications. Independent accounts per window and cost. No portfolio aggregation or unseen validation.')
             self._guard(item,deadline)
             item.update(status='COMPLETED',phase='DEVELOPMENT_REVIEW_REQUIRED')
         except BaseException as exc:
@@ -305,6 +320,10 @@ class SandboxRuns:
             if item.get('robustness'):
                 item['robustness']['status']=item['status']
                 for cell in item['robustness']['cells']:
+                    if cell['status']!='COMPLETED':cell.update(status=item['status'],error=code)
+            if item.get('regime_checks'):
+                item['regime_checks']['status']=item['status']
+                for cell in item['regime_checks']['cells']:
                     if cell['status']!='COMPLETED':cell.update(status=item['status'],error=code)
         finally:
             try:self.docker.cleanup()

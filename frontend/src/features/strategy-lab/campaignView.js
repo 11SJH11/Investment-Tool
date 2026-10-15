@@ -22,7 +22,7 @@ export function campaignPayload(form,policy,requestKey){
  return {campaign:{request_key:requestKey,mode:form.mode,prompt:form.prompt,
    strategy_key:form.mode==='IMPROVE_STRATEGY'?form.strategy_key:null,
    policy:{...policy,symbols,timeframes:[form.timeframe],holdout:form.model&&form.structural?holdout:'human_approval',send_development_summaries:form.model,
-     code_generation:form.model&&form.structural,max_structural_hypotheses_per_family:structuralCycles,external_research:false}},engine,
+     code_generation:form.model&&form.structural,regime_windows:form.model&&form.structural?(form.regime_windows??[]):[],max_structural_hypotheses_per_family:structuralCycles,external_research:false}},engine,
    numeric_cycles:form.model?Number(form.numeric_cycles):0,structural:form.model&&form.structural,
    history:form.history,lookback_days:1460,consent:LAUNCH_CONSENT};
 }

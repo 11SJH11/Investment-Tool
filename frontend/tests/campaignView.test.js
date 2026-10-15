@@ -4,6 +4,12 @@ import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayl
 const form={mode:'FIND_STRATEGIES',strategy_key:'ignored',symbols:'qqq QQQ, spy',timeframe:'1m',prompt:'',history:'cached',
  model:false,structural:true,numeric_cycles:2,starting_balance:10000,risk_value:1,commission_per_order:0,spread_bps:1,slippage_bps:2,max_leverage:1};
 const policy={budget:{llm_usd:10},holdout:'human_approval',external_research:true};
+test('Declared regimes require structural permission and remain explicit in the frozen payload',()=>{
+ const regimes=[{name:'Low volatility',start:'2025-01-01',end:'2025-02-01',definition:'Declared threshold',evidence_source:'External study'}];
+ assert.deepEqual(campaignPayload({...form,regime_windows:regimes},policy,'off').campaign.policy.regime_windows,[]);
+ assert.deepEqual(campaignPayload({...form,model:true,regime_windows:regimes},policy,'on').campaign.policy.regime_windows,regimes);
+ assert.deepEqual(campaignPayload({...form,model:true},policy,'default').campaign.policy.regime_windows,[]);
+});
 test('Only policy-authorized pending validation keeps a completed campaign polling',()=>{
  const campaign={status:'DEVELOPMENT_COMPLETE',execution:{validation_contract:{version:'one_generated_validation_v1'}}};
  assert.equal(campaignValidationPending(campaign),true);

@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .hypotheses import Strict
+from .regime_plan import DeclaredRegime, validate_windows
 
 
 class CampaignBudget(Strict):
@@ -41,6 +42,7 @@ class CampaignPolicy(Strict):
     structural_evaluation: Literal['full_period','bounded_samples'] = 'full_period'
     structural_robustness: Literal['full_windows','bounded_samples'] = 'full_windows'
     structural_simplification: Literal['single_feature_ablation_v1'] = 'single_feature_ablation_v1'
+    regime_windows: list[DeclaredRegime] = Field(default_factory=list, max_length=3)
     concept_research: bool = True
     external_research: bool = False
     send_development_summaries: bool = False
@@ -53,6 +55,9 @@ class CampaignPolicy(Strict):
 
     @model_validator(mode='after')
     def normalize(self):
+        validate_windows([w.model_dump(mode='json') for w in self.regime_windows])
+        if self.regime_windows and (not self.code_generation or self.structural_evaluation != 'full_period' or self.structural_robustness != 'full_windows'):
+            raise ValueError('Declared generated regimes require full-period structural research and full windows')
         from app.data.instruments import normalize_symbol
         self.symbols = list(dict.fromkeys(normalize_symbol(s) for s in self.symbols))
         if any(not s or len(s) > 80 for s in self.symbols):

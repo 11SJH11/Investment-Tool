@@ -1,5 +1,28 @@
 # Research Agent current status / handoff
 
+## Latest checkpoint — 16 October 2026
+
+Declared generated-strategy development regimes are implemented and verified.
+Optional named periods, definitions and sources are frozen before execution,
+bounded to development dates, budgeted up front and run through the existing
+Docker control/child/prefix checks at original and doubled costs. Reports keep
+regime results separate; missing/adverse evidence blocks promotion. Labels remain
+user assumptions, not verified classifications. No schema migration or trading
+behaviour changes. Existing campaigns default to no declared regimes.
+
+Verification: **163 focused backend tests passed**, including six real-Docker
+campaign scenarios (288.19s); **75 compatibility tests passed / one opt-in skip**;
+two additional authority tests passed. These sets overlap. **136 frontend tests
+passed**, production build passed, browser smoke passed at 1024/1440/1920.
+No research containers remain; six unrelated stopped containers unchanged.
+Full backend suite was not rerun. See the
+[current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md) for exact
+commands/suites, limitations and files.
+
+Remaining: broader real-model/lifecycle acceptance, independent forward shadows,
+paper-only B execution with risk/reconciliation, Journal/Forward Validation
+integration and final phase-wide verification. No paper/live orders enabled.
+
 ## Current phase — verified 15 October 2026
 
 Latest verification: two distinct generated children now have real-Docker

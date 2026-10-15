@@ -70,6 +70,21 @@ def until(director,cid,state=None,phase=None):
     return director.campaigns.get(cid)
 
 
+@pytest.mark.parametrize('fault',['outside_development','budget'])
+def test_declared_regimes_reject_invalid_authority_before_model_calls(structural,fault):
+    from tests.test_generated_regimes import REGIME
+    director,campaign,configs,model,_=structural
+    with director.database.connect() as c:
+        item=director.campaigns._get(c,campaign['id'])
+        item['request']['policy']['regime_windows']=[{**REGIME,'start':'2026-01-04','end':'2026-01-04'} if fault=='outside_development' else REGIME]
+        if fault=='budget':item['request']['policy']['budget']['simulations']=29
+        director.campaigns._save(c,item)
+    with pytest.raises(ValueError):director.start_baselines(campaign['id'],configs,structural=True)
+    assert not model.calls
+    assert not director.services.research_sandbox.calls
+    assert not director.campaigns.get(campaign['id']).get('execution')
+
+
 def test_campaign_authors_then_dispatches_existing_sandbox_without_browser(structural):
     director,campaign,configs,model,backtest=structural
     start=director.start_baselines(campaign['id'],configs,structural=True)
@@ -226,7 +241,7 @@ def test_existing_full_period_policy_does_not_gain_full_window_authority(structu
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
-@pytest.mark.parametrize('promising',[False,True,'automatic','simpler_parent','iterate_restart'])
+@pytest.mark.parametrize('promising',[False,True,'automatic','simpler_parent','iterate_restart','regime'])
 def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising):
     director,campaign,configs,model,backtest=structural
     if promising:
@@ -237,6 +252,9 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
                 # Historical campaigns retain their original freeze contract.
                 item['request']['policy'].pop('structural_simplification', None)
             if promising=='automatic':item['request']['policy']['holdout']='one_frozen_candidate'
+            if promising=='regime':
+                from tests.test_generated_regimes import REGIME
+                item['request']['policy']['regime_windows']=[REGIME]
             if promising=='iterate_restart':item['request']['policy']['max_structural_hypotheses_per_family']=2
             director.campaigns._save(c,item)
         # This synthetic four-day calendar includes Saturday; explicitly enable
@@ -302,7 +320,17 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
         assert director.campaigns.report(campaign['id'])['morning_report']['families'][0]['disposition'] == entry['disposition']
         assert entry['structural_result']['causality']['prefix_match']
         trial=runner.get(entry['sandbox_id'])
-        assert trial['reserved_runs']==20
+        assert trial['reserved_runs']==(28 if promising=='regime' else 20)
+        if promising=='regime':
+            assert started['reserved']['simulations']==30
+            checks=trial['regime_checks']
+            assert checks['status']=='COMPLETED' and len(checks['cells'])==2
+            assert all(c['control_parity'] and c['prefix_signals_checked'] for c in checks['cells'])
+            assert checks['declared_windows']==trial['request']['regime_windows']
+            report=director.campaigns.report(campaign['id'])['morning_report']['families'][0]['regime_checks']
+            assert report['declared_windows']==checks['declared_windows']
+            assert report['cells'][0]['parent_summary']['n']>0
+            assert 'result' not in report['cells'][0]
         assert len(trial['robustness']['cells'])==4
         assert all(cell['status']=='COMPLETED' and cell['control_parity'] for cell in trial['robustness']['cells'])
         assert trial['robustness']['zero_cost_stress'] is (not promising)

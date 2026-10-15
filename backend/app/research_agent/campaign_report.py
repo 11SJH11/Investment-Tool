@@ -44,6 +44,12 @@ def evidence_report(database,campaign):
                             prefix_causality=trial.get('causality'),source_sha256=trial.get('source_sha256'),
                             path={k:comparison.get(k) for k in ('retained','removed','introduced','removed_large_winners','removed_session_close_winners')})
                 robustness=trial.get('robustness',{})
+                regimes=trial.get('regime_checks',{})
+                item['regime_checks']={k:v for k,v in regimes.items() if k!='cells'}
+                item['regime_checks']['cells']=[{**{k:cell.get(k) for k in
+                    ('window','start','end','cost_multiplier','status','summary','control_parity','prefix_signals_checked')},
+                    'parent_summary':cell.get('comparison',{}).get('parent',{}).get('summary')}
+                    for cell in regimes.get('cells',[])]
                 item['robustness']={k:v for k,v in robustness.items() if k!='cells'}
                 item['robustness']['cells']=[{k:v for k,v in cell.items() if k in
                     {'window','start','end','cost_multiplier','status','summary','control_parity','prefix_signals_checked','data_fingerprint','result_sha256'}}

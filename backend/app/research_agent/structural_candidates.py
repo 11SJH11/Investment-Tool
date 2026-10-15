@@ -30,14 +30,26 @@ def verify_evidence(trial, parent, policy, parent_result):
         raise ValueError('Generated comparison changed')
     if trial['comparison']['child']['result_digest']!=digest(core(trial['result'])):
         raise ValueError('Generated comparison child changed')
-    robustness=trial.get('robustness',{})
+    verify_window_group(request['windows'],trial.get('robustness',{}),trial['provenance'])
+    if request.get('regime_windows'):
+        checks=trial.get('regime_checks',{})
+        if checks.get('declared_windows')!=request['regime_windows']:
+            raise ValueError('Declared regime evidence changed')
+        verify_window_group(request['regime_windows'],checks,trial['provenance'])
+    decision=assess(trial,policy)
+    if decision['verdict']!='PROMISING_DEVELOPMENT':
+        raise ValueError('Only promising verified development evidence may be frozen')
+    return decision
+
+
+def verify_window_group(windows, robustness, provenance):
     cells=robustness.get('cells',[])
-    expected=[(i+1,w['start'],w['end'],cost) for i,w in enumerate(request['windows']) for cost in (1,2)]
+    expected=[(i+1,w['start'],w['end'],cost) for i,w in enumerate(windows) for cost in (1,2)]
     actual=[(c['window'],c['start'],c['end'],c['cost_multiplier']) for c in cells]
     if not expected or actual!=expected or robustness.get('status')!='COMPLETED':
         raise ValueError('Preregistered robustness cells are incomplete')
     for cell in cells:
-        if any(cell.get('provenance',{}).get(k)!=trial['provenance'].get(k)
+        if any(cell.get('provenance',{}).get(k)!=provenance.get(k)
                for k in ('source_sha256','dependency_sha256','image_id')):
             raise ValueError('Robustness implementation identity changed')
         if not cell.get('control_parity') or not cell.get('prefix_signals_checked'):
@@ -51,10 +63,6 @@ def verify_evidence(trial, parent, policy, parent_result):
             raise ValueError('Robustness comparison changed')
     if any(a['data_fingerprint']!=b['data_fingerprint'] for a,b in zip(cells[::2],cells[1::2])):
         raise ValueError('Robustness cost scenarios used different data')
-    decision=assess(trial,policy)
-    if decision['verdict']!='PROMISING_DEVELOPMENT':
-        raise ValueError('Only promising verified development evidence may be frozen')
-    return decision
 
 
 def freeze(database, campaign_id, project_id, sandbox_id):

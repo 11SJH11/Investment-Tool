@@ -19,7 +19,7 @@ def sandbox_authorized(database,project,candidate_id,draft_id,request):
                   timeout_seconds=min(21600 if entry.get('full_period') else 600,entry['max_minutes']*60),acknowledgement=ACK,
                   full_period=entry.get('full_period',False),
                   full_robustness_windows=entry.get('full_robustness_windows',False),
-                  windows=entry.get('robustness_windows',[]))
+                  windows=entry.get('robustness_windows',[]),regime_windows=entry.get('regime_windows',[]))
     expected=Approval.model_validate(expected).model_dump(mode='json')
     if candidate_id!=entry['reference_id'] or draft_id!=entry['draft_id'] or request!=expected:
         raise ValueError('Sandbox request differs from frozen campaign authorization')
@@ -69,7 +69,7 @@ def advance(director, campaign, entry):
             timeout_seconds=min(21600 if entry.get('full_period') else 600,entry['max_minutes']*60),acknowledgement=ACK,
             full_period=entry.get('full_period',False),
             full_robustness_windows=entry.get('full_robustness_windows',False),
-            windows=entry.get('robustness_windows',[])))
+            windows=entry.get('robustness_windows',[]),regime_windows=entry.get('regime_windows',[])))
         entry['sandbox_id']=result['id']
         director._save(campaign,'STRUCTURAL_DOCKER_DISPATCHED')
     if result['status'] not in {'QUEUED','RUNNING'}:

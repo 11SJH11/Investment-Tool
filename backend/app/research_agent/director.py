@@ -128,6 +128,8 @@ class ResearchDirector:
                     full_windows=full_period and policy.get('structural_robustness','bounded_samples')=='full_windows'
                     entries[-1]['full_robustness_windows']=full_windows
                     entries[-1]['robustness_windows']=plan_windows(plan,full_windows=full_windows)
+                    from .regime_plan import validate_windows
+                    entries[-1]['regime_windows']=validate_windows(policy.get('regime_windows',[]), payload['start_date'], payload['end_date'])
                     entries[-1]['full_period']=full_period
                     entries[-1]['reference_project_id']=reference_project(self.database,identifier,project['id'],full_period=full_period)
                     entries[-1]['reference_payload']={**payload,'end_date':payload['end_date'] if full_period else payload['start_date']}
@@ -139,7 +141,7 @@ class ResearchDirector:
                 if current['status'] != 'PREPARED' or current.get('execution'):
                     raise ValueError('Campaign changed during authorization')
                 calls = (3 * numeric_cycles + 4*structural_cycles) * len(entries)
-                required = dict(simulations=sum(1 + numeric_cycles*(e['max_variants']+1)+int(structural)+(4+8*len(e.get('robustness_windows',[])))*structural_cycles for e in entries),
+                required = dict(simulations=sum(1 + numeric_cycles*(e['max_variants']+1)+int(structural)+(4+8*(len(e.get('robustness_windows',[]))+len(e.get('regime_windows',[]))))*structural_cycles for e in entries),
                                 hypotheses=(numeric_cycles+structural_cycles)*len(entries), children=structural_cycles*len(entries), llm_calls=calls,
                                 llm_usd=calls*model_status['pricing']['call_reservation_microusd']/1000000 if calls else 0,
                                 compute_minutes=sum(e['max_minutes']*(1+numeric_cycles+int(structural)+2*structural_cycles) for e in entries))
@@ -166,7 +168,7 @@ class ResearchDirector:
                 if structural:
                     for e in entries:
                         project=json.loads(c.execute('SELECT document FROM agent_projects WHERE id=?',(e['reference_project_id'],)).fetchone()[0])
-                        project['research_budget'].update(max_trial_runs=(4+8*len(e['robustness_windows']))*structural_cycles,max_trial_minutes=e['max_minutes'],
+                        project['research_budget'].update(max_trial_runs=(4+8*(len(e['robustness_windows'])+len(e.get('regime_windows',[]))))*structural_cycles,max_trial_minutes=e['max_minutes'],
                             max_llm_calls=4*structural_cycles,max_llm_spend_usd=4*structural_cycles*model_status['pricing']['call_reservation_microusd']/1000000)
                         c.execute('UPDATE agent_projects SET document=? WHERE id=?',(json.dumps(project),project['id']))
                 self.campaigns._save(c, current)

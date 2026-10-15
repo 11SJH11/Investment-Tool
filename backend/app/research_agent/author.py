@@ -130,6 +130,7 @@ class CodeAuthor:
                 snapshot['research_objective']=campaign['request']['prompt']
                 entry=next(e for e in campaign['execution']['entries'] if e.get('reference_project_id')==project_id)
                 snapshot['prior_structural_attempts']=entry.get('structural_attempts',[])
+                snapshot['declared_development_regimes']=entry.get('regime_windows',[])
             from .research_ledger import development_history
             with self.database.connect() as connection:
                 snapshot['development_search_history'] = development_history(

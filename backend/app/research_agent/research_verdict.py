@@ -6,6 +6,16 @@ from .analysis import digest
 def assess(trial,policy):
     reasons=[]
     cells=list(trial.get('robustness',{}).get('cells',[]))
+    regimes=trial.get('request',{}).get('regime_windows',[])
+    if regimes:
+        checks=trial.get('regime_checks',{})
+        regime_cells=checks.get('cells',[])
+        expected=[(i+1,w['start'],w['end'],cost) for i,w in enumerate(regimes) for cost in (1,2)]
+        actual=[(c.get('window'),c.get('start'),c.get('end'),c.get('cost_multiplier')) for c in regime_cells]
+        if checks.get('status')!='COMPLETED' or checks.get('declared_windows')!=regimes or actual!=expected:
+            cells.append({'status':'INCOMPLETE'})
+        else:
+            cells.extend(regime_cells)
     if cells and trial.get('request',{}).get('full_period'):
         cells.append(dict(status=trial.get('status'),summary=trial.get('summary',{}),
             comparison=trial.get('comparison',{}),result=trial.get('result',{})))
