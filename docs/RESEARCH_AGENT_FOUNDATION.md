@@ -1,5 +1,20 @@
 # Research Agent current status / handoff
 
+## Forward foundation — 16 October 2026
+
+Checkpoint 8 is in progress. Added atomic, idempotent persistence for four
+independent inactive Baseline/B/C/D shadow deployment definitions, pinning the
+actual loaded strategy archives, frozen D6 parameters and explicit account costs.
+No strategy rules changed. No activation, provider ingestion, runtime evaluation,
+paper orders or FUTURE_OOS claims yet. User source/output files remain untouched.
+
+**35 focused tests passed** (8.22s, zero skips), covering deployment persistence,
+existing source archives and registry refresh, including the actual four locally
+installed contracts. No frontend changes; no full-suite/build rerun this increment.
+Additive on-use `forward_experiments` / `forward_deployments` tables use existing
+source archives. See the [phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
+for exact scope and the next runtime/parity work. The broader phase is unfinished.
+
 ## Latest checkpoint — 16 October 2026
 
 Declared generated-strategy development regimes are implemented and verified.

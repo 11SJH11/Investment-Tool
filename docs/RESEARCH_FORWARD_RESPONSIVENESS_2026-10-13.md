@@ -4,6 +4,47 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: forward deployment persistence foundation (16 October)
+
+Checkpoint 8 has started, not completed. `app/forward/deployments.py` prepares an
+atomic group of four inactive shadow definitions using the exact installed
+Baseline/B/C/D registry keys and frozen D6 settings. No source files were edited
+or imported from an archive. The registry execution lease prevents source-refresh
+races; the existing content-addressed source archive preserves loaded bytes.
+Definitions pin effective parameters (including existing extra defaults), source
+identity, required timeframes, QQQ/1m, explicit account/risk/cost assumptions and
+the requested exchange-local session/M3/no-overnight/leverage constraints.
+
+Each deployment has a distinct ID and independent serialized initial position,
+pending, strategy/daily state, M3 count, equity and trade history. All remain
+`DRAFT`, with no start/decision/FUTURE_OOS timestamps and execution disabled.
+This is persistence preparation, not an incremental shadow evaluator. There is
+deliberately no activation endpoint or broker call. Missing strategy keys fail
+the entire group, never substitute another strategy. Request-key retries return
+the original definitions even after source refresh; changed account settings
+require a new request. Definition/source tampering fails integrity verification.
+
+Additive, on-use tables: `forward_experiments`, `forward_deployments`; source
+storage reuses `strategy_source_blobs` and `strategy_source_archives`. Existing
+application initialization/data remain intact. No production database was used.
+New files: `backend/app/forward/__init__.py`, `deployments.py`, and
+`backend/tests/test_forward_deployments.py`. These docs are the only other edits.
+
+Verification: **35 tests passed**, no skips/failures, 8.22s:
+`test_forward_deployments.py`, `test_strategy_source_archive.py`,
+`test_strategy_refresh.py`. Includes all four actual installed strategy contracts,
+restart/idempotency, independent initial state, atomic rollback, invalid inputs,
+archive tampering and repeated initialization. Test databases are temporary.
+No frontend/application wiring changed; frontend build and full backend suite
+were not rerun in this foundation increment. No orders or data-provider calls.
+
+Next: bind a selected data-provider identity, implement completed-bar persistence
+and checkpoints plus independent causal runtime state, establish shadow/backtest
+parity including session-end behavior, then expose activation controls. Source
+archives exclude engine/external dependencies and are not complete executable
+environments; runtime compatibility must be pinned/checked before activation.
+Paper execution/risk/reconciliation and Forward Validation UI remain outstanding.
+
 ## Continuation: declared generated development regimes (16 October)
 
 New campaigns may preregister up to three named, chronological, disjoint regime
