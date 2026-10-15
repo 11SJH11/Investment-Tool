@@ -2,7 +2,18 @@
 
 ## Current phase — verified 15 October 2026
 
-Latest increment: completed families now have durable development closeouts:
+Latest verification: two distinct generated children now have real-Docker
+acceptance across a coordinator restart between completed attempts. The second
+author receives prior evidence; reservations remain fixed; simplification rejects
+the neutral second child and the family closes without consuming the holdout.
+Repeated ticks do not repeat models/jobs. **14 structural campaign tests passed**
+(210.64s; five real-Docker scenarios). Application/frontend code is unchanged;
+the previous 207-test focused run, 135 frontend tests, build and browser results
+were not rerun. Only the test and handoff docs changed. This does not establish
+live-model quality, regime orchestration or forward/paper readiness. See the
+[current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md).
+
+Previous increment: completed families now have durable development closeouts:
 baseline-only, review needed, frozen pending validation, abandoned development,
 inconclusive, execution blocked or stopped without conclusion. Entry/policy hashes
 are checked before display. Restarts preserve the same record and do not repeat

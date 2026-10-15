@@ -4,6 +4,42 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: iterative campaign / coordinator restart acceptance (15 October)
+
+Extended the existing real-Docker campaign acceptance with two distinct synthetic
+generated children under one frozen two-attempt budget. The first suppresses
+entries and produces insufficient evidence. After that terminal result is saved,
+the test closes/recreates the Director and resumes the same campaign. The second
+author receives the first attempt and development search history, emits a neutral
+gate with different source identity, and the existing simplification gate rejects
+it for adding no observed benefit. Final disposition is abandoned development;
+the holdout remains locked and no candidate is frozen.
+
+Assertions cover eight mocked model calls, two distinct source hashes, 40 reserved
+engine simulations across the children, unchanged campaign reservations, durable
+attempt history, matching closeout/report, and three additional coordinator ticks
+without another model call/job or any campaign mutation. Every child uses the
+existing full-period, original/doubled-cost, control-parity and prefix-causality
+Docker path. This is a coordinator restart after a completed attempt, not a claim
+of process-death recovery during an in-flight container or a live-model quality
+benchmark. Existing crash/security tests remain separate.
+
+Verification: **14 structural campaign tests passed**, zero failures/skips,
+**210.64s**, `LEDGER_TEST_DOCKER=1`; five real-Docker scenarios, including the new
+iterative path. Command: `.venv/Scripts/python.exe -B -m pytest
+tests/test_campaign_structural.py -q` from `backend`, with a unique temporary
+database root. Log: `C:/Users/jamie/Project/iteration-acceptance-20261015.log`.
+No application/frontend/schema changes: only this existing test file and two
+handoff documents. The preceding 207-test focused run, 135 frontend tests, build
+and browser results apply to unchanged application code; they were not rerun or
+added to the new test count. No live provider or paid model was called.
+Final inspection found no Ledger research containers; the same six unrelated
+stopped containers were unchanged. `git diff --check` passed.
+
+Remaining: generated regime-labelled orchestration, broader autonomous research
+acceptance/real-model assessment, forward shadows and paper execution. This test
+does not implement or claim those capabilities.
+
 ## Continuation: durable family development closeout (15 October)
 
 When all allocated family work finishes, the Director atomically stores a

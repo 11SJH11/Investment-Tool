@@ -226,17 +226,18 @@ def test_existing_full_period_policy_does_not_gain_full_window_authority(structu
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
-@pytest.mark.parametrize('promising',[False,True,'automatic','simpler_parent'])
+@pytest.mark.parametrize('promising',[False,True,'automatic','simpler_parent','iterate_restart'])
 def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising):
     director,campaign,configs,model,backtest=structural
     if promising:
         with director.database.connect() as c:
             item=director.campaigns._get(c,campaign['id'])
             item['request']['policy']['minimum_trades']=1
-            if promising != 'simpler_parent':
+            if promising not in {'simpler_parent', 'iterate_restart'}:
                 # Historical campaigns retain their original freeze contract.
                 item['request']['policy'].pop('structural_simplification', None)
             if promising=='automatic':item['request']['policy']['holdout']='one_frozen_candidate'
+            if promising=='iterate_restart':item['request']['policy']['max_structural_hypotheses_per_family']=2
             director.campaigns._save(c,item)
         # This synthetic four-day calendar includes Saturday; explicitly enable
         # its fixture session rather than weakening the minimum-sample gate.
@@ -244,7 +245,15 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
             config['commission_per_order']=.01
             config['trading_weekdays']=list(range(7))
         def keep_entries(role,result,usage):
-            if role=='CodeAuthor':result['source']=result['source'].replace("if self.params['research_feature_enabled']:return None",'if False:return None')
+            second = sum(r == 'CodeAuthor' for r, _ in model.calls) > 1
+            if role=='Researcher' and promising=='iterate_restart':
+                next_attempt = sum(r == 'Researcher' for r, _ in model.calls) > 1
+                result.update(description='Neutral synthetic gate' if next_attempt else 'Synthetic entry rejection',
+                              feature='Keep baseline entries' if next_attempt else 'Suppress all entries',
+                              expected_result='Same trade path' if next_attempt else 'No entries',
+                              falsification='Changed trades' if next_attempt else 'Any entry')
+            if role=='CodeAuthor' and (promising!='iterate_restart' or second):
+                result['source']=result['source'].replace("if self.params['research_feature_enabled']:return None",'if False:return None')
         model.mutate=keep_entries
     original=backtest.prepare
     def prepare(payload,**kwargs):
@@ -261,18 +270,33 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
     backtest.prepare=prepare
     runner=SandboxRuns(director.database,backtest)
     director.services.research_sandbox=runner
+    restarted = None
     try:
-        director.start_baselines(campaign['id'],configs,structural=True)
+        started = director.start_baselines(campaign['id'],configs,structural=True)
         # Existing wait_for uses a short timeout, so wait for the durable dispatch
         # first and then join the bounded Docker task independently.
         until(director,campaign['id'],phase='SANDBOX')
         director.tick()
         runner.thread.join(timeout=90)
         assert not runner.thread.is_alive()
+        if promising=='iterate_restart':
+            director.tick()
+            checkpoint = director.campaigns.get(campaign['id'])
+            prior = checkpoint['execution']['entries'][0]
+            assert prior['state']=='AUTHOR' and len(prior['structural_attempts'])==1
+            assert prior['structural_attempts'][0]['decision']['verdict']=='INSUFFICIENT_EVIDENCE'
+            assert len(model.calls)==4
+            director.close()
+            restarted = ResearchDirector(director.services,start_thread=False)
+            director = restarted
+            until(director,campaign['id'],phase='SANDBOX')
+            director.tick()
+            runner.thread.join(timeout=90)
+            assert not runner.thread.is_alive()
         result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
         entry=result['execution']['entries'][0]
         assert entry['state']=='COMPLETED',json.dumps(entry,indent=2)
-        expected_closeout = ('ABANDONED_DEVELOPMENT' if promising == 'simpler_parent' else
+        expected_closeout = ('ABANDONED_DEVELOPMENT' if promising in {'simpler_parent','iterate_restart'} else
                              'FROZEN_REQUIRES_VALIDATION' if promising else 'INCONCLUSIVE')
         assert entry['disposition']['outcome'] == expected_closeout
         assert director.campaigns.report(campaign['id'])['morning_report']['families'][0]['disposition'] == entry['disposition']
@@ -283,15 +307,28 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
         assert all(cell['status']=='COMPLETED' and cell['control_parity'] for cell in trial['robustness']['cells'])
         assert trial['robustness']['zero_cost_stress'] is (not promising)
         assert len({c['data_fingerprint'] for c in trial['robustness']['cells']})==2
-        assert len(model.calls)==4
-        if promising == 'simpler_parent':
+        expected_calls = 8 if promising=='iterate_restart' else 4
+        assert len(model.calls)==expected_calls
+        if promising in {'simpler_parent','iterate_restart'}:
             assert entry['research_decision']['simplification']['verdict'] == 'PREFER_SIMPLER_PARENT'
             assert entry['research_decision']['verdict'] == 'REJECTED_DEVELOPMENT'
             assert not entry.get('frozen_candidate_id')
             assert entry['family_outcome'] == 'STOPPED_WITHOUT_ACCEPTANCE'
             director.tick()
-            assert len(model.calls) == 4 and trial['reserved_runs'] == 20
+            assert len(model.calls) == expected_calls and trial['reserved_runs'] == 20
             assert any(d['state']=='LOCKED_HOLDOUT' for d in ResearchRepository(director.database).get(entry['reference_project_id'])['datasets'])
+            if promising=='iterate_restart':
+                attempts = entry['structural_attempts']
+                assert len(attempts)==2 and len({a['source_sha256'] for a in attempts})==2
+                assert sum(runner.get(a['sandbox_id'])['reserved_runs'] for a in attempts)==40
+                assert result['reserved']==started['reserved']
+                prior_context = model.calls[4][1]
+                assert prior_context['prior_structural_attempts'][0]['sandbox_id']==attempts[0]['sandbox_id']
+                assert prior_context['development_search_history']['debt']['structural_author_requests']==1
+                before_jobs=len(director.services.backtest_jobs.list())
+                for _ in range(3):director.tick()
+                assert len(model.calls)==8 and len(director.services.backtest_jobs.list())==before_jobs
+                assert director.campaigns.get(campaign['id'])==result
         elif promising:
             from app.research_agent.structural_candidates import freeze
             from app.research_agent.candidates import Candidates
@@ -338,4 +375,6 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
                 Decisions(director.database).record(project['id'],frozen['id'],decision_request('ACCEPTED_FOR_RESEARCH'))
             rejected=Decisions(director.database).record(project['id'],frozen['id'],decision_request())
             assert rejected['decision']=='REJECTED' and not frozen['execution_enabled']
-    finally:runner.close()
+    finally:
+        runner.close()
+        if restarted:restarted.close()
