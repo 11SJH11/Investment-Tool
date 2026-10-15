@@ -226,13 +226,16 @@ def test_existing_full_period_policy_does_not_gain_full_window_authority(structu
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
-@pytest.mark.parametrize('promising',[False,True,'automatic'])
+@pytest.mark.parametrize('promising',[False,True,'automatic','simpler_parent'])
 def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising):
     director,campaign,configs,model,backtest=structural
     if promising:
         with director.database.connect() as c:
             item=director.campaigns._get(c,campaign['id'])
             item['request']['policy']['minimum_trades']=1
+            if promising != 'simpler_parent':
+                # Historical campaigns retain their original freeze contract.
+                item['request']['policy'].pop('structural_simplification', None)
             if promising=='automatic':item['request']['policy']['holdout']='one_frozen_candidate'
             director.campaigns._save(c,item)
         # This synthetic four-day calendar includes Saturday; explicitly enable
@@ -277,7 +280,15 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
         assert trial['robustness']['zero_cost_stress'] is (not promising)
         assert len({c['data_fingerprint'] for c in trial['robustness']['cells']})==2
         assert len(model.calls)==4
-        if promising:
+        if promising == 'simpler_parent':
+            assert entry['research_decision']['simplification']['verdict'] == 'PREFER_SIMPLER_PARENT'
+            assert entry['research_decision']['verdict'] == 'REJECTED_DEVELOPMENT'
+            assert not entry.get('frozen_candidate_id')
+            assert entry['family_outcome'] == 'STOPPED_WITHOUT_ACCEPTANCE'
+            director.tick()
+            assert len(model.calls) == 4 and trial['reserved_runs'] == 20
+            assert any(d['state']=='LOCKED_HOLDOUT' for d in ResearchRepository(director.database).get(entry['reference_project_id'])['datasets'])
+        elif promising:
             from app.research_agent.structural_candidates import freeze
             from app.research_agent.candidates import Candidates
             frozen=next(c for c in Candidates(director.database).list(entry['reference_project_id']) if c['id']==entry['frozen_candidate_id'])

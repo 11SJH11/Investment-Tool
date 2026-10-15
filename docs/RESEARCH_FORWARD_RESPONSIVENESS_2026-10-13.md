@@ -4,6 +4,64 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: automatic single-feature simplification (15 October)
+
+New campaign policies freeze `structural_simplification=single_feature_ablation_v1`.
+Before freezing a generated child, development triage now assesses the feature-off
+controls already executed in Docker over the full development period and each
+preregistered window at original/doubled costs. Control parameters must differ
+from candidate parameters only by `research_feature_enabled=False/True`; exact
+parent/control parity and prefix checks must have completed. All expected windows
+must be present, in order, with finite paired expectancy. Missing evidence blocks
+promotion. This uses existing reserved runs and consumes no additional data.
+
+Exact deterministic rule: compute `child average R - parent average R` separately
+for the anchor and every cost/window cell. If no difference is strictly positive,
+prefer the simpler parent and reject development promotion. A positive difference
+only establishes observed contribution; every existing sample-size, expectancy,
+drawdown, winner-retention, cost and later validation gate still applies. No
+statistical significance or combined portfolio is inferred. The existing bounded
+retry policy may propose a different idea; it never activates the rejected child.
+
+This removes **the single generated feature**, not arbitrary internal parent rules.
+General multi-rule simplification and regime-labelled orchestration remain open.
+Old persisted policies without this field retain their original decision structure
+and behavior. No frozen strategy rules, engine accounting, source activation or
+holdout permissions change. No database migration is needed. Candidate freezing
+recomputes this gate through the existing evidence verifier, rather than trusting
+a display-only assessment. Missing child expectancy now produces a rejection
+reason instead of a `None` comparison exception exposed by the new tests.
+
+The campaign form explains the new rule. Its report shows parent/child N and
+paired expectancy differences, with an explicit limitation. New files:
+`feature_ablation.py`, `test_feature_ablation.py`, `FeatureAblation.jsx`.
+Changed: campaign policy and development triage, real-Docker campaign regression,
+campaign UI/browser fixture, this document and the short handoff.
+
+Verification: **138 backend tests passed** (171.09s, `LEDGER_TEST_DOCKER=1`),
+including four real-Docker campaign paths: insufficient development, historical
+freeze/manual validation, historical freeze/automatic validation, and new
+simpler-parent rejection without holdout use. The 17 new unit cases cover verified
+improvement, unchanged legacy decisions, no-benefit rejection and incomplete /
+nonpaired evidence. Suites: `test_feature_ablation`, `test_research_verdict`,
+`test_structural_candidates`, `test_research_campaigns`, `test_campaign_structural`,
+`test_campaign_validation`, `test_generated_validation`, `test_generated_decisions`.
+Log: `C:/Users/jamie/Project/feature-ablation-backend-final-20261015.log`.
+An initial Docker run could not resolve `ledger-research-sandbox:v1`; rebuilding
+with the existing allowlisted operator tool restored it. No fallback execution
+was enabled. No live provider or paid model was called.
+
+**135 frontend tests passed**; production build passed (157 modules, 965.11 kB JS,
+existing bundle warning). Mocked browser smoke passed at **1024 / 1440 / 1920px**
+with the new paired table expanded, existing history/controls working, no runtime
+errors or page overflow. Isolated browser/server stopped. The complete backend
+suite is still reserved for the final phase verification.
+Additional launch/report/project/preparation/director compatibility suites:
+**56 passed** (29.79s), log `C:/Users/jamie/Project/feature-ablation-policy-20261015.log`.
+Total distinct focused backend checks: **194 passed**, zero failures/skips.
+Final Docker inspection found no Ledger research containers. `git diff --check`
+passed. User-owned untracked strategies and exports were preserved.
+
 ## Continuation: structural hypotheses and development search debt (15 October)
 
 Structural author requests now persist a hashed hypothesis before Code Author is

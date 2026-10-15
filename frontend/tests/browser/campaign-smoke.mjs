@@ -22,6 +22,7 @@ else if(path.includes('/research-campaigns/campaign-fixture')){
 }
 if(data.morning_report)Object.assign(data.morning_report.families[0],{structural_attempts:[{}],research_decision:{verdict:'INSUFFICIENT_EVIDENCE',reasons:['Sample below the frozen minimum.'],limitation:'Development only; holdout remains locked.'}});
 if(data.morning_report)data.morning_report.families[0].search_history={debt:{structural_author_requests:2,structural_drafts:1,rejected_before_execution:0,failed_or_interrupted:1,numeric_hypotheses:1,numeric_variants_planned:3,integrity_errors:0},limitation:'Development search exposure only. Validation evidence is excluded.',records:[{id:'hypothesis',kind:'STRUCTURAL',status:'FAILED',preregistration:'VERIFIED',proposal:{description:'Avoid late entries',rationale:'Test continuation',feature:'One causal filter',expected_result:'Fewer entries',falsification:'Removed winners'},challenge:{concerns:['Small sample']},manager:{decision:'AUTHOR_CHILD',explanation:'Test only'},error:'duplicate_structural_source_no_retest'}]};
+if(data.morning_report)data.morning_report.families[0].research_decision.simplification={verdict:'PREFER_SIMPLER_PARENT',limitation:'One generated feature only; not a significance test.',reasons:[],rows:[{scope:'full_period',cost_multiplier:1,parent_n:30,child_n:30,parent_average_r:.2,child_average_r:.2,delta_average_r:0}]};
 return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});};
 `});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19283'});
@@ -50,6 +51,8 @@ await waitFor(`document.querySelector('[aria-label="vwap robustness samples"]')`
 if(await evaluate(`!document.querySelector('[aria-label="vwap robustness samples"]').textContent.includes('2025-01-01 to 2025-01-07')`))throw Error('Robustness sample dates missing');
 await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: hypotheses and research debt')).click()`);
 await waitFor(`document.body.textContent.includes('Falsified by: Removed winners')&&document.body.textContent.includes('2 structural requests')&&document.body.textContent.includes('duplicate_structural_source_no_retest')`);
+await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: single-feature simplification')).click()`);
+await waitFor(`document.querySelector('[aria-label="vwap feature ablation"]')&&document.body.textContent.includes('PREFER SIMPLER PARENT')`);
 for(const width of [1024,1440,1920]){
  await send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
  await new Promise(r=>setTimeout(r,150));

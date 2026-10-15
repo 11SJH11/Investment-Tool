@@ -40,6 +40,7 @@ class CampaignPolicy(Strict):
     code_generation: bool = False
     structural_evaluation: Literal['full_period','bounded_samples'] = 'full_period'
     structural_robustness: Literal['full_windows','bounded_samples'] = 'full_windows'
+    structural_simplification: Literal['single_feature_ablation_v1'] = 'single_feature_ablation_v1'
     concept_research: bool = True
     external_research: bool = False
     send_development_summaries: bool = False

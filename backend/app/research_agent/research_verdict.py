@@ -26,7 +26,7 @@ def assess(trial,policy):
                 parent=comparison.get('parent',{}).get('summary',{})
                 if not finite(summary.get('average_r')) or summary['average_r']<=0:
                     reasons.append('A development/cost sample has non-positive or unavailable expectancy.')
-                if not finite(parent.get('average_r')) or summary['average_r']<parent['average_r']:
+                if not finite(parent.get('average_r')) or not finite(summary.get('average_r')) or summary['average_r']<parent['average_r']:
                     reasons.append('A development/cost sample does not retain parent expectancy.')
                 metrics=cell.get('result',{}).get('metrics',{})
                 drawdown=metrics.get('max_drawdown_pct')
@@ -35,7 +35,21 @@ def assess(trial,policy):
                 if comparison.get('removed_large_winners',{}).get('n',0)>0:
                     reasons.append('Large parent winners were removed; automatic promotion is blocked.')
             verdict='REJECTED_DEVELOPMENT' if reasons else 'PROMISING_DEVELOPMENT'
-    return dict(version='development_triage_v1',verdict=verdict,reasons=list(dict.fromkeys(reasons)),
+    simplification = None
+    if policy.get('structural_simplification') == 'single_feature_ablation_v1':
+        from .feature_ablation import assess as ablate
+        simplification = ablate(trial)
+        if verdict == 'PROMISING_DEVELOPMENT':
+            if simplification['verdict'] == 'INCOMPLETE':
+                verdict = 'INSUFFICIENT_EVIDENCE'
+                reasons.append('Single-feature simplification evidence is incomplete.')
+            elif simplification['verdict'] == 'PREFER_SIMPLER_PARENT':
+                verdict = 'REJECTED_DEVELOPMENT'
+                reasons.append('The added feature improves expectancy in none of the paired development checks; retain the simpler parent.')
+    result = dict(version='development_triage_v1',verdict=verdict,reasons=list(dict.fromkeys(reasons)),
                 evidence_sha256=digest(trial),policy_sha256=digest(policy),
                 accepted=False,validation_authorized=False,
                 limitation='Development triage is not unseen validation, a profitability claim or deployment authorization.')
+    if simplification is not None:
+        result['simplification'] = simplification
+    return result

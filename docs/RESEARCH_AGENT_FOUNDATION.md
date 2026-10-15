@@ -2,7 +2,20 @@
 
 ## Current phase — verified 15 October 2026
 
-Latest increment: structural hypotheses are now hashed and persisted before code
+Latest increment: new campaigns automatically assess removal of the single
+generated feature using existing Docker parent-parity controls over the full
+development period and original/doubled-cost windows. No observed expectancy gain
+in any paired check means retain the simpler parent, not freeze the child.
+Incomplete evidence blocks promotion; existing gates still apply. Historical
+policies keep their original behavior. No extra simulations, schema migration or
+holdout exposure. This is not arbitrary parent-rule simplification or statistical
+significance. **194 distinct focused backend tests passed** (138 + 56, including
+four real-Docker campaign cases), **135 frontend tests passed**, build and browser
+smoke at 1024/1440/1920 passed. No Ledger research containers remain. Full backend
+suite not rerun. See the [current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
+for exact test commands, initial Docker image issue and remaining work.
+
+Previous increment: structural hypotheses are now hashed and persisted before code
 generation. Numeric and structural research history is unified in the campaign
 report and next author's development context, preserving challenges, failed /
 interrupted attempts, source identities and observed research exposure. Unknown or
