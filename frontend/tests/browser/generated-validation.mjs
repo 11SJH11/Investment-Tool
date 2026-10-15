@@ -6,7 +6,7 @@ const {send,evaluate,waitFor,click,errors,close}=await import('./cdp.mjs');
 errors.length=0;
 function fixtures(){
  localStorage.clear();localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Backtest'));
- window.validationCalls=[];let grant=null;
+ window.validationCalls=[];let grant=location.search.includes('passing=1')?{id:'grant',candidate_id:'generated',kind:'GENERATED_ISOLATED',status:'COMPLETED',verdict:'VALIDATION_PASS'}:null;let decision=null;
  const project={id:'fixture',name:'Isolated validation',state:'BASELINE_ANALYSIS',strategy_key:'fixture',research_debt:{uses:0},datasets:[{id:'held',symbols:['QQQ'],timeframe:'1m',start:'2027-01-01',end:'2027-12-31',state:'LOCKED_HOLDOUT'}],analyses:{},lineage:[],events:[]};
  window.fetch=async(url,options={})=>{
   const p=new URL(String(url),location.href).pathname,method=options.method||'GET';validationCalls.push({p,method,body:options.body});let body={items:[]};
@@ -19,6 +19,8 @@ function fixtures(){
   else if(p.endsWith('/research-agent/fixture'))body=project;
   else if(p.endsWith('/candidates'))body={items:[{id:'generated',kind:'GENERATED_DEVELOPMENT',state:'FROZEN_DEVELOPMENT',reason:'Verified development fixture',snapshot:{},snapshot_hash:'fixture'}]};
   else if(p.endsWith('/validations'))body={items:grant?[grant]:[]};
+  else if(p.endsWith('/decisions'))body={items:decision?[decision]:[]};
+  else if(p.endsWith('/decision')){const request=JSON.parse(options.body);decision={candidate_id:'generated',decision:request.decision,request};body=decision;}
   else if(p.endsWith('/validate-isolated')){grant={id:'grant',candidate_id:'generated',kind:'GENERATED_ISOLATED',status:'ACTIVE',verdict:'PENDING'};project.datasets[0].state='INSPECTED_VALIDATION';body=grant;}
   else if(p.endsWith('/cancel-isolated')){grant.status='CANCELLED';body=grant;}
   else if(p.endsWith('/loop'))body=null;
@@ -36,6 +38,7 @@ await waitFor(`document.body.innerText.includes('Generated source / FROZEN_DEVEL
 await evaluate(`[...document.querySelectorAll('summary')].find(e=>e.textContent.includes('Generated source /')).click()`);
 await waitFor(`document.body.innerText.includes('Candidate-specific validation')`);
 assert(await evaluate(`document.body.innerText.includes('four isolated validation checks')`));
+assert(await evaluate(`document.querySelector('[aria-label="Candidate research decision"] option[value="ACCEPTED_FOR_RESEARCH"]').disabled`));
 assert(await evaluate(`!validationCalls.some(c=>c.method==='POST')`));
 await evaluate(`(()=>{const s=document.querySelector('[aria-label="Candidate validation dataset"]');s.value='held';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
 assert(await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Approve and run candidate validation').disabled`));
@@ -44,10 +47,25 @@ await click('Approve and run candidate validation');await waitFor(`document.body
 assert(await evaluate(`validationCalls.filter(c=>c.p.endsWith('/validate-isolated')).length===1&&!validationCalls.some(c=>c.p.endsWith('/validate'))`));
 await click('Cancel validation');await waitFor(`document.body.innerText.includes('CANCELLED / PENDING')`);
 assert(await evaluate(`document.body.innerText.includes('INSPECTED_VALIDATION')`));
+assert(await evaluate(`!validationCalls.some(c=>['costs','simplification','regimes','manager-review','code-drafts'].some(s=>c.p.endsWith('/'+s)))`));
+await send('Page.navigate',{url:base+'/?passing=1'});
+await waitFor(`document.body.innerText.includes('Research Agent')`);await click('Research Agent');
+await waitFor(`document.body.innerText.includes('Advanced projects')`);await click('Advanced projects');
+await waitFor(`document.body.innerText.includes('Isolated validation / BASELINE_ANALYSIS')`);await click('Isolated validation / BASELINE_ANALYSIS');
+await waitFor(`document.body.innerText.includes('Generated source / FROZEN_DEVELOPMENT')`);
+await evaluate(`[...document.querySelectorAll('summary')].find(e=>e.textContent.includes('Generated source /')).click()`);
+await waitFor(`document.querySelector('[aria-label="Candidate research decision"] option[value="ACCEPTED_FOR_RESEARCH"]')&&!document.querySelector('[aria-label="Candidate research decision"] option[value="ACCEPTED_FOR_RESEARCH"]').disabled`);
+await evaluate(`(()=>{const s=document.querySelector('[aria-label="Candidate research decision"]');s.value='ACCEPTED_FOR_RESEARCH';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+await waitFor(`document.body.innerText.includes('Period consistency')`);
+assert(await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Record research decision').disabled`));
+await evaluate(`(()=>{for(const label of ['Decision rationale','Period consistency','Winner retention and changed paths','Parameter neighborhood','Costs and market regimes','Complexity, missing checks and limitations']){const el=[...document.querySelectorAll('label')].find(l=>l.textContent.startsWith(label)).querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'Reviewed synthetic evidence; remaining checks documented.');el.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+await evaluate(`[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Record this final research decision')).querySelector('input').click()`);
+await click('Record research decision');await waitFor(`document.body.innerText.includes('ACCEPTED_FOR_RESEARCH')`);
+assert(await evaluate(`validationCalls.filter(c=>c.p.endsWith('/decision')).length===1`));
 for(const width of [1024,1440,1920]){
  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
  assert(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`),'Page overflow '+width);
 }
 assert.equal(errors.length,0,errors.join('\n'));
-console.log('PASS generated validation consent, isolated endpoint, polling, cancellation, inspected dataset, 1024/1440/1920 and runtime checks.');
+console.log('PASS generated validation consent, isolated endpoint, polling, cancellation, inspected dataset, acceptance gating/structured review, no incompatible numeric controls, 1024/1440/1920 and runtime checks.');
 close();

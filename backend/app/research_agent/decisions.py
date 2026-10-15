@@ -39,6 +39,9 @@ def verified_validation(connection,candidate):
     dataset=json.loads(row[0]) if row else None
     from .repository import dataset_ids
     if not dataset or dataset['id'] not in dataset_ids(connection,candidate['project_id']) or dataset['state']!='INSPECTED_VALIDATION':raise ValueError('Approved validation dataset is not available')
+    if candidate.get('kind')=='GENERATED_DEVELOPMENT':
+        from .generated_decisions import verify
+        return verify(connection,candidate,validation,dataset,json.loads(approved['detail']))
     runs=[]
     for cell in validation['cells']:
         row=connection.execute('SELECT config_json,result_json FROM backtest_runs WHERE id=?',(cell.get('run_id'),)).fetchone()

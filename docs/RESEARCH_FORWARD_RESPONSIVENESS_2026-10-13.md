@@ -443,3 +443,64 @@ An expired campaign or unavailable/mismatched sandbox image must refuse executio
 This requires an existing promising frozen candidate; a mocked passing fixture is
 not evidence that a real strategy has an edge. No provider credentials or real
 model calls were used in this increment's automated acceptance.
+
+## Generated final research decisions — closeout 15 October
+
+The existing immutable decision workflow now supports generated development
+candidates. Acceptance verifies the frozen candidate audit and development evidence,
+source/dependency/image identity, exact validation dataset and configuration,
+control/prefix checks, parent/child result digests, recomputed comparison and
+preregistered criteria. A persisted PASS label alone cannot override failing data.
+No generated source is imported or executed during decision verification.
+
+The existing structured review and explicit acknowledgement are required. Missing
+simplification/regime checks remain documented limitations. Rejection can be recorded
+without consuming holdout data. The frozen candidate and historical results remain
+unchanged; accepting for research does not register, deploy or enable trading.
+
+Candidate details now reuse `ResearchDecision`, with incompatible numeric manager,
+cost/simplification/regime and sandbox-parent controls hidden for generated source.
+The separate isolated validation controls remain available until a decision is saved.
+
+Changes: new `backend/app/research_agent/generated_decisions.py` and
+`backend/tests/test_generated_decisions.py`; integration in `decisions.py`,
+`ResearchCandidates.jsx`, `ResearchDecision.jsx`; extended
+`test_campaign_structural.py` and `frontend/tests/browser/generated-validation.mjs`;
+this checklist and `RESEARCH_AGENT_FOUNDATION.md`. No schema migration.
+
+Verification: **76 backend tests passed**, 151.14s, with `LEDGER_TEST_DOCKER=1`:
+`test_generated_decisions.py`, `test_generated_validation.py`,
+`test_research_decisions.py`, `test_research_validation.py`,
+`test_campaign_structural.py`, `test_structural_candidates.py`.
+Log: `C:/Users/jamie/Project/generated-decision-closeout-20261014.log` (artifact
+name retained from the run started before this closeout).
+An initial run passed 74 tests and failed two before execution because the sandbox
+image was missing; the existing allowlisted builder restored it before the passing
+repeat. One existing Starlette/httpx deprecation warning remains.
+
+Frontend: **133 tests passed**, production build passed (155 modules; existing
+bundle-size advisory). Mocked browser acceptance passed at 1024/1440/1920:
+validation consent/cancel/polling, disabled acceptance without a passing validation,
+required structured review and acknowledgement, final decision display, no numeric
+research calls for generated candidates, no runtime exceptions or page overflow.
+The existing Advanced projects duplicate React-key console warning was observed;
+it is not included in the claim of no runtime exceptions. Temporary browser/server
+were closed. No labelled Ledger research containers remain. `git diff --check`
+passed. The complete backend suite was not rerun for this increment.
+
+The passing acceptance fixture is synthetic and tests the verification gate, not
+strategy quality. The real Docker fixture correctly produces insufficient validation
+evidence (one winner, no observed loss denominator), blocks acceptance and permits
+an explicit rejection. No real model/provider or trading calls were made.
+
+Manual check: open a generated candidate in Research Agent → Advanced projects.
+After isolated validation passes, select Accept for further research, complete all
+five review fields, enter a rationale and acknowledge the decision. Without a pass,
+acceptance must remain unavailable; rejection remains possible after active checks
+finish. Saved decisions cannot be overwritten and must not enable any execution.
+
+Remaining: automatic candidate-bound validation under frozen policy, generated
+simplification/regime orchestration, automatic family disposition and coherent
+research-debt/hypothesis integration, then independent forward shadows, paper-only
+execution/risk/reconciliation and Journal linkage. This is not completion of the
+full autonomous Research Agent or the requested forward phase.

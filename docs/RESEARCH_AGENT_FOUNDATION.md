@@ -1,8 +1,21 @@
 # Research Agent current status / handoff
 
-## Current phase — verified 14 October 2026
+## Current phase — verified 15 October 2026
 
-Latest increment: explicitly approved validation of frozen generated candidates
+Latest increment: generated candidates now use the existing final research decision
+workflow. Acceptance rechecks the freeze/approval audit identities, archived source,
+Docker image, dataset/configuration, control/prefix evidence, result hashes,
+recomputed comparison and fixed validation criteria. A structured review and
+explicit acknowledgement remain required. Decisions are immutable and grant no
+registration, deployment or trading authority. Rejection needs no holdout exposure.
+The shared decision UI hides incompatible numeric research controls for generated
+candidates. **76 focused backend tests passed** (151.14s, real Docker enabled),
+**133 frontend tests passed**, production build passed, and mocked browser checks
+passed at 1024/1440/1920. No research containers remain; no schema migration.
+The complete backend suite was not rerun for this increment. Detailed evidence and
+remaining work are in the linked current-phase checklist below.
+
+Previous increment: explicitly approved validation of frozen generated candidates
 now uses the existing Docker runner and dataset-grant store. Source, image,
 criteria, data bounds and simulation budgets are checked before dispatch. The
 ordinary host job queue rejects generated validation. Cancellation/restart retain
@@ -29,7 +42,7 @@ Latest implementation commits: `f9ce0c1` (full-period/warmup), `37dfcf5` (archiv
 dependencies/spending), `e0b5709` (complete development-window cost checks),
 `e5ffdde` (heavy Analysis and response-race acceptance). No schema migration.
 Next unresolved integration: automatic validation orchestration under the frozen
-policy, generated acceptance, simplification/regime orchestration and final family disposition, followed by
+policy, simplification/regime orchestration and automatic final family disposition, followed by
 independent forward shadows, paper-only execution, reconciliation and Journal UI.
 Do not describe the full Research Agent or requested forward phase as complete.
 

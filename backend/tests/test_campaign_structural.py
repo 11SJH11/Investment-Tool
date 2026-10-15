@@ -296,4 +296,11 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
             assert runner.approve_validation(project['id'],frozen['id'],dataset['id'],{'minimum_trades':1})['id']==grant['id']
             assert Candidates(director.database).list(project['id'])[-1]==frozen
             assert next(d for d in ResearchRepository(director.database).get(project['id'])['datasets'] if d['id']==dataset['id'])['state']=='INSPECTED_VALIDATION'
+            from app.research_agent.decisions import Decisions
+            from tests.test_research_decisions import request as decision_request
+            assert validation['verdict']=='INSUFFICIENT_EVIDENCE'  # One winner has no observed R loss denominator.
+            with pytest.raises(ValueError,match='passing validation'):
+                Decisions(director.database).record(project['id'],frozen['id'],decision_request('ACCEPTED_FOR_RESEARCH'))
+            rejected=Decisions(director.database).record(project['id'],frozen['id'],decision_request())
+            assert rejected['decision']=='REJECTED' and not frozen['execution_enabled']
     finally:runner.close()
