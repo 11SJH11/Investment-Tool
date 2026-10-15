@@ -273,6 +273,9 @@ class ResearchDirector:
                 return
             current = next((e for e in entries if e['state'] == 'QUEUED'), None)
             if not current:
+                from .family_disposition import close
+                for entry in entries:
+                    entry['disposition'] = close(entry, item['request']['policy'])
                 item['status'] = 'DEVELOPMENT_COMPLETE' if any(e.get('numeric_cycles') or e.get('structural') for e in entries) else 'BASELINES_COMPLETE'
                 self._save(item, item['status'])
                 return

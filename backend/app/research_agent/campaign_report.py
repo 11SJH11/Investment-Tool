@@ -19,6 +19,12 @@ def evidence_report(database,campaign):
             item['family_outcome']=entry.get('family_outcome')
             item['frozen_candidate_id']=entry.get('frozen_candidate_id')
             item['frozen_candidate_hash']=entry.get('frozen_candidate_hash')
+            from .family_disposition import verified
+            try:
+                item['disposition'] = verified(entry, campaign['request']['policy'])
+            except ValueError:
+                item['disposition'] = None
+                item['warnings'].append('Family closeout integrity check failed; inspect saved evidence.')
             item['search_history'] = development_history(c, [entry['project_id'], entry.get('reference_project_id')])
             attempts = {a['author_id']: a for a in entry.get('structural_attempts', [])}
             for record in item['search_history']['records']:

@@ -23,6 +23,7 @@ else if(path.includes('/research-campaigns/campaign-fixture')){
 if(data.morning_report)Object.assign(data.morning_report.families[0],{structural_attempts:[{}],research_decision:{verdict:'INSUFFICIENT_EVIDENCE',reasons:['Sample below the frozen minimum.'],limitation:'Development only; holdout remains locked.'}});
 if(data.morning_report)data.morning_report.families[0].search_history={debt:{structural_author_requests:2,structural_drafts:1,rejected_before_execution:0,failed_or_interrupted:1,numeric_hypotheses:1,numeric_variants_planned:3,integrity_errors:0},limitation:'Development search exposure only. Validation evidence is excluded.',records:[{id:'hypothesis',kind:'STRUCTURAL',status:'FAILED',preregistration:'VERIFIED',proposal:{description:'Avoid late entries',rationale:'Test continuation',feature:'One causal filter',expected_result:'Fewer entries',falsification:'Removed winners'},challenge:{concerns:['Small sample']},manager:{decision:'AUTHOR_CHILD',explanation:'Test only'},error:'duplicate_structural_source_no_retest'}]};
 if(data.morning_report)data.morning_report.families[0].research_decision.simplification={verdict:'PREFER_SIMPLER_PARENT',limitation:'One generated feature only; not a significance test.',reasons:[],rows:[{scope:'full_period',cost_multiplier:1,parent_n:30,child_n:30,parent_average_r:.2,child_average_r:.2,delta_average_r:0}]};
+if(data.morning_report&&campaign.status==='DEVELOPMENT_COMPLETE')data.morning_report.families[0].disposition={outcome:'ABANDONED_DEVELOPMENT',reasons:['No more structural attempts are scheduled under this campaign allocation.']};
 return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});};
 `});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19283'});
@@ -45,6 +46,7 @@ await click('pause');await waitFor(`document.body.textContent.includes('PAUSED')
 await click('resume');await waitFor(`document.body.textContent.includes('ACTIVE')`);
 await evaluate('window.finishDevelopment()');
 await waitFor(`document.body.textContent.includes('Policy-authorized validation: ACTIVE')`);
+await waitFor(`document.body.textContent.includes('ABANDONED DEVELOPMENT')&&document.body.textContent.includes('Development closeout only.')`);
 await click('Cancel candidate validation');await waitFor(`document.body.textContent.includes('CANCELLED')`);
 await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: development windows and cost checks')).click()`);
 await waitFor(`document.querySelector('[aria-label="vwap robustness samples"]')`);

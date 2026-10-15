@@ -69,6 +69,16 @@ def test_campaign_runs_projects_without_browser_and_reserves_once(execution):
     advance_until(director, campaign['id'], 'BASELINES_COMPLETE')
     assert len(backtest.calls) == 2
     assert all(e['state'] == 'COMPLETED' for e in director.campaigns.get(campaign['id'])['execution']['entries'])
+    closed = director.campaigns.get(campaign['id'])
+    assert all(e['disposition']['outcome'] == 'BASELINE_ONLY' for e in closed['execution']['entries'])
+    restarted = ResearchDirector(director.services, start_thread=False)
+    try:
+        restarted.tick()
+        assert restarted.campaigns.get(campaign['id']) == closed
+        assert all(f['disposition']['outcome'] == 'BASELINE_ONLY'
+                   for f in restarted.campaigns.report(campaign['id'])['morning_report']['families'])
+    finally:
+        restarted.close()
     assert len(director.services.backtest_jobs.list()) == 2
     assert all(d['state'] == 'LOCKED_HOLDOUT' for p in started['projects']
                for d in ResearchRepository(director.database).get(p['project_id'])['datasets'] if d['state'] != 'DEVELOPMENT')

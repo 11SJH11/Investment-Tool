@@ -272,6 +272,10 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
         result=until(director,campaign['id'],state='DEVELOPMENT_COMPLETE')
         entry=result['execution']['entries'][0]
         assert entry['state']=='COMPLETED',json.dumps(entry,indent=2)
+        expected_closeout = ('ABANDONED_DEVELOPMENT' if promising == 'simpler_parent' else
+                             'FROZEN_REQUIRES_VALIDATION' if promising else 'INCONCLUSIVE')
+        assert entry['disposition']['outcome'] == expected_closeout
+        assert director.campaigns.report(campaign['id'])['morning_report']['families'][0]['disposition'] == entry['disposition']
         assert entry['structural_result']['causality']['prefix_match']
         trial=runner.get(entry['sandbox_id'])
         assert trial['reserved_runs']==20

@@ -4,6 +4,55 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: durable family development closeout (15 October)
+
+When all allocated family work finishes, the Director atomically stores a
+development disposition with the existing campaign-completion event. It records
+the entry/policy hashes, candidate identity where present, structural attempt
+count and reasons. Outcomes distinguish baseline-only work, manual review needed,
+frozen candidate requiring validation, rejected development (abandoned under this
+allocation), insufficient evidence (inconclusive), execution failure and stopped
+research. No closeout grants acceptance or deployment. Explicit candidate
+decisions and validation remain separate, verified workflows.
+
+Reports verify the closeout against the saved entry and policy before showing it.
+Changed evidence yields an integrity warning, not a fabricated conclusion.
+Historical campaigns without a closeout are not retroactively rewritten.
+Restart ticks leave completed records unchanged and do not repeat models or jobs.
+This does not close a cancelled or budget-exhausted campaign as a successful
+research result, and does not turn an insufficient sample into strategy rejection.
+
+New files: `family_disposition.py`, `test_family_disposition.py` (13 unit cases).
+Changed: Director completion, campaign report, director and real-Docker campaign
+tests, campaign UI/browser fixture and both current-status documents. No schema
+migration or trading change. Full autonomous research acceptance, regime-labelled
+orchestration, forward shadows and the paper execution phase remain unfinished.
+
+Final verification: **207 focused backend tests passed**, zero failures/skips,
+199.02s with real Docker enabled. This combines the previous 194 affected tests
+with the 13 closeout cases; the four real-Docker campaign paths also assert saved
+closeout/report agreement. Exact suites are the simplification section's eight,
+plus `test_campaign_launch`, `test_campaign_report`, `test_campaign_projects`,
+`test_campaign_preparation`, `test_research_director`, `test_family_disposition`.
+Log: `C:/Users/jamie/Project/research-closeout-verified-20261015.log`.
+An initial numeric multi-family test exceeded its existing eight-second wait,
+then passed unchanged in isolation and in the final combined run. Its timeout
+and production logic were not relaxed. The interrupted combined run passed 203
+checks but four Docker cases could not find the image; the allowlisted builder
+restored the prerequisite before the final run. The cause of recurring tag
+disappearance has not been established; this is not claimed fixed in application
+code. Execution continues to fail closed without a verified image.
+
+**135 frontend tests passed**. Production build passed (157 modules, 965.54 kB JS,
+existing bundle advisory) after an identical retry cleared transient access
+errors in unchanged files. Browser fixture smoke passed at **1024 / 1440 / 1920px**,
+including closeout, simplification, history and validation controls, with no
+runtime errors or page overflow. Isolated browser/server stopped. No full backend
+suite or live/paid-provider acceptance is claimed by this focused increment.
+Final Docker inspection: no Ledger research containers; the same six unrelated
+stopped containers remain unchanged. Sandbox image is available as
+`sha256:93ecda493ceef6a3271719226e440444d8622dd1aa5efab74148a4098544432f`.
+
 ## Continuation: automatic single-feature simplification (15 October)
 
 New campaign policies freeze `structural_simplification=single_feature_ablation_v1`.

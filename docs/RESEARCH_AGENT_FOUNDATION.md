@@ -2,7 +2,18 @@
 
 ## Current phase — verified 15 October 2026
 
-Latest increment: new campaigns automatically assess removal of the single
+Latest increment: completed families now have durable development closeouts:
+baseline-only, review needed, frozen pending validation, abandoned development,
+inconclusive, execution blocked or stopped without conclusion. Entry/policy hashes
+are checked before display. Restarts preserve the same record and do not repeat
+paid work. These records grant no acceptance/deployment authority and do not
+rewrite historical campaigns. **207 focused backend tests passed** (199.02s,
+four real-Docker campaign paths), **135 frontend tests passed**, production build
+and browser checks at 1024/1440/1920 passed. No migration. Full backend suite not
+rerun. Exact scope, environment retries and remaining work are recorded in the
+[current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md).
+
+Previous increment: new campaigns automatically assess removal of the single
 generated feature using existing Docker parent-parity controls over the full
 development period and original/doubled-cost windows. No observed expectancy gain
 in any paired check means retain the simpler parent, not freeze the child.
