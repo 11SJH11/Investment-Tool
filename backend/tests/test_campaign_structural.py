@@ -97,6 +97,17 @@ def test_campaign_authors_then_dispatches_existing_sandbox_without_browser(struc
     b=ResearchRepository(director.database).get(entry['reference_project_id'])
     assert {d['id'] for d in a['datasets']}=={d['id'] for d in b['datasets']}
     assert any(d['state']=='LOCKED_HOLDOUT' for d in b['datasets'])
+    with director.database.connect() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS agent_sandbox_runs(id TEXT PRIMARY KEY, document TEXT)')
+        c.execute('INSERT INTO agent_sandbox_runs VALUES (?,?)',
+                  (entry['sandbox_id'], json.dumps(director.services.research_sandbox.get(entry['sandbox_id']))))
+    report = director.campaigns.report(campaign['id'])['morning_report']['families'][0]
+    history = report['search_history']
+    assert history['debt']['structural_author_requests'] == 1
+    record = next(r for r in history['records'] if r['kind'] == 'STRUCTURAL')
+    assert record['preregistration'] == 'VERIFIED'
+    assert record['sandbox_id'] == entry['sandbox_id']
+    assert record['development_outcome'] == entry['research_decision']
     director.tick()
     assert len(model.calls)==4 and len(director.services.research_sandbox.calls)==1
 

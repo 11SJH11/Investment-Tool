@@ -1,5 +1,6 @@
 """Read-only morning report. No ranking, unseen-data access or LLM arithmetic."""
 import json
+from .research_ledger import development_history
 
 
 def evidence_report(database,campaign):
@@ -18,6 +19,13 @@ def evidence_report(database,campaign):
             item['family_outcome']=entry.get('family_outcome')
             item['frozen_candidate_id']=entry.get('frozen_candidate_id')
             item['frozen_candidate_hash']=entry.get('frozen_candidate_hash')
+            item['search_history'] = development_history(c, [entry['project_id'], entry.get('reference_project_id')])
+            attempts = {a['author_id']: a for a in entry.get('structural_attempts', [])}
+            for record in item['search_history']['records']:
+                attempt = attempts.get(record['id'])
+                if attempt:
+                    record['development_outcome'] = attempt.get('decision')
+                    record['sandbox_id'] = attempt.get('sandbox_id')
             if baseline.get('summary') and baseline['summary']['n']<campaign['request']['policy']['minimum_trades']:
                 item['warnings'].append('Baseline sample is below the campaign minimum.')
             if entry.get('sandbox_id'):

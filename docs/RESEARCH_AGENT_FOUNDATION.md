@@ -2,7 +2,21 @@
 
 ## Current phase — verified 15 October 2026
 
-Latest increment: new structural campaigns can explicitly authorize automatic
+Latest increment: structural hypotheses are now hashed and persisted before code
+generation. Numeric and structural research history is unified in the campaign
+report and next author's development context, preserving challenges, failed /
+interrupted attempts, source identities and observed research exposure. Unknown or
+validation-derived evidence scopes are redacted; failed integrity checks block
+further author spending. The UI has an expandable hypotheses/research-debt view.
+No new migration or execution authority. **50 focused backend tests passed**
+(140.95s, including four real Docker acceptance cases), **135 frontend tests passed**,
+production build and browser checks at 1024/1440/1920 passed. Full backend suite
+not rerun. See [current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md)
+for exact files, evidence and limitations. Autonomous simplification/regime
+orchestration, complete campaign acceptance, forward shadows and paper execution
+remain unfinished; descriptive debt counts are not a statistical correction.
+
+Previous increment: new structural campaigns can explicitly authorize automatic
 validation of one frozen generated candidate. Selection and criteria are durable;
 only one qualifying candidate and one untouched matching dataset are allowed.
 Ambiguity, changed policy, expired/budget-exhausted authority or dispatch failure

@@ -4,6 +4,60 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
+## Continuation: structural hypotheses and development search debt (15 October)
+
+Structural author requests now persist a hashed hypothesis before Code Author is
+called: proposal, parent identity, evidence identity and discovery dataset IDs.
+The existing `agent_reviews` document stores this additive field; there is no new
+table or migration. Completed records remain protected by the existing terminal
+review write guard. Old records are explicitly labelled reconstructed, not
+retroactively claimed as preregistered. A mismatched hypothesis hash or identity
+blocks further code-author spending.
+
+`research_ledger.py` projects structural requests and numeric preregistrations into
+one development history per linked family. It preserves rejected, failed and
+interrupted requests, challenges, Manager reasoning and source/draft identities.
+Campaign reports link these to saved structural outcomes and sandbox IDs. The next
+author receives the bounded history alongside existing development evidence and
+attempt results; it does not receive validation results or generated source from
+old reviews. Records whose discovery datasets cannot be verified as development /
+inspected development have their proposal and challenge text withheld. Reads do
+not create new inspections or repeat paid work.
+
+The campaign UI exposes an expandable hypotheses/research-debt section. Counts
+distinguish requests, drafts, failures, pre-execution rejections, numeric hypotheses
+and planned variants. They are descriptive exposure counts, **not independent
+trials, a multiple-testing correction, or a profitability score**. Old failed
+attempts cannot disappear merely because the process restarts. This does not yet
+implement cross-campaign semantic idea deduplication or autonomous simplification /
+regime tests; those remain separate orchestration work.
+
+New files: `backend/app/research_agent/research_ledger.py`,
+`backend/tests/test_research_ledger.py`,
+`frontend/src/features/strategy-lab/ResearchSearchHistory.jsx`.
+Integration changes: `author.py`, `campaign_report.py`,
+`test_campaign_structural.py`, `AutonomousResearch.jsx`, browser
+`campaign-smoke.mjs`, this ledger and the short Research Agent handoff.
+
+Final verification: **50 focused backend tests passed**, zero failures/skips,
+140.95 seconds, with `LEDGER_TEST_DOCKER=1`: `test_research_ledger.py` (8 new
+tests), `test_research_author.py`, `test_campaign_report.py`,
+`test_campaign_structural.py`, `test_campaign_validation.py`. Includes four real
+Docker author/campaign acceptance cases. The initial test failures were new test
+fixture assumptions (pre-existing numeric hypotheses, terminal review mutation
+guard, and the mock sandbox's absent persistent table); corrected without
+weakening production safeguards. Final log:
+`C:/Users/jamie/Project/ledger-history-backend-final-20261015.log`.
+
+**135 frontend tests passed**, zero failures/skips; production build passed
+(156 modules, 963.18 kB JS, existing bundle-size advisory). A transient Windows
+access error in unchanged files cleared on an identical build rerun after the
+isolated smoke server stopped. Browser fixture acceptance passed at **1024 / 1440 /
+1920px**, including expanded hypothesis/challenge/failure history, existing
+campaign controls and validation cancellation; no runtime errors or page overflow.
+Browser/server stopped. `git diff --check` passed. No live provider or paid model
+was called. No full-backend completion claim is made for this incremental change.
+
 ## Initial audit at the 13 October boundary
 
 This table records the starting gaps. Completed increments and current verification

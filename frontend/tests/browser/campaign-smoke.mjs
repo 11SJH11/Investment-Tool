@@ -21,6 +21,7 @@ else if(path.includes('/research-campaigns/campaign-fixture')){
  else data={campaign,worker:{running:true,error:null},summary:{baseline_runs_completed:1,numeric_cycles_completed:0,structural_checks_completed:0,holdout_consumed_by_campaign:false},events:[],morning_report:{families:[{project_id:'p',family_id:'vwap',state:'RUNNING',baseline_summary:{n:8,average_r:.2},verdict:'DEVELOPMENT_ONLY',warnings:['Low sample'],robustness:{cells:[{window:1,start:'2025-01-01',end:'2025-01-07',cost_multiplier:2,status:'COMPLETED',summary:{n:3,average_r:.1,total_r:.3,profit_factor_r:1.2}}]}}],conclusions:['No strategy automatically accepted.']}};
 }
 if(data.morning_report)Object.assign(data.morning_report.families[0],{structural_attempts:[{}],research_decision:{verdict:'INSUFFICIENT_EVIDENCE',reasons:['Sample below the frozen minimum.'],limitation:'Development only; holdout remains locked.'}});
+if(data.morning_report)data.morning_report.families[0].search_history={debt:{structural_author_requests:2,structural_drafts:1,rejected_before_execution:0,failed_or_interrupted:1,numeric_hypotheses:1,numeric_variants_planned:3,integrity_errors:0},limitation:'Development search exposure only. Validation evidence is excluded.',records:[{id:'hypothesis',kind:'STRUCTURAL',status:'FAILED',preregistration:'VERIFIED',proposal:{description:'Avoid late entries',rationale:'Test continuation',feature:'One causal filter',expected_result:'Fewer entries',falsification:'Removed winners'},challenge:{concerns:['Small sample']},manager:{decision:'AUTHOR_CHILD',explanation:'Test only'},error:'duplicate_structural_source_no_retest'}]};
 return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});};
 `});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19283'});
@@ -47,6 +48,8 @@ await click('Cancel candidate validation');await waitFor(`document.body.textCont
 await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: development windows and cost checks')).click()`);
 await waitFor(`document.querySelector('[aria-label="vwap robustness samples"]')`);
 if(await evaluate(`!document.querySelector('[aria-label="vwap robustness samples"]').textContent.includes('2025-01-01 to 2025-01-07')`))throw Error('Robustness sample dates missing');
+await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='vwap: hypotheses and research debt')).click()`);
+await waitFor(`document.body.textContent.includes('Falsified by: Removed winners')&&document.body.textContent.includes('2 structural requests')&&document.body.textContent.includes('duplicate_structural_source_no_retest')`);
 for(const width of [1024,1440,1920]){
  await send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
  await new Promise(r=>setTimeout(r,150));

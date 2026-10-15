@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {api} from '../../api/client';
 import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayload} from './campaignView.js';
+import ResearchSearchHistory from './ResearchSearchHistory.jsx';
 
 const number=value=>value==null?'Unavailable':Number(value).toFixed(2);
 const defaults={mode:'FIND_STRATEGIES',prompt:'',strategy_key:'',symbols:'QQQ',timeframe:'1m',history:'cached',
@@ -70,6 +71,7 @@ export default function AutonomousResearch({strategies}){
    {report.morning_report.conclusions.map(t=><p className="text-xs muted mt-2" key={t}>{t}</p>)}
    {report.morning_report.families.filter(f=>f.robustness?.cells?.length).map(f=><details className="mt-3" key={f.project_id}><summary>{f.family_id}: development windows and cost checks</summary><p className="text-xs muted mt-2">Independent accounts per sample. Do not sum these returns into portfolio performance. Dates were fixed before results.</p><div className="overflow-x-auto"><table className="w-full text-sm text-left" aria-label={`${f.family_id} robustness samples`}><thead><tr>{['Window','Dates','Costs','Status','N','Avg R','Total R','PF (R)'].map(h=><th key={h} className="p-2 whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{f.robustness.cells.map(c=><tr key={`${c.window}-${c.cost_multiplier}`}><td className="p-2">{c.window}</td><td className="p-2 whitespace-nowrap">{c.start} to {c.end}</td><td className="p-2">{c.cost_multiplier}×</td><td className="p-2">{c.status}</td><td className="p-2">{c.summary?.n??'Unavailable'}</td><td className="p-2">{number(c.summary?.average_r)}</td><td className="p-2">{number(c.summary?.total_r)}</td><td className="p-2">{number(c.summary?.profit_factor_r)}</td></tr>)}</tbody></table></div></details>)}
    {report.morning_report.families.filter(f=>f.research_decision).map(f=><div className="mt-3" key={f.project_id}><h5 className="font-semibold">{f.family_id}: {f.research_decision.verdict.replaceAll('_',' ')}</h5><p className="text-xs muted">{f.structural_attempts?.length??0} completed structural attempts. {f.research_decision.limitation}</p>{f.research_decision.reasons.map(reason=><p className="text-sm" key={reason}>{reason}</p>)}</div>)}
+   {report.morning_report.families.map(f=><ResearchSearchHistory key={f.project_id} family={f}/>)}
    <details className="mt-3"><summary>Source identity, winner retention and evidence</summary><pre className="text-xs max-h-96 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(report.morning_report,null,2)}</pre></details>
    <details className="mt-3"><summary>Frozen plan, budgets and audit history</summary><pre className="text-xs max-h-96 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({plans:campaign.plans,execution:campaign.execution,reserved:campaign.reserved,events:report.events},null,2)}</pre></details>
   </article></>}
