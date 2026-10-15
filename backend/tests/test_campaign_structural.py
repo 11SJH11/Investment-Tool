@@ -215,13 +215,14 @@ def test_existing_full_period_policy_does_not_gain_full_window_authority(structu
 
 
 @pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in complete campaign Docker acceptance')
-@pytest.mark.parametrize('promising',[False,True])
+@pytest.mark.parametrize('promising',[False,True,'automatic'])
 def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising):
     director,campaign,configs,model,backtest=structural
     if promising:
         with director.database.connect() as c:
             item=director.campaigns._get(c,campaign['id'])
             item['request']['policy']['minimum_trades']=1
+            if promising=='automatic':item['request']['policy']['holdout']='one_frozen_candidate'
             director.campaigns._save(c,item)
         # This synthetic four-day calendar includes Saturday; explicitly enable
         # its fixture session rather than weakening the minimum-sample gate.
@@ -277,17 +278,25 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
             from app.research_agent.validation import Validations
             with pytest.raises(ValueError,match='Frozen candidate required'):
                 Validations(director.database).approve(entry['reference_project_id'],frozen['id'],'any',{})
-            director.tick()
+            if promising!='automatic':director.tick()
             assert len([c for c in Candidates(director.database).list(entry['reference_project_id']) if c.get('kind')=='GENERATED_DEVELOPMENT'])==1
             project=ResearchRepository(director.database).get(entry['reference_project_id'])
             dataset=next(d for d in project['datasets'] if d['state']=='LOCKED_HOLDOUT')
             before_jobs=len(director.services.backtest_jobs.list())
             before_runs=len(backtest.runs.list())
-            grant=runner.approve_validation(project['id'],frozen['id'],dataset['id'],{'minimum_trades':1})
+            if promising=='automatic':
+                director.tick()
+                grant=Validations(director.database).list(project['id'])[0]
+                assert grant['authorization']=='campaign_policy'
+            else:grant=runner.approve_validation(project['id'],frozen['id'],dataset['id'],{'minimum_trades':1})
             runner.thread.join(timeout=90)
             assert not runner.thread.is_alive()
             validation=Validations(director.database).get(grant['id'])
             assert validation['status']=='COMPLETED',validation
+            if promising=='automatic':
+                director.tick()
+                selection=director.campaigns.get(campaign['id'])['validation']
+                assert selection['validation_id']==grant['id'] and selection['status']=='COMPLETED'
             assert validation['control_parity'] and validation['causality']['prefix_match']
             assert validation['provenance']['source_sha256']==frozen['snapshot']['source_sha256']
             assert validation['data_fingerprint']!=frozen['snapshot']['data_fingerprint']

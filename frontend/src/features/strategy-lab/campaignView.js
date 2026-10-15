@@ -1,6 +1,7 @@
 export const LAUNCH_CONSENT='Authorize this bounded campaign, provider preparation and the selected model/code permissions';
 export const campaignActions=status=>status==='PAUSED'?['resume','cancel']:status==='ACTIVE'?['pause','stop_after_current','cancel']:['PREPARING','STOPPING'].includes(status)?['pause','cancel']:['DRAFT','PREPARED'].includes(status)?['cancel']:[];
 export const campaignIsRunning=status=>['DRAFT','PREPARING','PREPARED','ACTIVE','STOPPING'].includes(status);
+export const campaignValidationPending=campaign=>campaign?.status==='DEVELOPMENT_COMPLETE'&&!!campaign.execution?.validation_contract&&(!campaign.validation||['RESERVED','ACTIVE'].includes(campaign.validation.status));
 
 export function campaignPayload(form,policy,requestKey){
  const symbols=[...new Set(form.symbols.split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase()))];
@@ -16,9 +17,11 @@ export function campaignPayload(form,policy,requestKey){
  if(form.mode==='IMPROVE_STRATEGY'&&!form.strategy_key)throw new Error('Select a strategy.');
  const structuralCycles=Number(form.structural_cycles??1);
  if(!Number.isInteger(structuralCycles)||structuralCycles<1||structuralCycles>3)throw new Error('Choose one to three structural attempts.');
+ const holdout=form.holdout??policy.holdout;
+ if(!['human_approval','one_frozen_candidate'].includes(holdout))throw new Error('Choose a supported holdout policy.');
  return {campaign:{request_key:requestKey,mode:form.mode,prompt:form.prompt,
    strategy_key:form.mode==='IMPROVE_STRATEGY'?form.strategy_key:null,
-   policy:{...policy,symbols,timeframes:[form.timeframe],send_development_summaries:form.model,
+   policy:{...policy,symbols,timeframes:[form.timeframe],holdout:form.model&&form.structural?holdout:'human_approval',send_development_summaries:form.model,
      code_generation:form.model&&form.structural,max_structural_hypotheses_per_family:structuralCycles,external_research:false}},engine,
    numeric_cycles:form.model?Number(form.numeric_cycles):0,structural:form.model&&form.structural,
    history:form.history,lookback_days:1460,consent:LAUNCH_CONSENT};

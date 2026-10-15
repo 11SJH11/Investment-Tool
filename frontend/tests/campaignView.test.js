@@ -1,9 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {campaignActions,campaignIsRunning,campaignPayload,LAUNCH_CONSENT} from '../src/features/strategy-lab/campaignView.js';
+import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayload,LAUNCH_CONSENT} from '../src/features/strategy-lab/campaignView.js';
 const form={mode:'FIND_STRATEGIES',strategy_key:'ignored',symbols:'qqq QQQ, spy',timeframe:'1m',prompt:'',history:'cached',
  model:false,structural:true,numeric_cycles:2,starting_balance:10000,risk_value:1,commission_per_order:0,spread_bps:1,slippage_bps:2,max_leverage:1};
 const policy={budget:{llm_usd:10},holdout:'human_approval',external_research:true};
+test('Only policy-authorized pending validation keeps a completed campaign polling',()=>{
+ const campaign={status:'DEVELOPMENT_COMPLETE',execution:{validation_contract:{version:'one_generated_validation_v1'}}};
+ assert.equal(campaignValidationPending(campaign),true);
+ for(const status of ['RESERVED','ACTIVE'])assert.equal(campaignValidationPending({...campaign,validation:{status}}),true);
+ for(const status of ['COMPLETED','REVIEW_REQUIRED'])assert.equal(campaignValidationPending({...campaign,validation:{status}}),false);
+ assert.equal(campaignValidationPending({...campaign,execution:{}}),false);
+ assert.equal(campaignValidationPending({...campaign,status:'PAUSED'}),false);
+});
+test('Automatic holdout authority requires structural permission and an explicit policy choice',()=>{
+ assert.equal(campaignPayload({...form,model:true,structural:true,holdout:'one_frozen_candidate'},policy,'auto').campaign.policy.holdout,'one_frozen_candidate');
+ assert.equal(campaignPayload({...form,holdout:'one_frozen_candidate'},policy,'off').campaign.policy.holdout,'human_approval');
+ assert.throws(()=>campaignPayload({...form,holdout:'all_candidates'},policy,'bad'));
+});
 test('Campaign launch preserves explicit costs, disables unconsented model/code and has no user-selected dates',()=>{
  const result=campaignPayload(form,policy,'identity');
  assert.deepEqual(result.campaign.policy.symbols,['QQQ','SPY']);

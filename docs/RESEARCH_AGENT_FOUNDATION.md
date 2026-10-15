@@ -2,7 +2,18 @@
 
 ## Current phase — verified 15 October 2026
 
-Latest increment: generated candidates now use the existing final research decision
+Latest increment: new structural campaigns can explicitly authorize automatic
+validation of one frozen generated candidate. Selection and criteria are durable;
+only one qualifying candidate and one untouched matching dataset are allowed.
+Ambiguity, changed policy, expired/budget-exhausted authority or dispatch failure
+stops for review. Restarts reconcile the same grant without retrying interrupted
+execution. Legacy executions gain no automatic authority. The campaign form shows
+explicit holdout consent; progress and cancellation stay available after development.
+**123 focused backend tests passed** (189.79s, including real Docker), **135 frontend
+tests passed**, production build and browser checks at 1024/1440/1920 passed.
+No migration or research-container leftovers. Full backend suite not rerun.
+
+Previous increment: generated candidates now use the existing final research decision
 workflow. Acceptance rechecks the freeze/approval audit identities, archived source,
 Docker image, dataset/configuration, control/prefix evidence, result hashes,
 recomputed comparison and fixed validation criteria. A structured review and
@@ -41,8 +52,8 @@ The older full-suite results below refer to previous increments.
 Latest implementation commits: `f9ce0c1` (full-period/warmup), `37dfcf5` (archived
 dependencies/spending), `e0b5709` (complete development-window cost checks),
 `e5ffdde` (heavy Analysis and response-race acceptance). No schema migration.
-Next unresolved integration: automatic validation orchestration under the frozen
-policy, simplification/regime orchestration and automatic final family disposition, followed by
+Next unresolved integration: generated simplification/regime orchestration,
+automatic final family disposition and coherent hypothesis/research-debt integration, followed by
 independent forward shadows, paper-only execution, reconciliation and Journal UI.
 Do not describe the full Research Agent or requested forward phase as complete.
 

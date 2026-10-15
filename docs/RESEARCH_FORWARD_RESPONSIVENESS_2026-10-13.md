@@ -504,3 +504,71 @@ simplification/regime orchestration, automatic family disposition and coherent
 research-debt/hypothesis integration, then independent forward shadows, paper-only
 execution/risk/reconciliation and Journal linkage. This is not completion of the
 full autonomous Research Agent or the requested forward phase.
+
+## Policy-authorized automatic validation — 15 October
+
+New structural executions freeze `one_generated_validation_v1` only when the
+campaign policy explicitly selects `one_frozen_candidate`. The contract records the
+policy hash and criteria: campaign minimum trade count, average R >= 0, and R profit
+factor >= 1. Human approval remains the default. Existing executions without this
+contract receive no retroactive authority.
+
+After development completes, the director requires exactly one frozen generated
+candidate and exactly one matching untouched campaign dataset. It does not rank
+candidates or choose between multiple holdouts. Selection is committed before
+dispatch and bound to candidate/hash, project, dataset and criteria. The existing
+Docker validation runner rechecks this authority inside the budget/exposure
+transaction. Automatic and explicit grants remain distinguishable in audit records.
+
+Repeated coordinator ticks reuse the same grant without more simulations. Restart
+reconciles the selected candidate and terminal/interrupted grant; no automatic
+replacement candidate or interrupted-execution retry is allowed. Ambiguous selection,
+changed policy, exhausted time/budget or dispatch failure yields REVIEW_REQUIRED.
+The grant still uses the established dataset firewall and Docker-only execution.
+A completed validation does not automatically accept, register or deploy source.
+
+The campaign form now offers the holdout-policy choice under structural research,
+with explicit dataset-consumption consent and stated criteria. Disabling model or
+structural permission removes automatic holdout authority from the launch payload.
+Campaign polling continues during validation, with status/reason and a cancel action
+once a validation grant is active. During a reserved selection waiting for another
+sandbox task, project pause/archive remains a way to prevent dispatch; there is not
+yet a separate reservation-cancel control.
+
+Changed files: new `backend/app/research_agent/campaign_validation.py` and
+`backend/tests/test_campaign_validation.py`; `director.py`,
+`generated_validation.py`, `sandbox_runs.py`, `test_campaign_structural.py`;
+frontend `AutonomousResearch.jsx`, `campaignView.js`, `campaignView.test.js`,
+`tests/browser/campaign-smoke.mjs`; this ledger and the short handoff. No DB migration.
+
+Verification: **123 backend tests passed**, 189.79s, `LEDGER_TEST_DOCKER=1`, running
+`test_campaign_validation.py`, `test_generated_validation.py`,
+`test_generated_decisions.py`, `test_campaign_structural.py`,
+`test_research_director.py`, `test_research_validation.py`,
+`test_research_campaigns.py`. Log:
+`C:/Users/jamie/Project/automatic-validation-final-20261015.log`.
+The real-Docker fixture covers human and automatic validation, preserved source,
+no host-queue execution, insufficient-evidence acceptance rejection and explicit
+final rejection. Mocked policy tests cover ambiguous/missing candidates, changed
+authority, expired deadlines, consumed datasets, budget limits, replay and recovery.
+
+**135 frontend tests passed**, production build passed (155 modules; existing
+bundle-size warning). The initial build hit transient unresolved imports in
+unchanged files; the subsequent build passed without modifying those files.
+Mocked browser acceptance passed at 1024/1440/1920 for policy choice, consumption
+consent, launch, validation polling/cancel, navigation and overflow/runtime checks.
+No labelled research containers remain; isolated browser/server closed.
+`git diff --check` passed. Full backend suite was not rerun this increment.
+
+Manual workflow: start a new campaign, enable structural research, select
+Automatically validate one frozen candidate, review the criteria/consent, then
+launch with adequate budget and Docker available. When exactly one candidate
+qualifies, the backend consumes its matching holdout automatically. Review the
+validation outcome and record any final research decision separately in Advanced
+projects. Multiple candidates stop for review, not automatic ranking. Tests use
+mocked models/data and do not establish real-model research quality or an edge.
+
+Remaining: generated simplification/regime orchestration, automatic final family
+disposition and coherent hypothesis/research-debt integration; full lifecycle/live
+model acceptance; independent forward shadows and paper execution/risk/reconciliation
+with Journal linkage. No live or paper orders are enabled by this increment.

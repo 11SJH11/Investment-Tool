@@ -1,10 +1,10 @@
 import {useEffect,useRef,useState} from 'react';
 import {api} from '../../api/client';
-import {campaignActions,campaignIsRunning,campaignPayload} from './campaignView.js';
+import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayload} from './campaignView.js';
 
 const number=value=>value==null?'Unavailable':Number(value).toFixed(2);
 const defaults={mode:'FIND_STRATEGIES',prompt:'',strategy_key:'',symbols:'QQQ',timeframe:'1m',history:'cached',
- model:false,structural:false,structural_cycles:1,numeric_cycles:1,starting_balance:10000,risk_value:1,
+ model:false,structural:false,structural_cycles:1,holdout:'human_approval',numeric_cycles:1,starting_balance:10000,risk_value:1,
  commission_per_order:0,spread_bps:0,slippage_bps:0,max_leverage:1};
 
 export default function AutonomousResearch({strategies}){
@@ -18,7 +18,7 @@ export default function AutonomousResearch({strategies}){
  }).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[]);
  useEffect(()=>{if(!selected)return;let alive=true,timer;
   const poll=async()=>{try{const result=await api.researchCampaign(selected);if(!alive)return;setReport(result);
-   if(campaignIsRunning(result.campaign.status))timer=setTimeout(poll,2500);
+   if(campaignIsRunning(result.campaign.status)||campaignValidationPending(result.campaign))timer=setTimeout(poll,2500);
   }catch(e){if(alive)setError(e.message);}};
   setReport(null);poll();return()=>{alive=false;clearTimeout(timer);};
  },[selected,busy]);
@@ -50,7 +50,8 @@ export default function AutonomousResearch({strategies}){
     <label className="block"><input type="checkbox" checked={form.model} onChange={e=>field('model',e.target.checked)}/> Allow paid model review of development evidence</label>
 {form.model&&<><label className="block">Numeric cycles per family<select className="input" value={form.numeric_cycles} onChange={e=>field('numeric_cycles',e.target.value)}>{[0,1,2].map(n=><option key={n}>{n}</option>)}</select></label><label className="block"><input type="checkbox" checked={form.structural} onChange={e=>field('structural',e.target.checked)}/> Allow structural research: send archived source to the model and test only in Docker</label>{form.structural&&<label className="block">Maximum structural attempts per family<select className="input" value={form.structural_cycles} onChange={e=>field('structural_cycles',e.target.value)}>{[1,2,3].map(n=><option key={n}>{n}</option>)}</select></label>}<p className="text-xs muted">New campaigns evaluate children across the planned development period with historical warmup, control parity and causality checks. Cost checks cover complete preregistered development windows at original and doubled costs, with independently reset accounts; these are not unseen validation. Execution stays within reserved time and memory limits. A single attempt requires at least 30 simulations per family with three windows; additional attempts reserve more budget before starting. Rejected or insufficient evidence may lead to a distinct hypothesis, never an automatic repeat of identical code. Model pricing must be configured. Failed/interrupted calls retain their cost reservation.</p></>}
     {policy&&<p className="text-sm">Ceilings: {policy.budget.wall_minutes} wall minutes · {policy.budget.simulations} simulations · {policy.budget.llm_calls} model calls · ${policy.budget.llm_usd} reserved model cost. Preparation shares the time budget.</p>}
-    <label className="block"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I authorize these settings, costs and selected permissions. Holdout remains locked.</label>
+    {form.model&&form.structural&&<label className="block">Holdout validation<select className="input" aria-label="Campaign holdout policy" value={form.holdout} onChange={e=>field('holdout',e.target.value)}><option value="human_approval">Require my approval after development</option><option value="one_frozen_candidate">Automatically validate one frozen candidate</option></select><span className="text-xs muted">Automatic validation requires exactly one qualifying candidate and one untouched dataset. Criteria: campaign minimum N, average R ≥ 0 and R profit factor ≥ 1. It consumes that dataset even if execution fails; no automatic acceptance or deployment.</span></label>}
+    <label className="block"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I authorize these settings, costs and selected permissions. {form.model&&form.structural&&form.holdout==='one_frozen_candidate'?'I authorize consuming one holdout for the frozen candidate under the stated criteria.':'Holdout remains locked until I approve validation.'}</label>
    </fieldset>
    <button className="mini-btn mt-3" disabled={busy||!policies||!consent} onClick={launch}>{busy?'Starting…':pending.current?'Retry same launch':'Start campaign'}</button>
    {pending.current&&<p className="text-xs muted mt-2">The pending request is frozen to prevent duplicate paid work. Retry preserves its identity.</p>}
@@ -62,6 +63,7 @@ export default function AutonomousResearch({strategies}){
    <div className="ui-toolbar mt-3">{campaignActions(campaign.status).map(action=><button className="mini-btn" disabled={busy} key={action} onClick={()=>control(action)}>{action.replaceAll('_',' ')}</button>)}</div>
    <p className="text-sm mt-3">Baselines: {report.summary.baseline_runs_completed} · Numeric cycles: {report.summary.numeric_cycles_completed} · Structural checks: {report.summary.structural_checks_completed}</p>
    <p className="text-xs muted">Model reservation ${number(campaign.reserved.llm_usd)} · Simulations reserved {campaign.reserved.simulations} · Holdout {report.summary.holdout_consumed_by_campaign?'consumed':'not consumed'}</p>
+   {campaign.execution?.validation_contract&&<div className="mt-3"><p className="text-sm">Policy-authorized validation: {campaign.validation?.status||'Pending selection'} {campaign.validation?.validation_status||''} {campaign.validation?.verdict||''}</p>{campaign.validation?.reason&&<p className="text-xs muted">{campaign.validation.reason.replaceAll('_',' ')}</p>}<p className="text-xs muted">One frozen candidate only. A validation pass does not accept or deploy a strategy.</p>{campaign.validation?.status==='ACTIVE'&&campaign.validation?.validation_id&&<button className="mini-btn" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await api.researchProjectAction(campaign.validation.project_id,`validations/${campaign.validation.validation_id}/cancel-isolated`,{});}catch(e){setError(e.message);}finally{setBusy(false);}}}>Cancel candidate validation</button>}</div>}
    {campaign.preparation&&<p className="text-sm mt-2">History preparation: {campaign.preparation.status} · Fixed deadline {campaign.preparation.deadline}</p>}
   </article>
   <article className="insight-panel"><h4 className="font-semibold">Research report</h4><div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Family','Progress','Baseline N','Baseline avg R','Child N','Finding'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{report.morning_report.families.map(f=><tr key={f.project_id}><td className="p-2">{f.family_id}</td><td className="p-2">{f.state}</td><td className="p-2">{f.baseline_summary?.n??'—'}</td><td className="p-2">{number(f.baseline_summary?.average_r)}</td><td className="p-2">{f.child_summary?.n??'—'}</td><td className="p-2">{f.verdict}{f.reason&&<p>{f.reason}</p>}{f.warnings.map(w=><p key={w} className="muted mt-1">{w}</p>)}</td></tr>)}</tbody></table></div>

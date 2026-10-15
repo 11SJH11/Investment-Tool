@@ -46,7 +46,7 @@ def verified_candidate(database, project_id, candidate_id):
     return candidate,parent,trial
 
 
-def approve(runner, project_id, candidate_id, dataset_id, criteria):
+def approve(runner, project_id, candidate_id, dataset_id, criteria, *, campaign_dispatch=False):
     criteria=Criteria.model_validate(criteria).model_dump()
     store=Validations(runner.database)
     with runner.lock:
@@ -63,6 +63,8 @@ def approve(runner, project_id, candidate_id, dataset_id, criteria):
         if image!=candidate['snapshot']['provenance']['image_id']:
             raise ValueError('Validation requires the exact development sandbox image')
         project=ResearchRepository(runner.database).get(project_id)
+        if campaign_dispatch and not project.get('campaign_id'):
+            raise ValueError('Campaign validation requires a campaign project')
         dataset=next((d for d in project['datasets'] if d['id']==dataset_id),None)
         config=deepcopy(candidate['snapshot']['configuration'])
         if not dataset or dataset['state'] not in {'LOCKED_HOLDOUT','FUTURE_OOS'}:
@@ -78,7 +80,8 @@ def approve(runner, project_id, candidate_id, dataset_id, criteria):
             candidate_hash=candidate['snapshot_hash'],dataset_id=dataset_id,dataset=deepcopy(dataset),criteria=criteria,
             configuration=config,status='ACTIVE',phase='APPROVED',revision=0,reserved_runs=4,
             created_at=datetime.now(timezone.utc).isoformat(),deadline=time.time()+seconds,
-            image_id=image,verdict='PENDING',automatic_promotion=False,cells=[])
+            image_id=image,verdict='PENDING',automatic_promotion=False,cells=[],
+            authorization='campaign_policy' if campaign_dispatch else 'explicit_approval')
         with runner.database.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             if c.execute('SELECT 1 FROM agent_validations WHERE candidate_id=?',(candidate_id,)).fetchone():
@@ -98,6 +101,13 @@ def approve(runner, project_id, candidate_id, dataset_id, criteria):
                 row=c.execute('SELECT document FROM agent_campaigns WHERE id=?',(project['campaign_id'],)).fetchone()
                 campaign=json.loads(row[0])
                 if campaign['status']!='DEVELOPMENT_COMPLETE':raise ValueError('Finish campaign development before explicit validation')
+                if campaign_dispatch:
+                    from .campaign_validation import authorize
+                    authorize(campaign,project_id,candidate_id,dataset_id,criteria)
+                    if campaign['validation']['candidate_hash']!=candidate['snapshot_hash']:
+                        raise ValueError('Campaign candidate identity changed')
+                elif campaign.get('validation',{}).get('status') in {'RESERVED','ACTIVE'}:
+                    raise ValueError('Campaign already reserved its validation; wait for the existing grant')
                 if not campaign.get('deadline') or datetime.now(timezone.utc)>=datetime.fromisoformat(campaign['deadline']):
                     raise ValueError('Campaign wall-clock budget exhausted')
                 totals=deepcopy(campaign['reserved']);totals['simulations']+=4;totals['compute_minutes']+=seconds/60
@@ -119,7 +129,7 @@ def approve(runner, project_id, candidate_id, dataset_id, criteria):
             c.execute('UPDATE agent_datasets SET document=? WHERE id=?',(json.dumps(d),dataset_id))
             c.execute('INSERT INTO agent_validations VALUES (?,?,?,?)',(document['id'],project_id,candidate_id,json.dumps(document)))
             c.execute('INSERT INTO agent_events(project_id,dataset_id,action,detail) VALUES (?,?,?,?)',
-                (project_id,dataset_id,'candidate_validation_approved',json.dumps({'validation_id':document['id'],'candidate_hash':candidate['snapshot_hash'],'criteria':criteria,'kind':KIND})))
+                (project_id,dataset_id,'candidate_validation_approved',json.dumps({'validation_id':document['id'],'candidate_hash':candidate['snapshot_hash'],'criteria':criteria,'kind':KIND,'authorization':document['authorization']})))
         runner.cancel_event=Event()
         runner.thread=Thread(target=execute,args=(runner,deepcopy(document)),daemon=True,name='ledger-generated-validation')
         try:runner.thread.start()

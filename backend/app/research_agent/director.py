@@ -152,6 +152,9 @@ class ResearchDirector:
                                execution=dict(version='campaign_development_v1', request_hash=request_hash,
                                               entries=entries, model=model_status,
                                               limitation='Generated children use the frozen evaluation and development cost-check scopes. Neither grants unseen validation or automatic promotion.'))
+                if structural:
+                    from .campaign_validation import contract
+                    current['execution']['validation_contract']=contract(policy)
                 # Cap the existing services themselves: other entry points cannot
                 # spend beyond the campaign's conservative prepaid allocation.
                 for e in entries:
@@ -238,6 +241,10 @@ class ResearchDirector:
                 if item['status']=='PREPARING':
                     from .preparation import advance
                     advance(self.services,item['id'])
+                    continue
+                if item['status']=='DEVELOPMENT_COMPLETE':
+                    from .campaign_validation import advance
+                    advance(self,item)
                     continue
                 if item['status'] not in {'ACTIVE', 'STOPPING'} or not item.get('execution'): continue
                 try: self._advance(item)

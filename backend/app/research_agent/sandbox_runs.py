@@ -122,9 +122,9 @@ class SandboxRuns:
                         c.execute('UPDATE agent_validations SET document=? WHERE id=?',(json.dumps(item),row['id']))
             self.recovered=True
 
-    def approve_validation(self,project_id,candidate_id,dataset_id,criteria):
+    def approve_validation(self,project_id,candidate_id,dataset_id,criteria,*,campaign_dispatch=False):
         from .generated_validation import approve
-        return approve(self,project_id,candidate_id,dataset_id,criteria)
+        return approve(self,project_id,candidate_id,dataset_id,criteria,campaign_dispatch=campaign_dispatch)
 
     def cancel_validation(self,project_id,identifier):
         from .validation import Validations
