@@ -1,5 +1,32 @@
 # Research Agent current status / handoff
 
+## Latest: independent paper decisions and protection gate (16 October)
+
+`c543237` committed the IEX shadow runtime/UI and initial paper boundary. Subsequent
+work adds a separate broker-position-driven B evaluator, replayable decision
+observations, durable dispatch reservations, restart/process fencing, explicit
+cancel/flatten primitives and native closing-auction requests. Paper remains
+disconnected from application activation: no orders have been placed.
+
+The user requires broker-managed session-close protection. Alpaca documents MOC
+orders for existing positions but no atomic entry-plus-MOC combination. The tested
+post-fill primitive cannot eliminate the fill-to-protection interval or the gap
+during cancellation/replacement. **Coordinator arming fails closed.** A further
+decision is pending: keep automatic paper disabled, or explicitly accept those
+intervals for paper-only post-fill protection. Do not silently fall back to a
+Ledger-owned pre-close timer. See the phase ledger for evidence and acceptance.
+
+The current phase is NOT COMPLETE; the attached MT5/results phase has not started.
+Remaining work includes approved protection lifecycle, operational paper controls,
+Journal linkage, forward metrics/parity UI and real-provider acceptance.
+
+Final-tree verification for this increment: **1,429 backend passed, 38 skipped**
+(520.97s; existing Starlette warning); **34 focused paper tests passed** (15.39s).
+Separately, **29 real Docker security/lifecycle/research-loop tests passed**
+(165.65s). No Ledger containers remain; the same six unrelated stopped containers
+were untouched. Frontend remains **136 passed**, production build passed, mocked
+browser acceptance passed at 1024/1440/1920. No real broker/model calls or orders.
+
 ## Current increment — IEX shadows and paper safety foundation (16 October)
 
 Four independent frozen shadows now have a completed-bar log, incremental engine,

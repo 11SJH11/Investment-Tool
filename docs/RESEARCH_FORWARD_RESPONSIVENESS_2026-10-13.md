@@ -6,6 +6,89 @@ and research outputs belong to the user and are preserved. No credentials read.
 
 ## Continuation: forward deployment persistence foundation (16 October)
 
+### Independent B paper decisions and broker-close gate
+
+After `c543237`, added `paper_evaluator.py` and `paper_coordinator.py` plus focused
+tests. B decisions use actual reconciled broker quantity/average entry and a
+separate strategy instance; they do not copy B shadow positions or infer fills.
+Each decision preserves broker observations, bar completion, evaluation time,
+runtime identity and signal. Restart replays recorded contexts and checks exact
+decision equivalence. Missing decisions, changed source, checksum corruption and
+stale data fail closed. This is trusted frozen B only, never generated code.
+
+Dispatch reservations precede broker requests. An interrupted reservation cannot
+automatically reissue an order. SQLite owner fencing prevents an older gateway
+process from arming/submitting after takeover; the bounded POST is fenced while
+its pre-existing intent remains durable. Database-failure fixtures verify zero
+POSTs before intent persistence and lookup-only recovery after a successful POST
+whose acknowledgement could not be persisted. Three entry attempts conservatively
+include rejected attempts. Initial strategy stop is recorded; this is not yet an
+installed broker-native stop order.
+
+Explicit cancellation does not assert flattening. Explicit flatten works while
+disarmed or over the daily-loss limit, but unknown orders still block it. Partial
+positions remain open until broker facts say otherwise. For partial fills without
+a broker completed-fill timestamp, the context labels its timestamp as first
+observed fill; it does not pretend that observation is an exact execution time.
+
+The user selected **broker-managed close protection before enabling paper**.
+The paper transport/gateway now supports documented market orders with `cls` TIF
+for an already reconciled position, a conservative session-close-minus-ten-minute
+submission cutoff, fixed paper host, durable IDs, lookup on unknown outcomes and
+exact covered-quantity checks. Ordinary exits cannot bypass an outstanding MOC:
+cancellation must first be reconciled. No MOC has been submitted to a real account.
+
+Important provider limitation: Alpaca's documented bracket/OTO groups provide
+price-based conditional exits, not an atomic entry-plus-MOC. Ordinary exits require
+an existing position. Therefore a post-fill MOC leaves an unprotected interval;
+partial entries and cancel/replace transitions add further gaps. A native closing
+order is also not a guaranteed fill. Sources:
+[order groups](https://docs.alpaca.markets/us/docs/orders-at-alpaca) and
+[MOC/TIF request contract](https://docs.alpaca.markets/us/reference/postorder).
+The calendar-relative early-close cutoff is deliberately conservative and still
+requires real-provider acceptance; do not assert verified shortened-session behavior.
+
+**Production coordinator arming is disabled** pending the user's explicit decision
+on accepting post-fill protection gaps. No UI/API activation has been added.
+The older pre-close coordinator branch is tested internal groundwork, not the
+approved protection mechanism and must not be enabled as a substitute. No hidden
+live-host switch exists. Research Agent cannot obtain an execution capability.
+
+Additive on-use tables: `forward_paper_owner`, `forward_paper_decisions`,
+`forward_paper_dispatches`. Existing tables/data remain intact.
+
+Focused verification: **34 paper tests passed**, 15.39s, running
+`test_paper_coordinator.py`, `test_paper_evaluator.py`, `test_paper_gateway.py`,
+`test_paper_client.py`. An earlier full backend run passed **1,422**, skipped **38**,
+one existing warning, 527.54s. That run began before the final fencing/fault/MOC
+additions; a final-tree full run and real Docker checks are being recorded below.
+Frontend has not changed since its 136-pass/build/browser verification above.
+
+Final-tree full backend result: **1,429 passed, 38 skipped, one existing warning**,
+520.97s. Command: `.venv/Scripts/python.exe -B -m pytest -q --basetemp
+C:/Users/jamie/Project/forward-final-1016` from `backend`; log:
+`C:/Users/jamie/Project/forward-final-1016.log`. Skips retain their opt-in markers;
+this is not a claim that every external acceptance path ran.
+
+Separately with `LEDGER_TEST_DOCKER=1`, `test_research_sandbox_docker.py` and
+`test_sandbox_research_loop.py`: **29 passed**, one existing warning, 165.65s;
+log `C:/Users/jamie/Project/forward-docker-1016.log`. This includes real container
+security/resource/lifecycle tests and mocked-LLM research-loop control/prefix checks.
+No sandbox rebuild was needed: the optional host-engine change did not alter the
+allowlisted image inputs. Docker inspection after completion found zero Ledger
+research containers and the same six unrelated stopped containers. Browser/Vite
+processes created for the smoke test were stopped. `git diff --check` passed.
+
+The SQLite process fence deliberately holds a write lock across a single bounded
+paper POST. Assess its effect on other writes before operational paper integration;
+it currently cannot affect ordinary use because paper is not connected to the app.
+
+Remaining independent requirements are not hidden by this protection decision:
+automatic Journal linkage, comprehensive Forward Validation metrics/comparisons,
+session replay/parity workflow, complete paper lifecycle/controls, actual IEX
+coverage acceptance and paper/model external acceptance. The next MT5 phase remains
+behind the original completion gate.
+
 ### Subsequent increment: completed-bar shadows and paper boundary
 
 Current phase remains **NOT COMPLETE**. The next MT5/compute/results phase from

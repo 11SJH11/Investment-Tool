@@ -55,8 +55,8 @@ class PaperClient:
         expected=self.authorize(order,approval['expires_at'])
         if not hmac.compare_digest(str(approval.get('signature','')),expected['signature']):
             raise ValueError('Paper order differs from approved risk intent')
-        if order.get('symbol')!='QQQ' or order.get('type')!='market' or order.get('time_in_force')!='day' or order.get('extended_hours') is not False:
-            raise ValueError('Only regular-session QQQ paper market orders are supported')
+        if order.get('symbol')!='QQQ' or order.get('type')!='market' or order.get('time_in_force') not in {'day','cls'} or order.get('extended_hours') is not False:
+            raise ValueError('Only regular-session QQQ paper market or closing-auction orders are supported')
         return self._request('POST','/v2/orders',body=order)
 
     def cancel(self,order_id):
