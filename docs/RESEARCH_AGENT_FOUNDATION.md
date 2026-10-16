@@ -1,6 +1,29 @@
 # Research Agent current status / handoff
 
-## Current: automatic shadow Journal linkage (16 October)
+## Current: reconciled paper Journal import (17 October)
+
+The backend paper monitor now imports closed reconciled positions through the
+existing canonical broker execution/repository path. Pending cumulative fills are
+not published as closed trades. Canceled partial entries and weighted partial
+exits are supported; stable deployment/account/order identities prevent duplicates.
+Reviews remain editable and execution facts remain read-only. Source label:
+Alpaca automatic paper. No real orders were submitted.
+
+Fees, net P&L and R remain unknown when order history lacks attributable cost/P&L
+evidence. Observation timestamps are labelled and never presented as exact fills.
+Ambiguous chronology fails without replacing Journal data. No new database schema.
+
+35 focused backend checks and 136 broader paper/forward/broker checks passed;
+136 frontend tests passed; production build
+passed (160 modules). The previous full backend count of 1,439 passed/38 skipped
+predates this increment; it is not a current-tree full-suite claim.
+
+Still remaining: exact B shadow/paper matching, forward metrics, session parity,
+operational acceptance and opt-in provider/model checks. Existing checkpoint
+pending-entry evidence was inspected for exact matching; no approximate timestamp
+matching was added. See the phase ledger for regression results.
+
+## Previous increment: automatic shadow Journal linkage (16 October)
 
 Closed Baseline/B/C/D simulated trades now enter Journal automatically with stable
 per-deployment identities, frozen execution/source evidence and read-only facts.

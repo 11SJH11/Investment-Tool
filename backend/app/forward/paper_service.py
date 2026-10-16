@@ -14,6 +14,8 @@ class PaperService:
         self.client=client or (PaperClient(settings.alpaca_api_key,settings.alpaca_api_secret) if settings.alpaca_configured else None)
         self.gateway=PaperGateway(database,self.client,**({'clock':clock} if clock else {}))
         self.coordinator=PaperCoordinator(database,runtime,self.gateway)
+        from .paper_journal import PaperJournal
+        self.journal=PaperJournal(self.gateway)
         if start_thread:
             self.thread=Thread(target=self._loop,name='forward-paper',daemon=True);self.thread.start()
 
@@ -54,7 +56,9 @@ class PaperService:
         self.next_poll=current+5
         for item in self._items():
             if not item['account_id'] and not item['armed']:continue
-            try:self.coordinator.tick(item['id'])
+            try:
+                self.coordinator.tick(item['id'])
+                self.journal.sync(item['id'])
             except Exception as exc:
                 self.gateway.disarm(item['id'],'paper_monitor_requires_review')
                 retry=getattr(exc,'retry_after',None)

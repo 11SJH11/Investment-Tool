@@ -1,5 +1,6 @@
 export const sourceLabels = { live_manual: "Live · manual", paper_manual: "Paper · manual", replay: "Replay · automatic", backtest: "Backtest · automatic" };
 sourceLabels.forward_shadow = "Forward \u00b7 simulated shadow";
+sourceLabels.broker_alpaca_paper = "Alpaca \u00b7 automatic paper";
 sourceLabels.broker_oanda = "OANDA · imported";
 export function sourceLabel(source) { return sourceLabels[source] || String(source || "Unknown source").replace(/^broker_/, "Broker · ").replaceAll("_", " "); }
 export function pnlSummary(summary) { const rows = summary?.pnl_by_currency || []; return rows.length ? rows.map(r => moneyCurrency(r.total_pnl, r.currency)).join(" · ") : "—"; }

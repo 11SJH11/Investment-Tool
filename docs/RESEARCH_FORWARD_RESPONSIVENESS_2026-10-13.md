@@ -4,7 +4,42 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current: automatic shadow Journal linkage (16 October)
+## Current: reconciled paper Journal import (17 October)
+
+`forward/paper_journal.py` converts terminal, reconciled cumulative order fills
+into the existing canonical `Execution` model and `BrokerSyncRepository`. It does
+not fetch broker data or submit orders. The backend paper monitor invokes it after
+coordination; failures disarm through the existing review-required path.
+
+Stable identity includes provider/environment/account/deployment/order. A complete
+entry/exit quantity balance is required before publishing one closed Journal row.
+Pending aggregates remain unpublished; canceled partial entries and multiple
+partial exits preserve actual quantities and weighted prices. Resync preserves
+Journal reviews and IDs. Unknown costs, net P&L and R stay null, not zero or an
+estimated broker result. Provider completed-fill timestamps are distinguished
+from first-observed-fill timestamps. Ambiguous chronology fails without committing.
+Raw account IDs are hashed before canonical storage/Journal metadata.
+
+Frontend labels these as Alpaca automatic paper; existing broker read-only review
+behavior applies. No schema changes or frozen strategy/engine changes.
+
+Focused checks: **35 passed**, one existing warning, 15.98s, covering paper Journal,
+service, gateway, protection and shadow Journal. **136 frontend tests passed**;
+production build passed (160 modules, 979.77 kB JS / 284.66 kB gzip, existing chunk
+warning). Full-suite 1,439/38 below is the previous increment, not this tree.
+No real broker orders/model calls or new browser acceptance were performed.
+
+Broader regression: **136 passed**, one existing warning, 39.48s: all
+`test_paper*.py`, `test_forward*.py`, `test_broker*.py` and `test_canonical*.py`.
+Basetemp: `C:/Users/jamie/Project/paper-journal-regression-1017`.
+`git diff --check` passed. User strategy modules/research outputs remain untouched.
+
+Still unfinished: exact shadow/paper decision matching, submission/fill latency
+evidence, complete Forward Validation metrics and session replay/parity workflow.
+The existing shadow checkpoint retains pending-entry decision evidence; matching
+must validate this evidence rather than pair trades by nearby timestamps.
+
+## Previous increment: automatic shadow Journal linkage (16 October)
 
 Closed Baseline/B/C/D shadow trades now project automatically from durable runtime
 state into Journal. Each deployment is a separate account identity; stable IDs
