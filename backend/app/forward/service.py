@@ -13,6 +13,8 @@ class ForwardService:
         self.database=database;self.clock=clock;self.lock=RLock();self.stop=Event()
         self.deployments=Deployments(database);self.runtime=ShadowRuntime(database)
         self.runtime.bars=BarLog(database,clock)
+        from .paper_service import PaperService
+        self.paper=PaperService(database,settings,self.runtime,start_thread=start_thread,clock=clock)
         self.provider=provider
         if provider is None and settings.alpaca_configured:
             self.provider=AlpacaForwardData(settings.alpaca_api_key,settings.alpaca_api_secret)
@@ -28,6 +30,7 @@ class ForwardService:
 
     def close(self):
         self.stop.set()
+        self.paper.close()
         if self.thread:self.thread.join(timeout=25)
         if self.provider:self.provider.close()
 

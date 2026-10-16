@@ -1,6 +1,23 @@
 # Research Agent current status / handoff
 
-## Latest: independent paper decisions and protection gate (16 October)
+## Current: connected paper controls (16 October)
+
+The user approved post-fill protection gaps for paper only. Backend monitoring,
+explicit consent/arming, native MOC confirmation, partial-fill cancellation and
+cancel-before-exit are connected to Forward Validation. No real orders were placed.
+The approval gate below is historical and resolved; do not ask again.
+
+Verification: **1,436 backend passed, 38 skipped** (492.81s); **44 focused tests
+passed**; **136 frontend tests passed**; production build passed (160 modules).
+Mocked browser controls passed at 1024/1440/1920. Prior Docker verification:
+29 passed on unchanged sandbox code. See the
+[phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md) for restrictions.
+
+Remaining: Journal linkage, forward metrics/session parity, operational risk
+acceptance and opt-in real-provider/model checks. The current phase is incomplete.
+The newer MT5/results phase remains gated.
+
+## Historical: independent paper decisions and protection gate (16 October)
 
 `c543237` committed the IEX shadow runtime/UI and initial paper boundary. Subsequent
 work adds a separate broker-position-driven B evaluator, replayable decision

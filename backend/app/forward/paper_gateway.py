@@ -100,7 +100,8 @@ class PaperGateway:
                 updates=[];expected=Decimal(0)
                 for intent in intents:
                     if intent['state']=='CREATED':continue
-                    order=self.client.find(intent['client_order_id'])
+                    order=({**intent['broker'],'type':intent['order']['type'],'time_in_force':intent['order']['time_in_force']}
+                           if intent['state'].lower() in TERMINAL and intent.get('broker') else self.client.find(intent['client_order_id']))
                     if order is None:raise ValueError('Submitted paper intent cannot be reconciled; no resubmission')
                     request=intent['order'];filled=number(order.get('filled_qty',0))
                     if (order.get('client_order_id')!=intent['client_order_id'] or order.get('symbol')!='QQQ' or
@@ -156,8 +157,19 @@ class PaperGateway:
         """Explicit cancellation only; it never assumes a position was closed."""
         with self.lock:
             self.disarm(identifier,'cancel_requested')
+            item=self.get(identifier)
+            item['close_protection']={**item.get('close_protection',{}),'status':'CANCEL_REQUESTED','protected':False}
+            with self.database.connect() as c:self._save(c,item)
+            return self.cancel_intents(identifier,{i['client_order_id'] for i in self.intents(identifier)})
+
+    def cancel_intents(self,identifier,client_ids):
+        """Cancel only known intents; acknowledgement is not terminal evidence."""
+        with self.lock:
             self.reconcile(identifier,allow_risk_breach=True)
+            known={i['client_order_id'] for i in self.intents(identifier)}
+            if set(client_ids)-known:raise ValueError('Unknown cancellation intent')
             for intent in self.intents(identifier):
+                if intent['client_order_id'] not in client_ids:continue
                 if intent['state'].lower() in TERMINAL:continue
                 order=intent.get('broker',{})
                 if not order.get('id'):raise ValueError('Unresolved submission requires broker reconciliation')
@@ -170,6 +182,11 @@ class PaperGateway:
         """Explicit risk-reducing action, permitted while disarmed or loss-limited."""
         with self.lock:
             self.disarm(identifier,'flatten_requested')
+            return self.exit_reconciled(identifier)
+
+    def exit_reconciled(self,identifier):
+        """Risk-reducing exit after protection cancellation is confirmed."""
+        with self.lock:
             item=self.reconcile(identifier,allow_risk_breach=True)
             quantity=number(item['position_qty'])
             if not quantity:return None
@@ -182,8 +199,8 @@ class PaperGateway:
         """Native MOC for an already reconciled position, never an entry promise.
 
         Alpaca has no documented atomic entry-plus-MOC order. Calling this after
-        a fill therefore leaves a fill-to-protection gap; production arming stays
-        disabled pending the user's decision on that limitation.
+        a fill therefore leaves a fill-to-protection gap. Paper-only post-fill
+        protection is explicitly authorized; it is not a guaranteed close.
         """
         with self.lock:
             item=self.reconcile(identifier,allow_risk_breach=True)
@@ -193,9 +210,10 @@ class PaperGateway:
             if existing:
                 if len(existing)!=1:raise ValueError('Conflicting closing-auction protection')
                 intent=existing[0]
-                if intent['state'].lower() not in {'new','accepted','accepted_for_bidding'}:
+                if intent['state'].lower() not in {'new','accepted','accepted_for_bidding','partially_filled'}:
                     raise ValueError('Closing-auction protection is not confirmed active')
-                if number(intent['order']['qty'])!=abs(quantity) or intent['order']['side']!=('sell' if quantity>0 else 'buy'):
+                remaining=number(intent['order']['qty'])-number(intent.get('broker',{}).get('filled_qty',0))
+                if remaining!=abs(quantity) or intent['order']['side']!=('sell' if quantity>0 else 'buy'):
                     raise ValueError('Closing-auction protection does not cover broker position')
                 return intent
             return self._submit(identifier,decision_at=self.clock(),action='exit',

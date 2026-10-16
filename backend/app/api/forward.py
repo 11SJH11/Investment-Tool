@@ -1,9 +1,11 @@
-"""Explicit shadow controls. No order-placement or paper-arming routes here."""
+"""Explicit shadow and paper-deployment controls; no arbitrary order endpoint."""
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from app.api.dependencies import get_services
 from app.forward.deployments import ShadowAccount
+from app.forward.paper_gateway import PaperRisk
+from app.forward.paper_protection import ACK
 
 router=APIRouter(prefix='/forward',tags=['forward-validation'])
 
@@ -30,3 +32,41 @@ def prepare(request:Prepare,instance=Depends(service)):
 @router.post('/{experiment}/halt')
 def halt(experiment:str,instance=Depends(service)):
     return instance.halt(experiment)
+
+class PaperPrepare(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    experiment_id:str
+    risk:PaperRisk
+
+class PaperControl(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    action:Literal['arm','disarm','cancel','flatten']
+    acknowledgement:str|None=None
+
+@router.get('/paper')
+def paper_report(instance=Depends(service)):
+    return instance.paper.report()
+
+@router.post('/paper/prepare')
+def paper_prepare(request:PaperPrepare,instance=Depends(service)):
+    try:
+        instance.paper.create(request.experiment_id,request.risk.model_dump())
+        return instance.paper.report()
+    except ValueError as exc:raise HTTPException(400,str(exc)) from None
+
+@router.post('/paper/disarm-all')
+def paper_disarm_all(instance=Depends(service)):
+    instance.paper.disarm_all()
+    return instance.paper.report()
+
+@router.post('/paper/{identifier}/control')
+def paper_control(identifier:str,request:PaperControl,instance=Depends(service)):
+    if request.action=='arm' and request.acknowledgement!=ACK:
+        raise HTTPException(400,'Explicit acknowledgement of paper protection gaps is required')
+    if request.action in {'cancel','flatten'} and request.acknowledgement!=request.action:
+        raise HTTPException(400,'Explicit acknowledgement of '+request.action+' is required')
+    try:
+        instance.paper.control(identifier,request.action,request.acknowledgement)
+        return instance.paper.report()
+    except ValueError as exc:raise HTTPException(400,str(exc)) from None
+    except Exception:raise HTTPException(502,'Paper operation failed; inspect reconciliation status before retrying') from None

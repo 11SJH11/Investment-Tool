@@ -4,7 +4,34 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Continuation: forward deployment persistence foundation (16 October)
+## Current: connected paper controls (16 October)
+
+The user approved post-fill and cancel/replace protection gaps for paper only.
+This supersedes the historical approval gate below. A backend-owned five-second
+monitor and explicit configure/consent/arm/disarm/cancel/flatten UI are connected.
+Configuration never arms trading. No real orders were placed during development.
+
+MOC protection is confirmed from broker facts. Partial entries cancel their
+remainder before protection; exits wait for confirmed MOC cancellation. Within
+the final ten minutes of the provider session, exits defer to the closing auction.
+Disarming entries preserves MOC protection; explicit cancellation can remove it
+and requires review. Restart disarms entries and reconciles orders. Initial stops
+are recorded, not installed broker-native catastrophic stops. Closing orders are
+not guaranteed fills. Real-provider/shortened-session acceptance remains pending.
+
+Verification: **1,436 backend passed, 38 skipped**, one existing warning, 492.81s
+(`C:/Users/jamie/Project/paper-connected-full-1016.log`). **44 focused tests passed**,
+21.06s. **136 frontend tests passed**. Production build passed: 160 modules,
+979.61 kB JS / 284.59 kB gzip, existing chunk warning. Mocked browser acceptance
+passed at 1024/1440/1920 including paper consent and controls, no overflow/runtime
+errors. Prior 29-pass Docker verification applies to unchanged sandbox code.
+No new schema migration; protection uses existing paper documents.
+
+Remaining: Journal linkage, forward metrics/comparison and session parity,
+operational risk acceptance and opt-in actual IEX/paper/model acceptance.
+The current phase remains incomplete; the next MT5/results phase remains gated.
+
+## Historical: forward deployment persistence foundation (16 October)
 
 ### Independent B paper decisions and broker-close gate
 

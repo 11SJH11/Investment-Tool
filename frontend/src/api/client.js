@@ -48,6 +48,10 @@ function queryString(params) {
 
 export const api = {
   forwardReport: () => request('/forward'),
+  paperReport: () => request('/forward/paper'),
+  paperPrepare: body => request('/forward/paper/prepare',{method:'POST',body:JSON.stringify(body)}),
+  paperControl: (id,body) => request(`/forward/paper/${encodeURIComponent(id)}/control`,{method:'POST',body:JSON.stringify(body)}),
+  paperDisarmAll: () => request('/forward/paper/disarm-all',{method:'POST'}),
   forwardPrepare: body => request('/forward/prepare',{method:'POST',body:JSON.stringify(body)}),
   forwardHalt: id => request(`/forward/${encodeURIComponent(id)}/halt`,{method:'POST'}),
   researchCampaigns: () => request('/strategy-lab/research-campaigns'),

@@ -4,6 +4,7 @@ await send('Page.addScriptToEvaluateOnNewDocument',{source:`
 localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Backtest'));
 localStorage.setItem('ledger.ui.backtest.tab',JSON.stringify('Forward Validation'));
 window.preparations=[];window.stops=[];let items=[];
+let paper=[];window.paperControls=[];
 window.fetch=async(url,opts={})=>{const path=new URL(String(url),location.origin).pathname;let data={items:[]};
 if(path.endsWith('/strategies'))data={strategies:[]};
 if(path.endsWith('/indicators'))data={indicators:[]};
@@ -12,6 +13,12 @@ if(path.endsWith('/jobs'))data={jobs:[],max_workers:1,compute:{}};
 if(path.endsWith('/forward/prepare')){window.preparations.push(JSON.parse(opts.body));items=[{id:'experiment',preparation:{status:'READY'},deployments:['BASELINE','B','C','D'].map(name=>({id:name,name:'VWAP_'+name+'_SHADOW_V1',definition:{feed:'iex'},state:{status:'ACTIVE',equity:10000,trade_count:0,trades_today:0,trade_history:[],position:null}}))}];}
 if(path.endsWith('/forward/experiment/halt')){window.stops.push(path);items[0].preparation.status='STOPPED';items[0].deployments.forEach(d=>d.state.status='HALTED');}
 if(path.includes('/forward'))data={configured:true,provider:'alpaca',feed:'iex',items};
+if(path.includes('/forward/paper')){
+ if(path.endsWith('/prepare')){const body=JSON.parse(opts.body);paper=[{id:'paper-fixture',experiment_id:body.experiment_id,risk:body.risk,armed:false,position_qty:'0'}];}
+ if(path.endsWith('/control')){const body=JSON.parse(opts.body);window.paperControls.push(body);paper[0].armed=body.action==='arm';}
+ if(path.endsWith('/disarm-all'))paper.forEach(p=>p.armed=false);
+ data={configured:true,items:paper,acknowledgement:'Paper only: I accept the post-fill and cancel/replace protection gaps'};
+}
 return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
 };`});
 await send('Page.navigate',{url:process.env.LEDGER_SMOKE_URL||'http://127.0.0.1:19383'});
@@ -23,6 +30,18 @@ await evaluate(`document.querySelector('[aria-label="Forward validation"] input[
 await click('Prepare and start shadows');
 await waitFor(`document.body.textContent.includes('VWAP_D_SHADOW_V1')`);
 if(await evaluate(`window.preparations.length!==1||window.preparations[0].account.starting_balance!==10000`))throw Error('Preparation contract');
+await evaluate(`([...document.querySelectorAll('summary')].find(s=>s.textContent==='Configure a separate B paper deployment')).click()`);
+await click('Configure B for experime');
+await waitFor(`document.querySelector('[aria-label="Alpaca paper execution"]').textContent.includes('DISARMED')`);
+if(!await evaluate(`([...document.querySelectorAll('button')].find(b=>b.textContent==='Arm B paper')).disabled`))throw Error('Paper consent missing');
+await evaluate(`document.querySelector('[aria-label="Alpaca paper execution"] input[type=checkbox]').click()`);
+await click('Arm B paper');
+await waitFor(`window.paperControls.length===1`);
+if(await evaluate(`!window.paperControls[0].acknowledgement.includes('post-fill')`))throw Error('Paper gap acknowledgement missing');
+await click('Disarm entries');await waitFor(`window.paperControls.length===2`);
+await click('Cancel open paper orders');await waitFor(`window.paperControls.length===3`);
+await click('Request paper flatten');await waitFor(`window.paperControls.length===4`);
+if(await evaluate(`window.paperControls[2].acknowledgement!=='cancel'||window.paperControls[3].acknowledgement!=='flatten'`))throw Error('Explicit close controls missing');
 await click('Stop shadows');
 await waitFor(`document.body.textContent.includes('STOPPED')`);
 if(await evaluate(`window.stops.length!==1`))throw Error('Stop contract');

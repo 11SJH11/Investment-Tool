@@ -20,7 +20,7 @@ class Broker:
     def authorize(self,order,expiry):return 'mock-approval'
     def submit(self,order,approval):
         self.posts.append(deepcopy(order))
-        self.orders[order['client_order_id']]={**order,'id':'broker-id','status':'accepted','filled_qty':'0'}
+        self.orders[order['client_order_id']]={**order,'id':'broker-'+str(len(self.posts)),'status':'accepted','filled_qty':'0'}
         if self.fail:raise TimeoutError('unknown outcome')
         return self.orders[order['client_order_id']]
     def fill(self,key,qty,status='filled'):
