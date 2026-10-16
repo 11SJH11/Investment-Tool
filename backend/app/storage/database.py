@@ -489,6 +489,8 @@ class Database:
         with self.connect() as connection:
             connection.executescript(_SCHEMA)
             _migrate_schema(connection)
+            from .forward_journal_migration import migrate as migrate_forward_journal
+            migrate_forward_journal(connection)
             columns = {r[1] for r in connection.execute('PRAGMA table_info(journal_trades)')}
             for name, ddl in {'is_automated':'INTEGER', 'execution_source':"TEXT NOT NULL DEFAULT 'unknown'", 'strategy_id':"TEXT NOT NULL DEFAULT ''", 'strategy_name':"TEXT NOT NULL DEFAULT ''", 'strategy_run_id':"TEXT NOT NULL DEFAULT ''"}.items():
                 if name not in columns:

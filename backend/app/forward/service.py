@@ -12,6 +12,8 @@ class ForwardService:
     def __init__(self,database,settings,*,provider=None,start_thread=True,clock=lambda:datetime.now(timezone.utc)):
         self.database=database;self.clock=clock;self.lock=RLock();self.stop=Event()
         self.deployments=Deployments(database);self.runtime=ShadowRuntime(database)
+        from .journal import ShadowJournal
+        self.journal=ShadowJournal(database)
         self.runtime.bars=BarLog(database,clock)
         from .paper_service import PaperService
         self.paper=PaperService(database,settings,self.runtime,start_thread=start_thread,clock=clock)
@@ -76,6 +78,8 @@ class ForwardService:
             for plan in plans:
                 experiment=plan['experiment_id']
                 try:
+                    # Also retry projection after restart, halt or a prior write failure.
+                    self.journal.sync(experiment)
                     if plan['status']=='QUEUED':
                         with self.database.connect() as c:c.execute("UPDATE forward_preparations SET status='PREPARING' WHERE experiment_id=?",(experiment,))
                         self._prepare(experiment)
@@ -93,6 +97,7 @@ class ForwardService:
                         newest=stamp((incoming or bars)[-1]['available_at'])
                         if active and current-newest>timedelta(seconds=95):raise ValueError('IEX completed bars are stale; shadows halted')
                         self.runtime.ingest(experiment,incoming)
+                        self.journal.sync(experiment)
                 except Exception as exc:
                     self.runtime.halt(experiment,'forward_data_or_runtime_failure')
                     # Only our validated ValueError text is UI-safe; provider bodies never are.

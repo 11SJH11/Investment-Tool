@@ -34,9 +34,9 @@ class JournalService:
         current = self.repository.get_trade(trade_id)
         if current is None:
             return None
-        if str(current["source"]).startswith("broker_"):
+        if str(current["source"]).startswith("broker_") or current["source"] == 'forward_shadow':
             if set(payload) - REVIEW_FIELDS:
-                raise ValueError("Broker execution facts and source metadata are read-only")
+                raise ValueError("Imported execution facts and source metadata are read-only")
             self._validate_review(payload)
             return self.repository.update_trade(trade_id, payload)
         if str(payload.get("source") or "").startswith("broker_"):

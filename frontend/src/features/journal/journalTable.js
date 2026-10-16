@@ -4,7 +4,7 @@ import {moneyCurrency,rValue,sourceLabel} from './journalUtils.js';
 
 function sourceTone(source) {
   if(source==='live_manual')return 'journal-tone-live';
-  if(source==='paper_manual'||source==='replay'||source==='backtest')return 'journal-tone-practice';
+  if(source==='paper_manual'||source==='replay'||source==='backtest'||source==='forward_shadow')return 'journal-tone-practice';
   if(String(source||'').startsWith('broker_'))return 'journal-tone-imported';
   return '';
 }

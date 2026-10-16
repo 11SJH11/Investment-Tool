@@ -4,7 +4,39 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current: connected paper controls (16 October)
+## Current: automatic shadow Journal linkage (16 October)
+
+Closed Baseline/B/C/D shadow trades now project automatically from durable runtime
+state into Journal. Each deployment is a separate account identity; stable IDs
+include deployment, entry time and direction. Repeated polling/restart does not
+rewrite an existing row or its reviews/attachments. A changed closed result fails
+instead of silently replacing published execution facts. The service retries the
+projection for stopped/halted deployments too, when configured.
+
+Source `forward_shadow` is labelled **Forward · simulated shadow**. Execution
+facts are read-only, with normal review fields and attachments still available.
+The metadata retains the exact engine trade, frozen source/archive, definition,
+parameters, costs, feed identity and forward start. This does not claim broker
+fills or establish a matched B paper counterpart. Paper Journal import and exact
+decision-based matching remain unfinished.
+
+Schema: a preserving source-constraint migration admits `forward_shadow`; existing
+columns, rows, IDs, attachment links, indexes/triggers and autoincrement high-water
+mark are preserved. Custom incoming foreign keys stop migration rather than risk
+cascading deletion. No production database was opened for development.
+
+Focused checks: **33 passed** (15.02s), including migration/repeated initialization,
+independent shadow identities, review preservation and immutable published facts.
+Frontend: **136 passed**; build passed (160 modules, 979.71 kB JS, existing chunk
+warning). Mocked Forward Validation and isolated shadow TradeDetail browser checks
+passed at 1024/1440/1920: simulated provenance/read-only facts/review controls,
+no overflow or runtime errors. Final full backend: **1,439 passed, 38 skipped**,
+one existing Starlette warning, 510.89s. Command from `backend`:
+`.venv/Scripts/python.exe -B -m pytest -q --basetemp C:/Users/jamie/Project/forward-journal-full-1016`.
+Log: `C:/Users/jamie/Project/forward-journal-full-1016.log`. `git diff --check`
+passed. Isolated browser/Vite processes were stopped. No real orders or model calls.
+
+## Previous increment: connected paper controls (16 October)
 
 The user approved post-fill and cancel/replace protection gaps for paper only.
 This supersedes the historical approval gate below. A backend-owned five-second

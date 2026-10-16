@@ -1,6 +1,23 @@
 # Research Agent current status / handoff
 
-## Current: connected paper controls (16 October)
+## Current: automatic shadow Journal linkage (16 October)
+
+Closed Baseline/B/C/D simulated trades now enter Journal automatically with stable
+per-deployment identities, frozen execution/source evidence and read-only facts.
+Repeat projection preserves reviews and attachments. A preserving Journal source
+constraint migration is covered by repeated-initialization and data tests.
+
+33 focused backend tests and 136 frontend tests passed; production build passed.
+Mocked Forward Validation and shadow trade details passed at 1024/1440/1920.
+Final full backend: **1,439 passed, 38 skipped**, one existing warning, 510.89s.
+`git diff --check` passed. See the
+[phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md) for commands and evidence.
+
+Still unfinished: paper Journal reconstruction, exact B shadow/paper matching,
+forward metrics/session parity, operational acceptance and opt-in real provider/
+model checks. The next MT5/results phase remains gated.
+
+## Previous increment: connected paper controls (16 October)
 
 The user approved post-fill protection gaps for paper only. Backend monitoring,
 explicit consent/arming, native MOC confirmation, partial-fill cancellation and
