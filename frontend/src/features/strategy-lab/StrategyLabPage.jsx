@@ -1,4 +1,5 @@
 import ResearchFoundations from "./ResearchHome.jsx";
+import ForwardValidation from './ForwardValidation.jsx';
 import ResearchPack from './ResearchPack.jsx';
 import {notifyActivity} from '../../app/activityEvents.js';
 import IntegratedResearch,{SweepField,sweepAxes} from './ParameterSweep.jsx';
@@ -237,8 +238,8 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
 
   return <div className={standaloneTab === "Replay" ? "strategy-lab-root replay-root w-full max-w-none" : "dense-page strategy-lab-root min-w-0 w-full max-w-[1600px]"}>
     <div><p className="text-xs uppercase tracking-widest text-stone-500">Ledger</p><h2 className="mt-1 text-3xl font-semibold">{standaloneTab === "Replay" ? "Replay" : standaloneTab === "Backtest" ? "Backtest" : "Strategy Lab"}</h2><p className="mt-2 max-w-5xl text-sm text-stone-600">{standaloneTab === "Replay" ? "Practise historical markets candle-by-candle without revealing the future; Replay trades feed directly into Journal." : "Backtest coded strategy plugins with explicit execution rules, saved reproducible runs, validation and diagnostic analysis."}</p></div>
-    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Research Agent","Market Concepts","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
-    {standaloneTab === "Backtest" && <div className="feature-nav" aria-label="Backtest navigation">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Research Agent","Market Concepts"].map(item=><button key={item} aria-current={tab===item?"page":undefined} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
+    {!standaloneTab && <div className="mt-6 flex gap-6 border-b border-stone-200">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Research Agent","Forward Validation","Market Concepts","Replay"].map((item) => <button key={item} onClick={() => { setTab(item); if (item === "Runs") refreshRuns(); }} className={`border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-stone-900 font-medium" : "border-transparent text-stone-500"}`}>{item}</button>)}</div>}
+    {standaloneTab === "Backtest" && <div className="feature-nav" aria-label="Backtest navigation">{["Backtest","Runs",...(result?["Run Viewer"]:[]),...(savedExperiment?.experiment?["Research Viewer"]:[]),"Strategies","Research Agent","Forward Validation","Market Concepts"].map(item=><button key={item} aria-current={tab===item?"page":undefined} onClick={()=>{setTab(item);if(item==="Runs")refreshRuns()}} className={`mini-btn ${tab===item?"active-btn":""}`}>{item}</button>)}</div>}
     {opening&&<div role="status" aria-busy="true" className="ui-section">{opening}</div>}
     {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
@@ -326,6 +327,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
     </>}
 
     {["Research Agent","Market Concepts"].includes(tab)&&<ResearchFoundations key={tab} mode={tab} strategies={strategies} runs={runs} configuration={buildPayload()}/>}
+    {tab==='Forward Validation'&&<ForwardValidation/>}
     {tab === "Runs" && <RunsPanel runs={runs} onRefresh={refreshRuns} onOpen={openSavedRun} onUseSettings={useSavedSettings} onOpenExperiment={openSavedExperiment} />}
     {tab === "Run Viewer" && result && <Profiler id="RunViewer" onRender={(_,phase,duration,baseDuration,start,commit)=>{const name="ledger.saved-run.react-render";if(performance.getEntriesByName(name).length>=20)performance.clearMeasures(name);performance.measure(name,{start:commit,duration});}}><BacktestResults result={result} onUseSettings={useSavedSettings} onBackToRuns={()=>{setTab("Runs");refreshRuns();}} /></Profiler>}
     {tab === "Research Viewer" && savedExperiment?.experiment && <ResearchExperimentViewer experimentGroup={savedExperiment.experiment_group} initial={savedExperiment} jobs={queue.jobs} onOpenRun={openSavedRun} onBack={()=>{setTab("Runs");refreshRuns();}} onError={setError}/>}

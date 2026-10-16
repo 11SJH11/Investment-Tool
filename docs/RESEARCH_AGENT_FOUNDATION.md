@@ -1,5 +1,21 @@
 # Research Agent current status / handoff
 
+## Current increment — IEX shadows and paper safety foundation (16 October)
+
+Four independent frozen shadows now have a completed-bar log, incremental engine,
+replay-verified recovery, backend-owned IEX preparation/polling and Forward Validation
+UI. User selected IEX for warmup and incoming data. Missing/revised minutes halt;
+strict 60-session warmup can fail on sparse IEX history. No real-feed acceptance
+has been performed. Paper transport/risk-intent reconciliation is tested but is
+NOT connected to an automatic executor or UI arming. No orders were submitted.
+
+125 focused backend tests passed (42.30s); 136 frontend tests passed; production
+build passed (159 modules; existing bundle warning). Mocked browser smoke passed
+1024/1440/1920: preparation consent, four states, halt, no overflow/runtime errors.
+Full backend/current-phase acceptance remains outstanding. See the
+[phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md) for exact checks,
+schema additions and unfinished work. Previous entries below are historical.
+
 ## Forward foundation — 16 October 2026
 
 Checkpoint 8 is in progress. Added atomic, idempotent persistence for four

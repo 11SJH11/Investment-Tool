@@ -6,6 +6,65 @@ and research outputs belong to the user and are preserved. No credentials read.
 
 ## Continuation: forward deployment persistence foundation (16 October)
 
+### Subsequent increment: completed-bar shadows and paper boundary
+
+Current phase remains **NOT COMPLETE**. The next MT5/compute/results phase from
+attachment `925ddff5-de5a-432f-84bc-4a5aae11b79b/Pasted text.txt` remains gated.
+
+Implemented an optional incremental BacktestEngine state with explicit provider
+session closes; ordinary batch behavior is preserved. Four independent instances
+consume one immutable raw IEX minute log. Availability must equal bar start + 1m;
+incomplete, missing, revised, out-of-order and corrupt history fail closed. The
+native historical engine completion contract remains unchanged. Restart rebuilds
+strategy state by replaying the immutable prefix and compares saved evidence.
+Source/runtime drift halts rather than upgrading frozen experiments.
+
+Backend-owned preparation and polling survives navigation. Explicit consent starts
+preparation; stopping a queued request durably prevents later activation. UI shows
+four states, counts, equity and frozen definitions. Required warmup is 60 complete
+provider sessions; IEX is not SIP and sparse IEX history may prevent activation.
+Calendar is frozen with 90 days of future coverage; automatic horizon extension is
+not implemented. No bars are fabricated. No real-feed entitlement/data acceptance
+was attempted. This is not a live performance claim.
+
+Paper-only transport has a fixed host, no redirects, no automatic POST retry,
+short-lived internal order authorization and sanitized provider errors. The
+unconnected gateway reserves durable deterministic client IDs before submission,
+uses whole shares bounded by fixed notional and equity fraction, reconciles broker
+fills/positions, disarms on restart/fault and does not infer fills from submission.
+Tests cover partial/final fills, exits, duplicate requests, unknown outcomes,
+account/position/order mismatches, backward fills, loss limit and stale decisions.
+This is a foundation, not an operational paper executor: no API/UI arming yet.
+
+Additive on-use tables: `forward_feeds`, `forward_bars`, `forward_checkpoints`,
+`forward_preparations`, `forward_paper`, `forward_paper_intents`. No destructive
+migrations. Existing experiments/deployments and source archives are reused.
+
+Verification: **125 backend tests passed**, 42.30s, one existing Starlette warning:
+`test_forward_deployments.py`, `test_forward_alpaca_data.py`, `test_forward_bars.py`,
+`test_forward_runtime.py`, `test_forward_service.py`, `test_incremental_engine.py`,
+`test_paper_client.py`, `test_paper_gateway.py`, `test_phase5_engine.py`,
+`test_gold_experiments.py`, `test_vwap_session_performance_parity.py`.
+Actual locally installed Baseline/B/C/D streamed-versus-batch fixtures pass.
+**136 frontend tests passed**, zero skips/failures; production build passed,
+159 modules, 974.63 kB JS / 283.36 kB gzip (existing bundle warning).
+`tests/browser/forward-smoke.mjs` passed 1024/1440/1920 with mocked APIs: explicit
+consent, request contract, four rows, stop, no page overflow/runtime errors.
+Initial browser fixture omitted the existing jobs response; fixture corrected.
+No application change was needed for that failure. `git diff --check` passed.
+
+Remaining: independent broker-position-driven B evaluator, safe paper controls,
+order cancellation/flatten/no-overnight enforcement, complete restart/fault tests,
+Journal linkage and forward comparison metrics, full backend/Docker acceptance and
+real provider/model acceptance where authorized. Do not label this phase complete.
+
+Provider contracts: [Alpaca bars](https://docs.alpaca.markets/us/reference/stockbarsingle-1),
+[market-data coverage](https://docs.alpaca.markets/us/docs/market-data-faq),
+[calendar](https://docs.alpaca.markets/us/v1.4.2/reference/getcalendar-1),
+[client-ID lookup](https://docs.alpaca.markets/us/reference/getorderbyclientorderid).
+
+### Earlier persistence-only increment
+
 Checkpoint 8 has started, not completed. `app/forward/deployments.py` prepares an
 atomic group of four inactive shadow definitions using the exact installed
 Baseline/B/C/D registry keys and frozen D6 settings. No source files were edited

@@ -51,8 +51,11 @@ class BacktestEngine:
         primary_timeframe: str,
         progress=None,
         evaluation_start: datetime | None = None,
+        incremental=None,
     ) -> dict[str, Any]:
         self._validate()
+        if incremental is not None:
+            incremental.bind(self.config, strategies, primary_timeframe)
         if not symbol_frames:
             raise ValueError("No market data supplied")
 
@@ -84,8 +87,9 @@ class BacktestEngine:
         if not primary_rows:
             raise ValueError("No primary timeframe bars available")
 
-        for strategy in strategies.values():
-            strategy.reset()
+        if incremental is None or not incremental.values:
+            for strategy in strategies.values():
+                strategy.reset()
 
         event_times = sorted({timestamp for rows in primary_rows.values() for timestamp in rows})
         balance = float(self.config.starting_balance)
@@ -108,16 +112,42 @@ class BacktestEngine:
         )
         cooldown_until: dict[str, datetime] = {}
 
+        if incremental is not None and incremental.values:
+            saved = incremental.values
+            balance = saved['balance']
+            positions = saved['positions']
+            pending_entries = saved['pending_entries']
+            pending_exits = saved['pending_exits']
+            pending_management = saved['pending_management']
+            setup_records = saved['setup_records']
+            current_prices = saved['current_prices']
+            trades = saved['trades']
+            equity_curve = saved['equity_curve']
+            rejected_signals = saved['rejected_signals']
+            last_bars = saved['last_bars']
+            entries_by_day = saved['entries_by_day']
+            day_results = saved['day_results']
+            cooldown_until = saved['cooldown_until']
+            event_times = [t for t in event_times if t > saved['last_timestamp']]
+            if not event_times:
+                return incremental.result
+
         first_time = _to_datetime(event_times[0])
-        equity_curve.append({
+        if incremental is None or not incremental.values:
+            equity_curve.append({
             "timestamp": first_time.isoformat(), "equity": balance,
             "realized_pnl": 0.0, "closed_trades": [],
-        })
+            })
 
         for event_index, timestamp in enumerate(event_times):
             if progress is not None and event_index % 64 == 0:
                 progress(event_index, len(event_times))
             timestamp_dt = _to_datetime(timestamp)
+            if incremental is not None:
+                day = timestamp_dt.astimezone(self._tz).date()
+                close = incremental.session_closes.get(day)
+                if close is None or close.tzinfo is None or close <= timestamp_dt:
+                    raise ValueError('Missing or invalid incremental session-close authority')
             symbols_now = sorted(symbol for symbol, rows in primary_rows.items() if timestamp in rows)
             closed_here: list[BacktestTrade] = []
             force_boundary_symbols: set[str] = set()
@@ -250,9 +280,10 @@ class BacktestEngine:
             # stops/targets have had the opportunity to execute during that bar.
             if not self.config.allow_overnight:
                 for symbol in symbols_now:
-                    is_boundary = self._is_force_close_bar(
+                    is_boundary = (timestamp_dt < incremental.session_closes[timestamp_dt.astimezone(self._tz).date()] <= decision_time
+                        if incremental is not None else self._is_force_close_bar(
                         symbol, timestamp, decision_time, daily_last_bar
-                    )
+                    ))
                     if not is_boundary:
                         continue
                     force_boundary_symbols.add(symbol)
@@ -377,7 +408,7 @@ class BacktestEngine:
         # when overnight is allowed or the dataset itself ends before a boundary.
         final_events: list[BacktestTrade] = []
         final_time: datetime | None = None
-        for symbol, position in list(positions.items()):
+        for symbol, position in (list(positions.items()) if incremental is None else []):
             bar = last_bars.get(symbol)
             if bar is None:
                 continue
@@ -398,15 +429,23 @@ class BacktestEngine:
                 "closed_trades": [_trade_event(t) for t in final_events],
             })
 
-        for pending in pending_entries.values():
+        for pending in (pending_entries.values() if incremental is None else []):
             setup_records[pending["record_index"]].update({"status": "not_filled", "resolution_reason": "end_of_data"})
 
+        if incremental is not None:
+            incremental.values = dict(balance=balance, positions=positions,
+                pending_entries=pending_entries, pending_exits=pending_exits,
+                pending_management=pending_management, setup_records=setup_records,
+                current_prices=current_prices, trades=trades, equity_curve=equity_curve,
+                rejected_signals=rejected_signals, last_bars=last_bars,
+                entries_by_day=entries_by_day, day_results=day_results,
+                cooldown_until=cooldown_until, last_timestamp=event_times[-1])
         equity_curve = _merge_equity_points(equity_curve)
         equity_curve = _decorate_equity_curve(self.config.starting_balance, equity_curve)
         ordered_trades = sorted(trades, key=lambda t: (t.exit_time, t.symbol))
         metrics = calculate_metrics(ordered_trades, self.config.starting_balance, balance, equity_curve)
         analysis = calculate_analysis(ordered_trades, self._tz)
-        return {
+        result = {
             "metrics": metrics,
             "trades": [_trade_dict(trade) for trade in ordered_trades],
             "equity_curve": equity_curve,
@@ -436,6 +475,10 @@ class BacktestEngine:
                 "strategy_management": "next_bar_open_stop_target_updates_and_partial_market_exits",
             },
         }
+
+        if incremental is not None:
+            incremental.result = result
+        return result
 
     def _validate(self) -> None:
         if self.config.starting_balance <= 0:

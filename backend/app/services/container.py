@@ -80,6 +80,8 @@ class AppServices:
     research_author: object | None = None
 
     def __post_init__(self):
+        from app.forward.service import ForwardService
+        self.forward = ForwardService(self.database, self.settings)
         if self.backtest_jobs:
             from app.research_agent.sandbox_runs import SandboxRuns
             self.research_sandbox = SandboxRuns(self.database, self.backtest)
@@ -98,6 +100,8 @@ class AppServices:
             self.research_director = ResearchDirector(self)
 
     def close(self) -> None:
+        if getattr(self,'forward',None):
+            self.forward.close()
         if self.research_director:
             self.research_director.close()
         if self.research_author:

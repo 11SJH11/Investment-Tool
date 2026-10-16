@@ -27,3 +27,5 @@ api_router.include_router(research_agent_router)
 
 from app.api.research_campaigns import router as research_campaigns_router
 api_router.include_router(research_campaigns_router)
+from app.api.forward import router as forward_router
+api_router.include_router(forward_router)
