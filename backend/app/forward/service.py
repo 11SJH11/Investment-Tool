@@ -11,6 +11,7 @@ from .runtime import ShadowRuntime, WARMUP_SESSIONS
 class ForwardService:
     def __init__(self,database,settings,*,provider=None,start_thread=True,clock=lambda:datetime.now(timezone.utc)):
         self.database=database;self.clock=clock;self.lock=RLock();self.stop=Event()
+        self.metric_cache={}
         self.deployments=Deployments(database);self.runtime=ShadowRuntime(database)
         from .journal import ShadowJournal
         self.journal=ShadowJournal(database)
@@ -122,6 +123,12 @@ class ForwardService:
                 row=c.execute('SELECT * FROM forward_preparations WHERE experiment_id=?',(identifier,)).fetchone()
                 deployments=self.deployments._list(c,identifier)
                 for d in deployments:
+                    from .metrics import deployment_metrics
+                    cached=self.metric_cache.get(d['id'])
+                    if cached is None or cached[0]!=d['revision']:
+                        cached=(d['revision'],deployment_metrics(c,d))
+                        self.metric_cache[d['id']]=cached
+                    d['metrics']=cached[1]
                     d['state']['trade_count']=len(d['state']['trade_history'])
                     d['state']['trade_history']=d['state']['trade_history'][-100:]
                 from .comparison import compare

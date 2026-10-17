@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {api} from '../../api/client';
 import PaperValidation from './PaperValidation';
 import ForwardComparison from './ForwardComparison';
+import ForwardMetrics from './ForwardMetrics';
 
 const fields=[['starting_balance','Independent starting balance'],['risk_value','Shadow risk per trade (%)'],['commission_per_order','Commission per order'],['spread_bps','Spread (bps)'],['slippage_bps','Slippage (bps)']];
 export default function ForwardValidation(){
@@ -23,6 +24,7 @@ export default function ForwardValidation(){
  <button className="mini-btn mt-3" disabled={busy||!report?.configured||!consent} onClick={prepare}>{busy?'Preparing request…':pending.current?'Retry same request':'Prepare and start shadows'}</button>{!report?.configured&&<p className="text-sm mt-2">Configure Alpaca credentials in Settings before preparing data.</p>}</details>
  {report?.items?.map(item=><article className="insight-panel" key={item.id}><div className="ui-toolbar"><h4 className="font-semibold">Experiment {item.id.slice(0,8)}</h4><span>{item.preparation?.status||'DRAFT'}</span><button className="mini-btn" disabled={busy} onClick={()=>halt(item.id)}>Stop shadows</button></div>{item.preparation?.error&&<p role="alert" className="mt-2">{item.preparation.error}</p>}
  <div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Deployment','Status','Equity','Trades','Entries today','Last decision','Position'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{item.deployments.map(d=><tr key={d.id}><th className="p-2 whitespace-nowrap">{d.name}</th><td className="p-2">{d.state.status}</td><td className="p-2">{Number(d.state.equity).toFixed(2)}</td><td className="p-2">{d.state.trade_count}</td><td className="p-2">{d.state.trades_today}</td><td className="p-2 whitespace-nowrap">{d.state.last_evaluated_decision_at||'Awaiting data'}</td><td className="p-2">{d.state.position?`${d.state.position.direction} ${d.state.position.quantity}`:'Flat'}</td></tr>)}</tbody></table></div>
+ <ForwardMetrics deployments={item.deployments}/>
  <ForwardComparison report={item.paper_comparison}/>
  <details className="mt-3"><summary>Frozen settings, source identities and latest 100 trades per shadow</summary><pre className="text-xs max-h-96 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(item.deployments,null,2)}</pre></details></article>)}
  {!report?.items?.length&&<p className="text-sm muted">No forward experiment has been prepared.</p>}

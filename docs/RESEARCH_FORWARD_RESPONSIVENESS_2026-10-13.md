@@ -4,7 +4,36 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current: exact B shadow/paper comparison (17 October)
+## Current: forward shadow metrics (17 October)
+
+Added read-only `forward/metrics.py` and `ForwardMetrics.jsx`. Each independent
+deployment reports closed N, W/L/BE, win rate, cash PF, R sample/average/total,
+marked return, peak-to-trough marked drawdown in USD/percent, long/short PF,
+average/largest winners/losers and session-close winners. Cash statistics use net
+simulated P&L; return/drawdown include recorded open-position mark-to-market.
+All closed trades are used before the existing latest-100 display truncation.
+No account aggregation, strategy changes, fill changes or schema migrations.
+
+Observed sessions count New York dates with checkpoints, not elapsed calendar
+days. No-loss PF and empty averages remain null; no false zero/infinity. R has its
+own sample count. Low sample means fewer than 30 closed trades, explicitly a
+descriptive flag rather than statistical confidence. Unchanged revisions reuse
+cached metrics; changed revisions scan scalar checkpoint equity observations.
+
+Tests: **145 passed**, one existing warning, 44.66s across paper/forward/broker/
+canonical suites. New hand-worked tests assert PF, R, equity drawdown, empty
+samples, timezone dates and persisted runtime observations. **136 frontend passed**.
+Production build passed (162 modules, 983.53 kB JS / 285.54 kB gzip, existing chunk
+warning). As in the previous increment, initial import-resolution errors in
+unchanged files disappeared on unchanged retry. Mocked Forward Validation and
+metrics browser checks passed at 1024/1440/1920: sample labels, unavailable values,
+internal table scrolling, no page overflow/runtime errors. Full backend not rerun.
+
+Remaining: session replay/parity workflow, explicit last-signal presentation,
+submission/fill latency instrumentation and operational/real-provider acceptance.
+No real orders or model calls were made.
+
+## Previous increment: exact B shadow/paper comparison (17 October)
 
 `forward/comparison.py` reads closed B Journal rows without altering them. Matching
 requires experiment, frozen definition fingerprint, symbol, direction and exact

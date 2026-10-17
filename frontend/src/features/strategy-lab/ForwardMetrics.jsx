@@ -1,0 +1,8 @@
+const rows=[['observed_sessions','Observed sessions'],['n','Closed trades (N)'],['wins','Wins'],['losses','Losses'],['breakeven','Breakeven'],['win_rate_pct','Win rate (%)'],['profit_factor','P&L profit factor'],['r_sample_size','Trades with R'],['average_r','Average R'],['total_r','Total R'],['return_pct','Marked return (%)'],['max_drawdown_cash','Max marked drawdown (USD)'],['max_drawdown_pct','Max marked drawdown (%)'],['long_profit_factor','Long profit factor'],['short_profit_factor','Short profit factor'],['average_winner','Average winner (USD)'],['average_loser','Average loser (USD)'],['largest_winner','Largest winner (USD)'],['largest_loser','Largest loser (USD)'],['session_close_winners','Session-close winners']];
+const counts=new Set(['observed_sessions','n','wins','losses','breakeven','r_sample_size','session_close_winners']);
+export default function ForwardMetrics({deployments}){
+ return <details className="mt-3"><summary>Shadow performance · independent accounts</summary>
+ <p className="text-xs muted mt-2">{deployments.find(d=>d.metrics)?.metrics.note}</p>
+ <div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr><th className="p-2">Metric</th>{deployments.map(d=><th key={d.id} className="p-2 whitespace-nowrap">{d.name}{d.metrics?.low_sample&&<span className="block text-xs font-normal">Low sample · N={d.metrics.n}</span>}</th>)}</tr></thead><tbody>{rows.map(([key,label])=><tr key={key}><th className="p-2 whitespace-nowrap font-normal">{label}</th>{deployments.map(d=><td className="p-2" key={d.id}>{d.metrics?.[key]==null?'Unavailable':counts.has(key)?d.metrics[key]:Number(d.metrics[key]).toFixed(2)}</td>)}</tr>)}</tbody></table></div>
+ </details>;
+}

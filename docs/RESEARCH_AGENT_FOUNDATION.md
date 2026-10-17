@@ -1,6 +1,23 @@
 # Research Agent current status / handoff
 
-## Current: exact B shadow/paper comparison (17 October)
+## Current: forward shadow metrics (17 October)
+
+Forward Validation now includes a per-deployment performance table: closed N,
+wins/losses/breakeven, win rate, P&L PF, R sample/average/total, marked return and
+drawdown, directional PF, average/largest winners/losers and session-close winners.
+Observed sessions use New York checkpoint dates, not elapsed calendar days.
+All trades are included before display truncation; accounts are never pooled.
+Undefined ratios remain unavailable. N < 30 is a visible descriptive low-sample
+flag, not a confidence test. Results cache by deployment revision.
+
+145 paper/forward/broker backend checks and 136 frontend tests passed. Production
+build passed (162 modules). Mocked forward/metrics browser checks passed at
+1024/1440/1920. Full backend not rerun this increment. No orders/model calls.
+
+Remaining: session replay/parity workflow, explicit last-signal presentation,
+latency evidence, operational acceptance and opt-in provider/model checks.
+
+## Previous increment: exact B shadow/paper comparison (17 October)
 
 Forward Validation now compares closed B Journal trades using exact recorded
 entry decisions, experiment, frozen definition, symbol and direction. Shadow
