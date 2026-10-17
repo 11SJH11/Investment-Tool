@@ -1,5 +1,6 @@
 """Descriptive metrics for one independent shadow account; no portfolio pooling."""
 from zoneinfo import ZoneInfo
+import json
 from .bars import stamp
 
 
@@ -40,6 +41,14 @@ def deployment_metrics(connection, deployment):
     observations = connection.execute("""SELECT decision_at,
         json_extract(evidence_json,'$.equity_point.equity')
         FROM forward_checkpoints WHERE deployment_id=? ORDER BY decision_at""", (deployment['id'],))
-    return summarize(deployment['state']['trade_history'],
+    result=summarize(deployment['state']['trade_history'],
                      deployment['definition']['engine']['starting_balance'],
                      deployment['state']['equity'], observations)
+    row=connection.execute("""SELECT decision_at,evidence_json FROM forward_checkpoints WHERE deployment_id=? AND
+        (json_extract(evidence_json,'$.engine.pending_entries')!='{}' OR
+         json_extract(evidence_json,'$.engine.pending_exits')!='{}') ORDER BY decision_at DESC LIMIT 1""",(deployment['id'],)).fetchone()
+    if row:
+        engine=json.loads(row[1])['engine']
+        result['last_pending_signal']=dict(at=row[0],entries=engine['pending_entries'],exits=engine['pending_exits'])
+    else:result['last_pending_signal']=None
+    return result

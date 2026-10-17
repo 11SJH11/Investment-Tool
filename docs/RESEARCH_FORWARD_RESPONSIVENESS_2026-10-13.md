@@ -4,7 +4,84 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current: forward shadow metrics (17 October)
+## Current: session replay and timing closeout (17 October)
+
+Added `forward/parity.py`, an explicit `POST /forward/{experiment}/parity` action
+and `ForwardParity.jsx`. A replay validates the frozen source/runtime and immutable
+bar log, selects a completed provider session, and runs fresh independent strategy
+and engine instances over the prefix through its close. Cumulative setup/trade
+hashes, final engine state (including M3 counters/pending orders) and marked equity
+must match the recorded close checkpoint. A replay never resets or advances live
+instances and never routes an order. Checksum corruption and setup-path divergence
+produce visible FAIL. Missing close bars/source drift reject the operation.
+
+Additive table: `forward_session_parity`, keyed by experiment/session date, stores
+the latest check and per-deployment hash/check results. This is a diagnostic record,
+not a replacement saved backtest. One replay may execute at a time per service;
+the request uses a server worker thread and holds a registry execution lease. Large
+prefixes can take time; there is no cancellation/resume UI or throughput guarantee.
+
+Paper canonical evidence now retains provider submission/completed-fill timestamps.
+Comparison calculates decision-to-submission and submission-to-completed-fill
+delays only when present and nonnegative. It does not infer first-fill latency from
+order aggregates. Existing imported rows gain these fields on the next reconciliation.
+Last recorded pending signals are displayed as readable entry/exit text. Signals
+that were rejected or immediately resolved may not appear in pending snapshots;
+the UI says so rather than inventing an event log.
+
+Verification: 20 focused parity/comparison/service/paper-Journal checks passed,
+13.59s; 136 frontend tests passed. Production build passed: 164 modules,
+989.71 kB JS / 286.37 kB gzip, existing chunk warning. Mocked forward and parity
+browser checks passed at 1024/1440/1920, including date gate, API contract, visible
+FAIL details and no page overflow/runtime errors. Final full backend: **1,459
+passed, 38 skipped**, one existing Starlette warning, 518.43s. Command from backend:
+`.venv/Scripts/python.exe -B -m pytest -q --basetemp C:/Users/jamie/Project/forward-final-full-1017`.
+Log: `C:/Users/jamie/Project/forward-final-full-1017.log`. Frontend command:
+`node --test --test-concurrency=1 tests/*.test.js`; build: `npm.cmd run build`.
+Browser scripts: `forward-smoke.mjs`, `forward-parity-smoke.mjs`.
+`git diff --check` passed. No Ledger research containers remain; the six unrelated
+stopped containers were untouched. Isolated browser/Vite processes were stopped.
+Docker-specific suites were not rerun because sandbox execution was unchanged;
+the earlier separately recorded 29-pass Docker result is not relabelled as new.
+
+### Manual acceptance and external gates
+
+1. Start Ledger normally; configure the existing Alpaca paper credentials locally.
+   No credential values belong in screenshots, logs or this document.
+2. Open Backtest → Forward Validation. Inspect costs, confirm the IEX shadow
+   consent and prepare a new experiment. Wait for READY and four ACTIVE shadows.
+   Incomplete 60-session IEX warmup must fail, never synthesize missing minutes.
+3. During a provider session inspect independent positions, observed sessions,
+   closed-trade metrics, recorded pending signals and automatically journaled
+   simulated trades. Edit a Journal review and confirm later polls preserve it.
+4. Configure B paper with a conservative fixed notional/equity fraction. This alone
+   must remain DISARMED. Use a dedicated paper account. Actual arming is an explicit
+   user action after reading/accepting the disclosed post-fill/cancel-replace gaps.
+5. Confirm actual fills and MOC protection in Alpaca itself. Disarm stops new entries
+   but does not flatten. Cancel can remove protection. Flatten waits for confirmed
+   protection cancellation; near the final ten minutes it may defer to the auction.
+   A MOC is not guaranteed to fill. Initial strategy stop is not a broker-native
+   catastrophic stop; offline intraday exits are not guaranteed.
+6. After closure inspect paper Journal quantities/provenance and B comparison IDs.
+   Net P&L/fees/R may remain unavailable because order aggregates lack attributable
+   cost evidence. Match by exact decision; missing closed counterpart can mean open
+   or not imported. Do not equate absence with a missed trading opportunity.
+7. After a complete provider session choose its New York date and Check session
+   parity. All four should PASS. Investigate any FAIL before further deployment.
+8. Restart Ledger: paper entries must be disarmed; reconcile broker state before
+   explicit re-arming. Do not replay historical orders to fill missed decisions.
+9. Research quality/cost acceptance requires an opted-in configured/priced model
+   and a user-approved bounded campaign. Fixture passes do not certify strategy
+   profitability. Generated code remains Docker-only and cannot arm paper trading.
+
+Real IEX coverage, real paper lifecycle/auction behavior and real-model research
+quality remain unverified external acceptance gates. Strict sparse-IEX handling,
+the frozen 90-day calendar horizon, source/runtime drift requiring reconciliation,
+SQLite write fencing during bounded paper POSTs, and missed-decision halting remain
+operational limitations. Do not label the full product phase accepted until these
+gates pass. No newer MT5/results scope was started.
+
+## Previous increment: forward shadow metrics (17 October)
 
 Added read-only `forward/metrics.py` and `ForwardMetrics.jsx`. Each independent
 deployment reports closed N, W/L/BE, win rate, cash PF, R sample/average/total,

@@ -84,9 +84,18 @@ def compare(connection, experiment):
         exact_times = all(e['metadata'].get('timestamp_basis') == 'broker_completed_fill'
                           for e in paper['source_metadata'].get('executions', [])) and bool(paper['source_metadata'].get('executions'))
         duration = lambda t: (stamp(t['closed_at'])-stamp(t['opened_at'])).total_seconds()
+        entry_evidence=next((e for e in paper['source_metadata'].get('executions',[]) if e.get('role')=='entry'),{})
+        times=entry_evidence.get('metadata',{})
+        def delay(end,start):
+            if not end or not start:return None
+            try:
+                value=(stamp(end)-stamp(start)).total_seconds()
+                return value if value>=0 else None
+            except (ValueError,TypeError):return None
         items.append(dict(**base,status='matched',entry_slippage_per_share=entry,exit_slippage_per_share=exit_,
                           pnl_difference=(paper['pnl_amount']-shadow['pnl_amount']) if paper['pnl_amount'] is not None and shadow['pnl_amount'] is not None else None,
                           duration_difference_seconds=duration(paper)-duration(shadow) if exact_times else None,
-                          submission_latency_seconds=None, fill_latency_seconds=None))
+                          submission_latency_seconds=delay(times.get('broker_submitted_at'),decision),
+                          fill_latency_seconds=delay(times.get('broker_filled_at'),times.get('broker_submitted_at'))))
     return dict(items=items,unresolved=unresolved,matched=sum(i['status']=='matched' for i in items),
-                limitation='Closed Journal trades only. Missing counterpart may still be open or not imported. Exact decision/source matches only; positive slippage is adverse. Submission and individual-fill latency are unavailable.')
+                limitation='Closed Journal trades only. Missing counterpart may still be open or not imported. Exact decision/source matches only; positive slippage is adverse. Timing uses broker submission/completed-fill timestamps, not individual fills; missing or negative durations remain unavailable.')

@@ -1,5 +1,30 @@
 # Ledger Research Agent major update — October 2026
 
+## Latest continuation: research and forward validation (17 October 2026)
+
+The original major-update boundary below remains unchanged. Subsequent research
+lifecycle, immutable source/holdout authority and responsiveness work is recorded
+in [the current phase ledger](RESEARCH_FORWARD_RESPONSIVENESS_2026-10-13.md).
+That ledger supersedes older current-status statements in this historical report.
+
+Forward capability now includes four frozen independent IEX shadow deployments,
+completed-bar persistence and replay recovery, a separate broker-position-driven
+B paper evaluator, durable paper intent/reconciliation/protection controls,
+automatic shadow/paper Journal linkage, exact-decision counterpart comparison,
+per-deployment metrics and completed-session parity checks. Paper arming is explicit;
+the Research Agent has no execution capability. Native MOC protection follows fills
+with user-accepted paper-only gaps; it is neither atomic nor a guaranteed fill.
+
+Current-tree verification on 17 October: **1,459 backend passed, 38 skipped**,
+one existing warning; **136 frontend tests passed**; production build passed.
+Mocked forward/parity browser acceptance passed at 1024/1440/1920. No real orders
+or paid model calls. No Ledger research containers remain. The phase ledger
+contains commands, schema additions, restrictions
+and manual acceptance steps. Real IEX coverage, paper-account lifecycle and paid
+model research quality are external gates, not claims established by fixture tests.
+See [current handoff](RESEARCH_AGENT_FOUNDATION.md). The next MT5/results phase has
+not begun. No frozen strategy rules or historical saved results were rewritten.
+
 ## Boundary and evidence
 
 Boundary: **`afb73e9f4b0679fd5a7c8b10498289b7a8fd610b`**, committed

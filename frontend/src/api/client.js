@@ -47,6 +47,7 @@ function queryString(params) {
 }
 
 export const api = {
+  forwardParity: (id,body) => request(`/forward/${encodeURIComponent(id)}/parity`,{method:'POST',body:JSON.stringify(body)}),
   forwardReport: () => request('/forward'),
   paperReport: () => request('/forward/paper'),
   paperPrepare: body => request('/forward/paper/prepare',{method:'POST',body:JSON.stringify(body)}),

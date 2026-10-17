@@ -16,6 +16,8 @@ class ForwardService:
         from .journal import ShadowJournal
         self.journal=ShadowJournal(database)
         self.runtime.bars=BarLog(database,clock)
+        from .parity import SessionParity
+        self.parity=SessionParity(self.runtime)
         from .paper_service import PaperService
         self.paper=PaperService(database,settings,self.runtime,start_thread=start_thread,clock=clock)
         self.provider=provider
@@ -133,6 +135,6 @@ class ForwardService:
                     d['state']['trade_history']=d['state']['trade_history'][-100:]
                 from .comparison import compare
                 reports.append(dict(id=identifier,preparation=dict(row) if row else None,deployments=deployments,
-                                    paper_comparison=compare(c,identifier)))
+                                    paper_comparison=compare(c,identifier),session_parity=self.parity.reports(c,identifier)))
         return dict(configured=self.provider is not None,provider='alpaca',feed='iex',adjustment='raw',items=reports,
                     limitation='IEX-only coverage. Missing/revised minutes halt; no synthetic candles. Independent shadow accounts, no broker orders.')

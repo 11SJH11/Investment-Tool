@@ -33,6 +33,16 @@ def prepare(request:Prepare,instance=Depends(service)):
 def halt(experiment:str,instance=Depends(service)):
     return instance.halt(experiment)
 
+class ParityRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    session_date:str=Field(pattern=r'^\d{4}-\d{2}-\d{2}$')
+
+@router.post('/{experiment}/parity')
+def session_parity(experiment:str,request:ParityRequest,instance=Depends(service)):
+    try:return instance.parity.run(experiment,request.session_date)
+    except ValueError as exc:raise HTTPException(400,str(exc)) from None
+    except Exception:raise HTTPException(502,'Session replay failed; no live execution state was changed') from None
+
 class PaperPrepare(BaseModel):
     model_config=ConfigDict(extra='forbid')
     experiment_id:str

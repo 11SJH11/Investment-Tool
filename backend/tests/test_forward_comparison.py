@@ -65,3 +65,21 @@ def test_duplicate_counterpart_is_ambiguous_and_report_does_not_mutate_reviews(p
     with db.connect() as c:result=compare(c,experiment)
     assert result['matched']==0 and any(i['status']=='ambiguous' for i in result['items'])
     assert repo.list_trades()==before
+
+
+def test_broker_timing_uses_reported_times_and_negative_delay_is_unknown(paired):
+    from datetime import timedelta
+    from app.forward.bars import stamp
+    db,experiment,repo,_,paper=paired
+    metadata=paper['source_metadata'];decision=stamp(metadata['decision_at'])
+    metadata['executions'][0].update(role='entry')
+    times=metadata['executions'][0]['metadata']
+    times.update(broker_submitted_at=(decision+timedelta(seconds=2)).isoformat(),
+                 broker_filled_at=(decision+timedelta(seconds=5)).isoformat())
+    repo.update_trade(paper['id'],{'source_metadata':metadata})
+    with db.connect() as c:item=next(i for i in compare(c,experiment)['items'] if i['status']=='matched')
+    assert item['submission_latency_seconds']==2 and item['fill_latency_seconds']==3
+    times['broker_filled_at']=(decision-timedelta(seconds=1)).isoformat()
+    repo.update_trade(paper['id'],{'source_metadata':metadata})
+    with db.connect() as c:item=next(i for i in compare(c,experiment)['items'] if i['status']=='matched')
+    assert item['fill_latency_seconds'] is None

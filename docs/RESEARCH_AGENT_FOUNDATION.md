@@ -1,6 +1,33 @@
 # Research Agent current status / handoff
 
-## Current: forward shadow metrics (17 October)
+## Current: session replay and timing closeout (17 October)
+
+Completed-session parity is now available in Forward Validation. It creates fresh
+strategy/engine instances, replays the immutable prefix through the provider close,
+and compares cumulative setup/trade hashes, final engine state and marked equity.
+PASS/FAIL results persist; source drift, incomplete sessions and unavailable bars
+cannot pass. Live strategy instances/checkpoints are not changed.
+
+Paper comparison now exposes broker submission minus decision and broker completed
+fill minus submission delays when those timestamps exist; negative/missing values
+remain unknown. This is not individual-fill latency. The metrics panel shows the
+last persisted pending signal, with an explicit limitation for signals that never
+appeared in pending snapshots.
+
+Frontend: 136 tests passed; production build passed (164 modules, existing chunk
+warning). Focused parity/comparison/service/Journal checks: 20 passed. Mocked
+Forward Validation and parity controls passed at 1024/1440/1920. Final full backend:
+**1,459 passed, 38 skipped**, one existing Starlette warning, 518.43s. Diff check
+passed. No Ledger research containers remain; six unrelated stopped containers
+were untouched. The isolated browser/Vite processes were stopped.
+
+External acceptance still requires the user's configured feed/account, adequate
+IEX history and explicit paper arming during a provider session. No real orders or
+paid model calls were made. This does not certify real trading reliability or
+research quality. See the phase ledger's manual checklist and limitations.
+The later MT5/results phase has not started.
+
+## Previous increment: forward shadow metrics (17 October)
 
 Forward Validation now includes a per-deployment performance table: closed N,
 wins/losses/breakeven, win rate, P&L PF, R sample/average/total, marked return and

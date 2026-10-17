@@ -62,6 +62,7 @@ class PaperJournal:
                     quantity_unit='shares', role=intent['action'], evidence='reconciled_order_snapshot',
                     metadata=dict(programmatic_order=True, client_order_id=intent['client_order_id'],
                         decision_at=intent['decision_at'], purpose=intent['purpose'],
+                        broker_submitted_at=facts.get('submitted_at'), broker_filled_at=facts.get('filled_at'),
                         timestamp_basis='broker_completed_fill' if facts.get('filled_at') else 'first_observed_fill')))
             trades = closed_positions(executions, 'Alpaca paper / '+key[:8], 'USD',
                                       {position} if balance else ())
