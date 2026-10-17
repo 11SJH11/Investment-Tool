@@ -1,6 +1,26 @@
 # Research Agent current status / handoff
 
-## Current: reconciled paper Journal import (17 October)
+## Current: exact B shadow/paper comparison (17 October)
+
+Forward Validation now compares closed B Journal trades using exact recorded
+entry decisions, experiment, frozen definition, symbol and direction. Shadow
+pending-market-order and paper decision checksums are verified. Missing evidence,
+duplicate candidates and missing closed counterparts are explicit; no approximate
+timestamp pairing or mutation of Journal facts/reviews occurs.
+
+The panel exposes both Journal IDs, adverse entry/exit slippage per share, P&L
+difference only where known, and duration difference only with broker-completed
+fill timestamps. Individual-fill/submission latency remains unavailable.
+
+142 paper/forward/broker backend tests and 136 frontend tests passed. Production
+build passed (161 modules; existing chunk warning). Mocked Forward Validation and
+comparison browser checks passed at 1024/1440/1920. Full backend was not rerun this
+increment; prior full-suite counts below belong to their recorded trees.
+
+Remaining: complete forward metrics, session replay/parity workflow, latency
+instrumentation, operational risk acceptance and opt-in provider/model checks.
+
+## Previous increment: reconciled paper Journal import (17 October)
 
 The backend paper monitor now imports closed reconciled positions through the
 existing canonical broker execution/repository path. Pending cumulative fills are

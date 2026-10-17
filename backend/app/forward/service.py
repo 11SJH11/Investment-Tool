@@ -124,6 +124,8 @@ class ForwardService:
                 for d in deployments:
                     d['state']['trade_count']=len(d['state']['trade_history'])
                     d['state']['trade_history']=d['state']['trade_history'][-100:]
-                reports.append(dict(id=identifier,preparation=dict(row) if row else None,deployments=deployments))
+                from .comparison import compare
+                reports.append(dict(id=identifier,preparation=dict(row) if row else None,deployments=deployments,
+                                    paper_comparison=compare(c,identifier)))
         return dict(configured=self.provider is not None,provider='alpaca',feed='iex',adjustment='raw',items=reports,
                     limitation='IEX-only coverage. Missing/revised minutes halt; no synthetic candles. Independent shadow accounts, no broker orders.')

@@ -4,7 +4,37 @@ Audit boundary: `8754cff`, 13 October 2026. This is an implementation and
 acceptance ledger, not a completion claim. The untracked local confluence modules
 and research outputs belong to the user and are preserved. No credentials read.
 
-## Current: reconciled paper Journal import (17 October)
+## Current: exact B shadow/paper comparison (17 October)
+
+`forward/comparison.py` reads closed B Journal rows without altering them. Matching
+requires experiment, frozen definition fingerprint, symbol, direction and exact
+entry decision. For frozen next-open market shadows, the checkpoint at the entry
+open must contain the pending market signal with the same decision time/direction;
+its checksum is verified. Paper requires a checksum-verified recorded entry
+decision. Missing evidence and duplicates remain unresolved, never nearest-time
+matches. Different definitions cannot match. No engine or trading-rule changes.
+
+Forward report/API and `ForwardComparison.jsx` expose matched count, both Journal
+IDs, missing closed counterparts and ambiguous/evidence-unavailable cases. Positive
+entry/exit slippage per share means adverse execution for the trade direction.
+P&L difference is null if either side is unknown; it may reflect differing sizes
+and costs. Duration difference requires broker-completed-fill timestamps for all
+paper aggregates. Submission/individual-fill latency remains null. A missing
+closed counterpart may still be open or not imported; it is not proof of a missed
+trade. Small-sample limitations are visible. No schema migration.
+
+Verification: **142 passed**, one existing warning, 45.37s across `test_paper*.py`,
+`test_forward*.py`, `test_broker*.py`, `test_canonical*.py`; **136 frontend passed**.
+Production build passed (161 modules, 981.64 kB JS / 285.01 kB gzip). Initial build
+had intermittent import-resolution errors on unchanged existing files; retry
+passed without changes. Existing chunk-size warning remains. Mocked forward and
+comparison browser checks passed at 1024/1440/1920, no page overflow/runtime errors.
+No real orders/model calls. Full backend not rerun this increment.
+
+Remaining: complete metrics, session replay/parity workflow, latency evidence,
+operational risk acceptance and opt-in real-provider/model acceptance.
+
+## Previous increment: reconciled paper Journal import (17 October)
 
 `forward/paper_journal.py` converts terminal, reconciled cumulative order fills
 into the existing canonical `Execution` model and `BrokerSyncRepository`. It does
