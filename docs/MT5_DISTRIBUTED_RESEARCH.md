@@ -85,7 +85,72 @@ Verification after Stage 3: 68 focused backend tests passed (17 history-hub test
 passed after it. Mocked catalog/coverage browser smoke passed at 1024/1440/1920px
 without overflow/runtime errors. Full-suite and real-provider acceptance are pending.
 
-Stages 4–17 remain pending. MT5 distribution must remain disabled until actual
+Stage 3 commit: `a668f63`.
+
+## Real terminal acceptance
+
+Read-only acceptance against the already-running local demo terminal succeeded
+without reading the stable checkout's credentials or changing account/login:
+344 symbols discovered (238 CFD, 106 forex); NASUSD is a broker CFD.
+For 2026-10-16 14:00–14:05 UTC: 5 completed 1m NASUSD bars and 3,920 ticks,
+with cached Parquet SHA256 verification passing. All 3,920 ticks supplied bid/ask;
+none supplied a positive last price or positive last-trade volume. The five bars
+had positive tick volume but all-zero real volume. No exchange-volume availability
+claim is made. No order APIs were called. Acceptance artifacts are ignored under
+`.ledger-runtime/acceptance`, separate from both applications' runtime databases.
+This five-minute sample proves retrieval, not multi-year coverage or execution parity.
+Use a separate MT5 terminal installation/data folder if concurrently testing different
+accounts; native terminal account state is shared across connected processes.
+
+## Causal microstructure foundation (Stage 4)
+
+The existing Market Concepts registry now supports explicit tick inputs, without
+passing them through OHLCV calculations or changing the bar engine. Added:
+
+- `spread.current.v1`: ask minus bid, price units; missing/crossed quotes -> null.
+- `spread.mean_window.v1`: arithmetic quote-weighted mean over `(t-window,t]`;
+  default 60 seconds (1–3600 configurable). Null before full observed warmup or
+  if any quote in the window is invalid. This is not a time-weighted spread.
+- `tick_activity.count.v1`: observed event count over the same window, not exchange
+  trades/volume. Equal-timestamp events retain provider ordering.
+
+Observations preserve occurred_at, confirmed_at and available_at. Delayed observations
+are withheld until available. Historical inputs without measured availability use
+event time explicitly; they do not claim measured live latency. Existing bar observations
+default availability to confirmation. Tick inputs cannot silently feed bar concepts.
+Dataset/source fingerprints use the existing registry. Prefix mutation, missing quote,
+delayed availability and same-timestamp fixtures pass. No DOM, speculative imbalance,
+fill simulation or strategy trading-rule changes were added.
+
+The framework is implemented; attaching these summaries to approved research datasets,
+canonical results and packs remains part of the following stages. No MT5-derived
+strategy is yet enabled for backtest or distributed execution.
+
+Checkpoint verification: 8 microstructure tests plus 7 existing Market Concepts
+tests and the configuration-template test passed (16 total). Real NASUSD quote data
+also passed full-input versus truncated-prefix equality for all three concepts
+(1,691 observations visible at 14:02 UTC). The first full run finished with 1,485
+passed, 45 skipped and one configuration-template failure: the newly introduced
+CORS alias was missing from .env.example. That omission is fixed and its focused
+test passes. A clean final full run remains required; do not report this run as green.
+
+## Remaining staged work
+
+5. Canonical experiment result contract and backward-compatible adapters.
+6. Versioned Research Packs and standard exports.
+7. Bulk exports/analysis bundles.
+8. Runs selection/comparison/download/deletion workflow.
+9. Measured 2k–3.5k-trade performance acceptance and necessary fixes.
+10. ExperimentExecutor integration.
+11. Real exact Python/MQL5 parity proof.
+12. Tester execution and automatic result ingestion.
+13. Independent local tester agents.
+14. Remote/cloud feasibility only after parity.
+15. Bounded multi-family research/governance.
+16. Official Robinhood interactive OAuth/MCP, subject to registration prerequisites.
+17. Final whole-phase regression and end-to-end acceptance.
+
+MT5 distribution must remain disabled until actual
 Ledger/MQL5 decision/state parity is demonstrated, not merely fixture P&L similarity.
 
 Official references: [MT5 symbols](https://www.mql5.com/en/docs/python_metatrader5/mt5symbolsget_py),

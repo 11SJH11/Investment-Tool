@@ -14,6 +14,8 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 
 ## User and developer workflows
 
+- [Isolated MT5 distributed-research phase](MT5_DISTRIBUTED_RESEARCH.md): branch isolation, broker-native history, causal microstructure and staged completion status.
+
 - [Charts and Replay](CHART_WORKSPACE.md): drawings, causality and local checkpoints.
 - [Journal](JOURNAL.md): reviews, Playbook, Daily Review, analytics and preservation.
 - [Backtest usability and Trade Review](BACKTEST_REVIEW_USABILITY.md): Activity, lazy results, parameter sweeps and causal evidence.
