@@ -30,6 +30,8 @@ class BacktestRunRepository:
         test_role: str = "development", experiment_group: str = "", tags: list[str] | None = None,
         strategy_sources: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
+        from app.backtesting.experiment_result import validate_contract
+        validate_contract(result, config)
         role = _normalise_role(test_role)
         strategy = result.get("strategy") or {}
         metrics = result.get("metrics") or {}

@@ -224,8 +224,12 @@ class StrategyWorkspace:
             run['workspace'] = {'filename': filename, 'source_sha256': revision(source)}
             if (payload or {}).get('save_run', True):
                 snapshot = _redact(job['payload'], services.settings.model_dump(mode='json'))
+                from app.backtesting.experiment_result import finalize_result
+                saved_config = {**snapshot, 'workspace': run['workspace']}
+                run = finalize_result(run, saved_config, test_role=str(snapshot.get('test_role') or 'development'))
+                result['result'] = run
                 saved = services.backtest_runs.create(
-                    config={**snapshot, 'workspace': run['workspace']}, result=run,
+                    config=saved_config, result=run,
                     name=str(snapshot.get('run_name') or filename),
                     notes=str(snapshot.get('run_notes') or ''),
                     test_role=str(snapshot.get('test_role') or 'development'),

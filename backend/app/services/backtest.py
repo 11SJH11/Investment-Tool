@@ -311,12 +311,20 @@ class BacktestService:
         from app.storage.reproducibility import environment_snapshot
         result['execution_environment'] = environment_snapshot()
         result['performance'] = {**snapshot(), 'scope': 'through reporting; persistence/total available to caller profiler'}
+        from app.backtesting.experiment_result import canonical_result, python_executor_identity
+        saved_config = _snapshot_config(payload, strategy_key=strategy_key, symbols=symbols)
+        effective_config = asdict(config)
+        cost_keys = ('commission_per_order', 'slippage_bps', 'spread_bps')
+        result = canonical_result(result, saved_config, executor=python_executor_identity(),
+            test_role=str(payload.get('test_role') or 'development'),
+            execution_model={key:value for key,value in effective_config.items() if key not in cost_keys},
+            cost_model={key:effective_config[key] for key in cost_keys})
         if self.runs is not None and bool(payload.get("save_run", True)):
             if workspace:
                 result['workspace'] = dict(workspace)
             def save():
                 return self.runs.create(
-                    config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
+                    config=saved_config,
                     result=result,
                     strategy_sources=inputs.get("strategy_sources", strategy_registry.sources()),
                     name=str(payload.get("run_name") or ""),
@@ -790,6 +798,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
         "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint", "strategy_provenance", "research_project_id", "research_trial_id", "research_trial_cell", "research_validation_id", "research_validation_cell",
+        "research_program_id", "research_campaign_id", "family_id", "experiment_group",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

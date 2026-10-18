@@ -410,6 +410,13 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
       </div>
       <p className="mt-2 break-all text-xs text-stone-500">{result.strategy?.implementation?.source_sha256?`Recorded strategy SHA-256: ${result.strategy.implementation.source_sha256}`:'Historical run: strategy source fingerprint was not recorded.'}</p>
       <p className="mt-1 text-xs muted">{result.strategy?.source_archive?.status==='archived'?'Loaded strategy source archived. Bundle excludes the engine, dependencies and market data; it is not an executable environment.':'No recorded strategy source bundle for this run. Current source is not a substitute for historical code.'}</p>
+      <details className="mt-2 text-xs"><summary>Recorded experiment provenance</summary>{result.experiment_contract?<div className="space-y-1 break-all mt-2">
+        <p>Executor: {result.experiment_contract.executor.kind.replaceAll('_',' ')} · {result.experiment_contract.executor.version||'Version unavailable'} · {result.experiment_contract.executor.execution_tier.replaceAll('_',' ')}</p>
+        <p>Core source: {result.experiment_contract.executor.source_sha256||'Unavailable'}</p>
+        <p>Configuration: {result.experiment_contract.configuration_sha256}</p>
+        <p>Unavailable evidence: {Object.entries(result.experiment_contract.availability).filter(([,status])=>status==='UNAVAILABLE').map(([name])=>name.replaceAll('_',' ')).join(', ')||'None recorded'}</p>
+        <p>Executor identity does not establish Python/MT5 parity.</p>
+      </div>:<p>Unavailable for this historical snapshot. Current code is not substituted for its execution history.</p>}</details>
       <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3" role="tablist" aria-label="Run viewer sections">{["Summary","Trades","Analysis"].map(item=><button key={item} role="tab" aria-selected={viewerTab===item} className={`mini-btn ${viewerTab===item?"active-btn":""}`} onClick={()=>{setViewerTab(item);if(item!=="Summary")loadSection(item.toLowerCase())}}>{item}{item==="Trades"?` (${m.trades??trades.length})`:""}</button>)}</div>
     </div>
 

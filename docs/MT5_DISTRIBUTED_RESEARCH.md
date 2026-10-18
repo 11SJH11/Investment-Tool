@@ -136,7 +136,23 @@ test passes. A clean final full run remains required; do not report this run as 
 
 ## Remaining staged work
 
-5. Canonical experiment result contract and backward-compatible adapters.
+Stage 4 commit: `4a0ce2f`.
+
+Stage 5 now adds `ledger.experiment.v1` metadata to the existing Ledger result
+shape. New Python runs record the core executor SHA (engine/context/models),
+configuration hash, strategy/data provenance, lineage, role, effective execution
+and cost settings, and RECORDED/UNAVAILABLE section availability. Parent research
+workers finalize lineage without replacing the worker's execution identity.
+Workspace persistence uses the same contract; it remains hidden in normal UI.
+The existing result store validates contract/configuration agreement. Historical
+snapshots are not rewritten or assigned current code identity. Run Viewer and the
+reproducibility export expose the recorded contract. Missing MT5 evidence is never
+computed as zero by normalization. MT5 fixture normalization is tested; this is
+not an implemented tester or parity certification.
+
+Stage 5 validation: 63 tests passed across contract, parent research, reproducibility,
+source archives and Workspace; production build passed. No database migration.
+
 6. Versioned Research Packs and standard exports.
 7. Bulk exports/analysis bundles.
 8. Runs selection/comparison/download/deletion workflow.
