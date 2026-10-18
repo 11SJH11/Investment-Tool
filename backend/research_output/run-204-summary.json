@@ -1,0 +1,196 @@
+{
+  "run_id": 204,
+  "name": "Baseline D6",
+  "test_role": "development",
+  "start_date": "2014-10-01",
+  "end_date": "2017-12-31",
+  "strategy": {
+    "key": "vwap_trend_confirmation_quality_research_v5",
+    "name": "VWAP Trend Confirmation Quality \u00b7 research v5",
+    "params": {
+      "direction": "both",
+      "entry_confirmation_bars": 3,
+      "exit_confirmation_bars": 2,
+      "max_entry_vwap_distance_bps": 25,
+      "min_confirmation_displacement_bps": 6,
+      "min_minutes_after_open": 1,
+      "trend_timeframe": "1d",
+      "trend_ema_length": 20,
+      "engine_safety_stop_pct": 90
+    },
+    "implementation": {
+      "key": "vwap_trend_confirmation_quality_research_v5",
+      "module": "app.backtesting.strategies.vwap_trend_confirmation_quality_research_v5",
+      "class_name": "VwapTrendConfirmationQualityResearchV5",
+      "source_sha256": "b7f7dc18d3ad0346ea6f85f33f60ef0125cc4a2395f3243bf9f3ab30518f44d7",
+      "registry_sha256": "6863926176b5ed433697eccc1f56bf492947ad229b0fb46b13042b7d44422c1f"
+    },
+    "review_config": {
+      "version": 1,
+      "series": [
+        {
+          "id": "vwap",
+          "label": "Session VWAP",
+          "indicator": "rth_vwap_bands",
+          "timeframe": "1m",
+          "params": {
+            "line": "vwap"
+          },
+          "session_reset": true,
+          "distance_bps_param": "max_entry_vwap_distance_bps"
+        },
+        {
+          "id": "htf_ema",
+          "label": "Completed RTH regime EMA",
+          "indicator": "rth_trend_ema",
+          "timeframe": "1m",
+          "params": {
+            "timeframe": {
+              "parameter": "trend_timeframe"
+            },
+            "length": {
+              "parameter": "trend_ema_length"
+            }
+          },
+          "extended_history": true,
+          "history_days": {
+            "parameter": "trend_timeframe",
+            "values": {
+              "off": 0,
+              "1h": 30,
+              "4h": 75,
+              "1d": 75,
+              "1w": 250
+            }
+          }
+        }
+      ],
+      "confirmation": {
+        "series": "vwap",
+        "entry_param": "entry_confirmation_bars",
+        "exit_param": "exit_confirmation_bars",
+        "exit_reason": "vwap_confirmed_reverse"
+      },
+      "record_attributes": {
+        "confirmation_observed": "_streak_count"
+      },
+      "entry_fields": [
+        "vwap",
+        "confirmation_bars",
+        "confirmation_count",
+        "confirmation_displacement_bps",
+        "min_confirmation_displacement_bps",
+        "trend_timeframe",
+        "trend_ema_length",
+        "htf_close",
+        "htf_ema",
+        "htf_trend_state",
+        "htf_filter_passed"
+      ]
+    },
+    "concepts": {},
+    "source_archive": {
+      "status": "archived",
+      "sha256": "6863926176b5ed433697eccc1f56bf492947ad229b0fb46b13042b7d44422c1f",
+      "module": "vwap_trend_confirmation_quality_research_v5.py",
+      "module_sha256": "b7f7dc18d3ad0346ea6f85f33f60ef0125cc4a2395f3243bf9f3ab30518f44d7",
+      "module_count": 31,
+      "scope": "Loaded strategy modules only; excludes engine, base classes, external dependencies and market data. Not a complete executable environment."
+    }
+  },
+  "config": {
+    "start_date": "2014-10-01",
+    "end_date": "2017-12-31",
+    "primary_timeframe": "1m",
+    "additional_timeframes": [],
+    "session": "auto",
+    "strategy_params": {
+      "direction": "both",
+      "entry_confirmation_bars": 3,
+      "exit_confirmation_bars": 2,
+      "max_entry_vwap_distance_bps": 25,
+      "min_confirmation_displacement_bps": 6,
+      "min_minutes_after_open": 1,
+      "trend_timeframe": "1d",
+      "trend_ema_length": 20,
+      "engine_safety_stop_pct": 90
+    },
+    "starting_balance": 10000.0,
+    "sizing_mode": "position_pct",
+    "risk_value": 100.0,
+    "commission_per_order": 0.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0,
+    "max_leverage": 1.0,
+    "max_open_positions": 5,
+    "same_bar_policy": "stop_first",
+    "entry_windows": [
+      {
+        "start": "09:30",
+        "end": "11:30"
+      }
+    ],
+    "trading_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "allow_overnight": false,
+    "force_close_time": "",
+    "max_trades_per_day": 3,
+    "max_daily_loss_r": null,
+    "max_consecutive_losses": null,
+    "cooldown_minutes": 0,
+    "queue_job_id": "614599a8-f802-470d-98d7-8d11531239b2",
+    "research_experiment": null,
+    "market_data_fingerprint": "8fbf49a58cf1f7e932a5235b36d84273880b70ea3ce0c5f2ec012678e39f57a9",
+    "strategy_provenance": {
+      "key": "vwap_trend_confirmation_quality_research_v5",
+      "module": "app.backtesting.strategies.vwap_trend_confirmation_quality_research_v5",
+      "class_name": "VwapTrendConfirmationQualityResearchV5",
+      "source_sha256": "b7f7dc18d3ad0346ea6f85f33f60ef0125cc4a2395f3243bf9f3ab30518f44d7",
+      "registry_sha256": "6863926176b5ed433697eccc1f56bf492947ad229b0fb46b13042b7d44422c1f"
+    },
+    "strategy_key": "vwap_trend_confirmation_quality_research_v5",
+    "symbols": [
+      "QQQ"
+    ]
+  },
+  "metrics": {
+    "trades": 757,
+    "wins": 196,
+    "losses": 553,
+    "breakeven": 8,
+    "win_rate_pct": 25.891677675033026,
+    "average_r": -1.666366820641685e-05,
+    "expectancy_r": -1.666366820641685e-05,
+    "median_r": -0.000696486611979596,
+    "total_r": -0.012614396832257556,
+    "average_planned_rr": null,
+    "average_winner_r": 0.003109372764352259,
+    "average_loser_r": -0.0011248670138251354,
+    "largest_winner_r": 0.0320139056964951,
+    "largest_loser_r": -0.0062674131637853545,
+    "profit_factor_r": 0.9797212969169325,
+    "profit_factor_cash": 0.9755840097716341,
+    "gross_profit": 5528.976950641536,
+    "gross_loss": 5667.350935708516,
+    "net_pnl": -138.3739850669699,
+    "starting_balance": 10000.0,
+    "ending_balance": 9861.62601493303,
+    "return_pct": -1.3837398506696963,
+    "max_drawdown_cash": -599.1027692580374,
+    "max_drawdown_pct": -5.745852747550904,
+    "max_drawdown_r": -0.05997453156591409,
+    "longest_losing_streak": 17,
+    "average_hold_minutes": 65.69881109643329
+  },
+  "symbols": [
+    "QQQ"
+  ],
+  "primary_timeframe": "1m",
+  "session": "regular",
+  "trade_count_saved": 757
+}

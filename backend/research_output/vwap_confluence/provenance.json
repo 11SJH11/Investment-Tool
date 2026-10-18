@@ -1,0 +1,116 @@
+{
+  "tool": "vwap_confluence_research_v2.py",
+  "feature_version": "vwap-confluence-discovery-v2-precomputed",
+  "run_ids": [
+    182,
+    179,
+    181
+  ],
+  "history_days": 400,
+  "structure_sessions": 5,
+  "tod_sessions": 60,
+  "run_metadata": [
+    {
+      "run_id": 182,
+      "start_date": "2020-01-01",
+      "end_date": "2023-09-02",
+      "trades": 1679,
+      "strategy_key": "vwap_trend_confirmation_quality_research_v5",
+      "strategy_params": {
+        "direction": "both",
+        "entry_confirmation_bars": 3,
+        "exit_confirmation_bars": 2,
+        "max_entry_vwap_distance_bps": 25,
+        "min_confirmation_displacement_bps": 6,
+        "min_minutes_after_open": 1,
+        "trend_timeframe": "1d",
+        "trend_ema_length": 20,
+        "engine_safety_stop_pct": 90
+      },
+      "namespace": "alpaca-sip-split",
+      "cache_first": "2020-01-02 09:00:00+00:00",
+      "cache_last": "2023-09-01 23:59:00+00:00",
+      "cached_prior_rth_sessions": 0,
+      "runtime_seconds": 159.23128860001452
+    },
+    {
+      "run_id": 179,
+      "start_date": "2023-10-01",
+      "end_date": "2025-12-31",
+      "trades": 960,
+      "strategy_key": "vwap_trend_confirmation_quality_research_v5",
+      "strategy_params": {
+        "direction": "both",
+        "entry_confirmation_bars": 3,
+        "exit_confirmation_bars": 2,
+        "max_entry_vwap_distance_bps": 25,
+        "min_confirmation_displacement_bps": 6,
+        "min_minutes_after_open": 1,
+        "trend_timeframe": "1d",
+        "trend_ema_length": 20,
+        "engine_safety_stop_pct": 90
+      },
+      "namespace": "alpaca-sip-split",
+      "cache_first": "2022-08-29 08:00:00+00:00",
+      "cache_last": "2026-01-01 00:59:00+00:00",
+      "cached_prior_rth_sessions": 274,
+      "runtime_seconds": 124.88963260001037
+    },
+    {
+      "run_id": 181,
+      "start_date": "2026-04-01",
+      "end_date": "2026-10-02",
+      "trades": 214,
+      "strategy_key": "vwap_trend_confirmation_quality_research_v5",
+      "strategy_params": {
+        "direction": "both",
+        "entry_confirmation_bars": 3,
+        "exit_confirmation_bars": 2,
+        "max_entry_vwap_distance_bps": 25,
+        "min_confirmation_displacement_bps": 6,
+        "min_minutes_after_open": 1,
+        "trend_timeframe": "1d",
+        "trend_ema_length": 20,
+        "engine_safety_stop_pct": 90
+      },
+      "namespace": "alpaca-sip-split",
+      "cache_first": "2025-02-25 09:00:00+00:00",
+      "cache_last": "2026-10-02 23:59:00+00:00",
+      "cached_prior_rth_sessions": 276,
+      "runtime_seconds": 51.169824000040535
+    }
+  ],
+  "warnings": [
+    "Run 182: only 0 cached RTH sessions precede the run; early time-of-day percentiles may be unavailable."
+  ],
+  "definitions": {
+    "bos": "first completed close through latest already-confirmed strict swing; one event per pivot",
+    "wick_break": "first wick through latest already-confirmed strict swing; separate from close-BOS",
+    "sweep": "wick beyond known level + reclaim within declared bar horizon",
+    "swing_sweep": "same-session sweep of one of last 6 confirmed levels per side",
+    "swing_strengths": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "lookback_minutes": [
+      5,
+      15,
+      30,
+      60
+    ],
+    "opening_ranges": [
+      5,
+      15,
+      30
+    ],
+    "equal_level_tolerance_bps": [
+      2.0,
+      5.0,
+      10.0
+    ],
+    "history_note": "400 calendar days by default; TOD comparisons use up to 60 prior RTH sessions"
+  },
+  "warning": "Diagnostic subgroup analysis only; full-engine rerun required."
+}
