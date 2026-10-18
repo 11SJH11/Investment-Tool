@@ -213,3 +213,7 @@ Official references: [MT5 symbols](https://www.mql5.com/en/docs/python_metatrade
 [Robinhood external agents](https://robinhood.com/us/en/support/articles/onboarding-an-external-agent/).
 Robinhood registration/auth prerequisites still require investigation; no unofficial
 API or token extraction fallback is authorized.
+
+## Current holdings correction
+Portfolio positions now exclude inactive snapshots before pagination/counting. History, notes and tags remain stored; failed sync status exposes potentially stale last-verified holdings. Verified with 42 broker/Portfolio tests, 136 frontend tests and production build. Prior checkpoint provenance/export verification: 19 tests passed; the previous full run's three stale-fixture failures are corrected. Full final-tree suite remains due after Gold work.
+

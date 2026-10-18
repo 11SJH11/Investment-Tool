@@ -59,11 +59,16 @@ class PortfolioBrokerRepository:
 
     def accounts(self):
         with closing(self.database.connect()) as c:
-            rows = c.execute("SELECT * FROM portfolio_broker_accounts ORDER BY label").fetchall()
+            rows = c.execute("""SELECT a.*, s.status AS sync_status
+                FROM portfolio_broker_accounts a LEFT JOIN broker_sync_state s
+                ON s.provider=a.provider AND s.account_key=a.account_key ORDER BY a.label""").fetchall()
         return [{**dict(r), "summary": json.loads(r['summary'])} for r in rows]
 
-    def records(self, account_key, kind=None, limit=100, offset=0):
+    def records(self, account_key, kind=None, limit=100, offset=0, *, include_inactive=False):
         clauses, args = ["account_key=?"], [account_key]
+        # Filter before counting/pagination; historical facts and reviews stay stored.
+        if not include_inactive:
+            clauses.append("(kind!='position' OR active=1)")
         if kind:
             clauses.append("kind=?"); args.append(kind)
         where = ' AND '.join(clauses)
