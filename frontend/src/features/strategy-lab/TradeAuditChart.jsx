@@ -247,6 +247,11 @@ export default function TradeAuditChart({ trade, run, tradeIndex, timeframe: ini
     <div className="mt-3 grid gap-3 sm:grid-cols-3">
       <Mini label="Quantity" value={trade.quantity == null ? "—" : Number(trade.quantity).toFixed(4)} />
       <Mini label="Initial risk" value={money(trade.initial_risk_amount)} />
+      {trade.metadata?.actual_initial_risk_amount!=null&&<>
+        <Mini label="Target risk before costs" value={money(trade.metadata.target_risk_amount)} />
+        <Mini label="Initial notional exposure" value={money(trade.metadata.initial_notional_exposure)} />
+        <Mini label="Sizing limitation" value={trade.metadata.sizing_limited?'Exposure cap / contract increment':'None recorded'} />
+      </>}
       <Mini label="Duration" value={trade.duration_minutes == null ? "—" : `${Number(trade.duration_minutes).toFixed(0)} min`} />
     </div>
     {(trade.metadata?.partial_exits?.length > 0 || trade.metadata?.final_stop_loss != null) && <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600"><strong>Strategy management:</strong> {trade.metadata?.partial_exits?.length || 0} partial exit{(trade.metadata?.partial_exits?.length || 0) === 1 ? "" : "s"}{trade.metadata?.final_stop_loss != null ? ` · final stop ${money(trade.metadata.final_stop_loss)}` : ""}{trade.metadata?.final_take_profit != null ? ` · final target ${money(trade.metadata.final_take_profit)}` : ""}. Planned R:R above still uses the original stop/target.</div>}

@@ -244,7 +244,10 @@ class BacktestService:
         if workspace:
             payload = {**payload, 'workspace': dict(workspace)}
         entry_windows = _entry_windows(payload.get("entry_windows"))
-        weekdays = _weekdays(payload.get("trading_weekdays"))
+        from app.data.instruments import default_trading_weekdays
+        weekdays = (_weekdays(payload['trading_weekdays']) if payload.get('trading_weekdays') is not None
+                    else default_trading_weekdays(symbols))
+        payload = {**payload, 'trading_weekdays': list(weekdays)}
         allow_overnight = bool(payload.get("allow_overnight", True))
         force_close_time = _optional_clock(payload.get("force_close_time")) if not allow_overnight else None
         config = BacktestConfig(

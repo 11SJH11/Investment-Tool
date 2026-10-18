@@ -1,4 +1,8 @@
 export const RUN_TYPES = ['Single backtest', 'Validation suite', 'Sensitivity test'];
+export const WEEKDAYS = [[0,'Mon'],[1,'Tue'],[2,'Wed'],[3,'Thu'],[4,'Fri'],[5,'Sat'],[6,'Sun']];
+export function defaultTradingWeekdays(symbols=[]) {
+  return symbols.some(s=>/^(XAU_?USD|NQ|MNQ|GC|MGC|[A-Z][A-Z0-9]{0,4}[1-9]!|[A-Z][A-Z0-9]{0,4}[FGHJKMNQUVXZ]\d{1,2})$/.test(s))?[0,1,2,3,4,6]:[0,1,2,3,4];
+}
 export function configurationError(payload) {
   if(!String(payload.run_name||'').trim())return 'Run name is required.';
   if(!payload.symbols?.length)return 'Choose at least one symbol.';

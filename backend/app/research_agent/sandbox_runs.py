@@ -68,7 +68,10 @@ def engine_config(payload,session):
     defaults=BacktestConfig()
     names={f.name for f in fields(defaults)}-{'exchange_timezone','session_end','entry_windows','trading_weekdays','force_close_time'}
     values={k:payload[k] for k in names if k in payload and payload[k] is not None}
-    values.update(entry_windows=_entry_windows(payload.get('entry_windows')),trading_weekdays=_weekdays(payload.get('trading_weekdays')),
+    from app.data.instruments import default_trading_weekdays
+    weekdays=(_weekdays(payload['trading_weekdays']) if payload.get('trading_weekdays') is not None
+              else default_trading_weekdays(payload.get('symbols', [])))
+    values.update(entry_windows=_entry_windows(payload.get('entry_windows')),trading_weekdays=weekdays,
                   session_end=SESSION_ENDS[session],force_close_time=_optional_clock(payload.get('force_close_time')) if not payload.get('allow_overnight',True) else None)
     return BacktestConfig(**values)
 

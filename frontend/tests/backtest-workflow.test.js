@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {RUN_TYPES,parseSymbols,independentRuns,runSummary,filterRuns,queueCounts,configurationError,nextRunName} from '../src/features/strategy-lab/backtest-workflow.js';
 import {readUI,writeUI} from '../src/app/uiPreferences.js';
+import {WEEKDAYS,defaultTradingWeekdays} from '../src/features/strategy-lab/backtest-workflow.js';
+
+test('all weekdays are selectable and automatic defaults distinguish Gold/futures from equities',()=>{
+  assert.deepEqual(WEEKDAYS.map(([day])=>day),[0,1,2,3,4,5,6]);
+  for(const symbol of ['XAUUSD','XAU_USD','NQ','NQ1!','NQZ26','GC1!'])assert.deepEqual(defaultTradingWeekdays([symbol]),[0,1,2,3,4,6]);
+  assert.deepEqual(defaultTradingWeekdays(['AAPL']),[0,1,2,3,4]);
+});
 
 test('run modes retain single, validation and sensitivity workflows',()=>assert.deepEqual(RUN_TYPES,['Single backtest','Validation suite','Sensitivity test']));
 test('invalid or zero sizing cannot silently queue engine fallback amounts',()=>{

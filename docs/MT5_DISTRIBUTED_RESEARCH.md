@@ -217,3 +217,85 @@ API or token extraction fallback is authorized.
 ## Current holdings correction
 Portfolio positions now exclude inactive snapshots before pagination/counting. History, notes and tags remain stored; failed sync status exposes potentially stale last-verified holdings. Verified with 42 broker/Portfolio tests, 136 frontend tests and production build. Prior checkpoint provenance/export verification: 19 tests passed; the previous full run's three stale-fixture failures are corrected. Full final-tree suite remains due after Gold work.
 
+
+## Gold acceptance and updated priority order (2026-10-18)
+
+The updated brief prioritises genuine Gold research, then controlled MT5 execution,
+then responsive workflows, then advanced distributed research. Existing stages 1–8
+are preserved; `43327dd` contains the verified bulk-export/selection checkpoint and
+`099269b` the current-holdings correction.
+
+The Gold source is copied byte-for-byte from original checkout commit `f96d62a`,
+not merged with research outputs or credentials:
+`backend/app/backtesting/strategies/gold_asia_15m_ifvg_research_v1.py`.
+SHA-256: `236611d915d771f9b9a6558c5a57941ae0985b53664c13153908819e795d6e14`.
+No frozen signal, stop, target or breakeven rule was edited.
+
+New automatic entry-day defaults are Monday–Friday for equities and Sunday–Friday
+for known spot Gold/futures session profiles. All seven weekdays are selectable.
+Explicit saved weekday settings remain explicit. API requests that omit weekdays
+resolve and save their effective days. Sandbox engine configuration uses the same
+resolution. These filters do not assert broker opening times or holiday coverage;
+provider historical bars remain authoritative and no missing candles are created.
+
+Selecting Gold IFVG now selects XAUUSD, 1m execution, automatic market session and
+its declared completed 15m input. Its Asia session is labelled by the local New
+York **start date**, including Sunday evening; midnight is outside that session.
+
+Sizing calculations are unchanged. Trade metadata now records target monetary risk,
+actual initial risk and percentage, initial notional exposure, exposure cap and a
+sizing limitation flag. Trade Review exposes target risk, notional and limitation;
+existing metadata exports carry these fields. Zero-cost runs are visibly labelled
+frictionless. The interface explicitly distinguishes metal units from MT5 lots and
+does not invent broker leverage, margin or costs.
+
+Synthetic acceptance uses entry 3001, short stop 3010, target 2992. With $10,000,
+1% target risk and 1x leverage, quantity is 10000/3001 metal units, actual risk is
+9*10000/3001 (about $29.99), and notional is $10,000. Outcomes assert exactly +1R,
+-1R, or 0R after +0.68R triggers next-minute breakeven. January, spring DST and
+fall DST Sunday fixtures all pass, along with exclusion of incomplete 15m signals.
+These are mechanical acceptance fixtures, not evidence of a profitable edge.
+
+Read-only real MT5 acceptance found the exact broker Gold symbol **XAUUSDs**, not
+XAUUSD. Current terminal metadata: Gold spot, XAU/USD, 100 ounces per lot, 0.01
+price tick, $1 tick value per lot, 0.01 minimum/step lots. `margin_initial=0` is not
+interpreted as free margin or permission to infer leverage. A 2026-10-16 14:00–14:05
+UTC request retrieved 5 completed minute bars and 1,873 bid/ask ticks. Both Parquet
+fingerprints verified on cache read. Real trade volume is unavailable. No orders
+were sent. MT5's calculation-mode classification is retained separately from the
+instrument's Gold identity.
+
+Still required before claiming full Gold research acceptance:
+- Automatic provider selection and verified broker-symbol mapping into backtests.
+- OANDA versus MT5 comparison: this isolated worktree has no configured OANDA
+  credentials; the original checkout's environment was not read or copied.
+- Broker lot/margin execution model and historical session/holiday validation.
+- Research Agent's US-equity-only preparation/discovery and forced regular session
+  need correction; required 15m history must share protected dataset boundaries
+  and provider bindings with 1m execution. Do not simply bypass the firewall.
+- Genuine Gold campaign with saved baseline/numeric/Critic/Manager evidence.
+- Demo execution, live authorization gates and the remaining roadmap above.
+
+Browser acceptance: Gold settings and Portfolio current/stale holdings passed at
+1024, 1440 and 1920 pixels without page overflow or runtime errors. All 137 frontend
+unit tests pass; production build passes (existing ~999 KB bundle warning).
+Focused backend acceptance: 42 Gold/engine/provenance/decision tests and 42
+broker/Portfolio tests pass. Full backend result is recorded below when complete.
+
+A measured saved-run smoke also passed using the existing isolated benchmark:
+3,000 trades, 660,000 equity points, real repository section endpoints and mocked
+run-list discovery. Headline 534 ms; first performance-chart paint 4,100 ms;
+Analysis paint 469 ms. Backend performance projection was 3,383 ms and returned
+1,017,334 bytes. Scroll max frame gap 16.6 ms, zero frames above 32 ms; no page
+overflow at 390/1024/1440/1920 and no runtime errors. This cold observation ran
+alongside backend tests, so it is not an isolated before/after speed claim. It
+identifies performance-series preparation as remaining work; Stage 9 is not marked
+complete. Raw reports stay in ignored `.ledger-runtime/heavy-run-performance.json`
+and `.ledger-runtime/heavy-benchmark/measurements.json`.
+
+Final checkpoint verification (2026-10-18): **1,522 backend tests passed, 45 skipped**
+in 511.04 seconds; one existing Starlette/httpx deprecation warning. Skips cover
+opt-in Docker acceptance and optional local strategies; no Docker acceptance is
+claimed for this run. **137 frontend tests passed**, production build passed,
+`git diff --check` passed. The original checkout remained untouched and clean for
+tracked files. No DB schema migration was introduced by the holdings/Gold fixes.

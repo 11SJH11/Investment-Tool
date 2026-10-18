@@ -132,6 +132,12 @@ def instrument_spec(ticker: str) -> InstrumentSpec:
     )
 
 
+def default_trading_weekdays(symbols) -> tuple[int, ...]:
+    """Entry-day eligibility, not a substitute for provider trading hours/holidays."""
+    profiles = {instrument_spec(symbol).session_profile for symbol in symbols}
+    return (0, 1, 2, 3, 4, 6) if profiles & {'oanda_24h', 'futures_24h'} else (0, 1, 2, 3, 4)
+
+
 def virtual_symbols(query: str = "") -> list[dict]:
     needle = str(query or "").strip().upper()
     output: list[dict] = []

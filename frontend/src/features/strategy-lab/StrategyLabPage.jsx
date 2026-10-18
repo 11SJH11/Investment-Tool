@@ -33,11 +33,11 @@ import useBacktestJobs from "./useBacktestJobs.js";
 import RunsTable from "./RunsTable.jsx";
 import RunComparison from "./RunComparison.jsx";
 import ComputeControl from "./ComputeControl.jsx";
+import {WEEKDAYS as weekdays,defaultTradingWeekdays} from './backtest-workflow.js';
 
 const runSections=createSectionCache((id,section)=>api.strategyLabRunSection(id,section));
 const EMPTY_TRADES=Object.freeze([]);
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
-const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
 function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
 function number(value, digits = 2) { return value == null || Number.isNaN(Number(value)) ? "—" : Number(value).toFixed(digits); }
 function pct(value) { return value == null ? "—" : `${number(value, 2)}%`; }
@@ -72,7 +72,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [symbols, setSymbols] = useState(["AAPL"]);
   const [symbolInput, setSymbolInput] = useState("");
   const [entryWindows, setEntryWindows] = useState([]);
-  const [selectedWeekdays, setSelectedWeekdays] = useState([0, 1, 2, 3, 4]);
+  const [weekdayOverride, setWeekdayOverride] = useState(null);
+  const selectedWeekdays=weekdayOverride??defaultTradingWeekdays(symbols);
+  const setSelectedWeekdays=value=>setWeekdayOverride(typeof value==='function'?value(selectedWeekdays):value);
   const autoRunName = useRef(true);
   const [runMeta, setRunMeta] = useState({ name: "Run 1", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
@@ -114,7 +116,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   useEffect(() => {
     if (!strategy) return;
     setParams({ ...(strategy.defaults || {}) });
-    if ((strategy.key === "xau_liquidity_type3_baseline_v1" || strategy.key.startsWith("xau_type3_experiment_"))) {
+    if ((strategy.key === "xau_liquidity_type3_baseline_v1" || strategy.key.startsWith("xau_type3_experiment_") || strategy.key === 'gold_asia_15m_ifvg_research_v1')) {
       setSymbols(["XAUUSD"]);
       setEntryWindows([]);
       setForm((old) => ({ ...old, primary_timeframe: "1m", session: "auto", allow_overnight: "true", force_close_time: "" }));
@@ -228,7 +230,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
         max_consecutive_losses: config.max_consecutive_losses ?? "", cooldown_minutes: String(config.cooldown_minutes ?? 0),
       }));
       setEntryWindows(config.entry_windows?.length ? config.entry_windows : []);
-      setSelectedWeekdays(config.trading_weekdays || [0, 1, 2, 3, 4]);
+      setSelectedWeekdays(config.trading_weekdays || defaultTradingWeekdays(config.symbols||saved.symbols));
       autoRunName.current = false;
       setRunMeta({ name: saved.name ? `${saved.name} · copy` : nextRunName(runs), notes: saved.notes || "", tags: (saved.tags || []).join(", "), test_role: "development" });
       setTimeout(() => setParams({ ...(config.strategy_params || {}) }), 0);
@@ -275,9 +277,12 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
           </div>
           <div>
             <h3 className="font-semibold">Account sizing</h3><p className="mt-1 text-xs text-stone-500">Controls position size. Strategy code continues to own stop, target and position-management logic.</p>
+            <p className="mt-2 text-xs muted">Risk is a target before costs. The {form.max_leverage}× exposure cap and contract increments can reduce actual risk. Broker margin is not verified; no broker leverage is assumed.</p>
+            {symbols.some(s=>/^XAU_?USD$/.test(s))&&<p className="mt-2 text-xs muted">XAUUSD uses metal units, not MT5 lots. Gold defaults include Sunday evening; provider bars determine available trading hours. MT5 lot economics require the verified broker execution model.</p>}
+            {[form.commission_per_order,form.slippage_bps,form.spread_bps].every(v=>Number(v)===0)&&<p className="mt-2 text-xs warning">Frictionless research: commission, spread and slippage are all zero.</p>}
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Starting balance"><NumberInput value={form.starting_balance} onChange={(v) => setForm({ ...form, starting_balance: v })} /></Field>
-              <Field label="Sizing mode"><select className="input" value={form.sizing_mode} onChange={(e) => setForm({ ...form, sizing_mode: e.target.value })}><option value="risk_pct">Risk % of account</option><option value="cash_risk">Fixed cash risk</option><option value="quantity">Fixed share quantity</option><option value="cash_position">Fixed cash position</option><option value="position_pct">Position % of account</option></select></Field>
+              <Field label="Sizing mode"><select className="input" value={form.sizing_mode} onChange={(e) => setForm({ ...form, sizing_mode: e.target.value })}><option value="risk_pct">Risk % of account</option><option value="cash_risk">Fixed cash risk</option><option value="quantity">Fixed instrument quantity</option><option value="cash_position">Fixed cash position</option><option value="position_pct">Position % of account</option></select></Field>
               <Field label={sizingLabel(form.sizing_mode)}><NumberInput value={form.risk_value} onChange={(v) => setForm({ ...form, risk_value: v })} /></Field>
             </div>
           </div>
@@ -538,7 +543,7 @@ function ParameterField({ parameter, value, onChange }) {
 }
 function normaliseParams(strategy, params) { const result = {}; for (const p of strategy?.parameters || []) { const value = params[p.key]; result[p.key] = p.kind === "int" ? Number.parseInt(value,10) : p.kind === "float" ? Number(value) : p.kind === "bool" ? Boolean(value) : value; } return result; }
 function optionalNumber(value) { return value === "" || value == null ? null : Number(value); }
-function sizingLabel(mode) { if (mode === "risk_pct") return "Risk per trade (%)"; if (mode === "cash_risk") return "Cash risk per trade"; if (mode === "quantity") return "Shares per trade"; if (mode === "cash_position") return "Cash position size"; return "Position size (% of account)"; }
+function sizingLabel(mode) { if (mode === "risk_pct") return "Target risk per trade (%)"; if (mode === "cash_risk") return "Target cash risk per trade"; if (mode === "quantity") return "Units / contracts per trade"; if (mode === "cash_position") return "Cash position size"; return "Position size (% of account)"; }
 function NumberInput({ value, onChange }) { return <input type="number" step="any" className="input" value={value} onChange={(e) => onChange(e.target.value)} />; }
 function OptionalNumberInput({ value, onChange, placeholder }) { return <input type="number" step="any" min="0" className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />; }
 function Field({ label, children }) { return <label className="block"><span className="mb-1 block text-xs font-medium text-stone-500">{label}</span>{children}</label>; }

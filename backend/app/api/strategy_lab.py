@@ -40,7 +40,7 @@ class BacktestRequest(BaseModel):
     max_open_positions: int = 5
     same_bar_policy: str = "stop_first"
     entry_windows: list[EntryWindowRequest] = Field(default_factory=list)
-    trading_weekdays: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
+    trading_weekdays: list[int] | None = None
     allow_overnight: bool = True
     force_close_time: str | None = None
     max_trades_per_day: int | None = None
