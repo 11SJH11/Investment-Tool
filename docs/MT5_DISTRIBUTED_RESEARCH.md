@@ -153,7 +153,25 @@ not an implemented tester or parity certification.
 Stage 5 validation: 63 tests passed across contract, parent research, reproducibility,
 source archives and Workspace; production build passed. No database migration.
 
-6. Versioned Research Packs and standard exports.
+Stage 5 commit: `3c0e3d6`.
+
+Stage 6 implements the `ledger.research_pack.v1` schema and deterministic
+`ledger.research_bundle.v1` ZIP manifest. Run Viewer -> Download offers bundle,
+pack JSON, trades CSV, summary JSON, analysis JSON/CSV, configuration/provenance,
+and the full saved result. The existing visual PDF Trade Review pack remains.
+Bundles contain JSON schema, file sizes and SHA256 hashes; fixed ZIP timestamps
+make repeated exports deterministic. Missing trades do not become zero-trade
+research conclusions. Raw market history is not embedded. CSV text is protected
+against formula interpretation. Exports have a 100 MiB uncompressed budget.
+Research analysis reuses the existing Research Agent calculation, not an alternate
+metrics engine. Only recorded microstructure is exported; automatic attachment of
+new tick evidence to runs remains future integration work.
+
+Stage 6 checks: 15 focused export/contract/reproducibility tests passed, all 136
+frontend tests passed, production build passed. Mocked Run Viewer provenance and
+binary bundle-download smoke passed at 1024/1440/1920 without overflow or runtime
+errors. No migrations or original-checkout changes.
+
 7. Bulk exports/analysis bundles.
 8. Runs selection/comparison/download/deletion workflow.
 9. Measured 2k–3.5k-trade performance acceptance and necessary fixes.

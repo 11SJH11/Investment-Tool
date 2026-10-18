@@ -8,7 +8,8 @@ import {refreshedSelection,normalBacktestTab} from './strategyRefresh.js';
 import OrbDiagnosticAnalysis from './OrbDiagnosticAnalysis.jsx';
 import ExcursionAnalysis from './ExcursionAnalysis.jsx';
 import {tradeDiagnostics,displayDiagnostic,breakdownDiagnostics} from './tradeDiagnostics.js';
-import {downloadCsv,downloadJson} from '../../utils/csv.js';
+import {downloadCsv,downloadJson,downloadFile} from '../../utils/csv.js';
+import {downloadRunExport} from '../../api/client.js';
 import {backtestExportRows,runExportFilename} from '../../utils/researchExports.js';
 import {loadPreferences} from "../../app/preferences.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
@@ -395,12 +396,15 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
   const runId = result.saved_run?.id;
   const [exportBusy,setExportBusy]=useState(false);
   const [exportError,setExportError]=useState('');
+  const [exportKind,setExportKind]=useState('bundle');
+  const exportRecorded=async()=>{if(exportBusy||!runId)return;setExportBusy(true);setExportError('');try{const blob=await downloadRunExport(runId,exportKind);downloadFile(blob,runExportFilename(result,`${exportKind}.${exportKind==='bundle'?'zip':['trades','analysis-csv'].includes(exportKind)?'csv':'json'}`),blob.type);notifyActivity({title:'Export ready',detail:'Recorded research evidence downloaded.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false);}};
   const exportManifest=async()=>{if(exportBusy||!runId)return;setExportBusy(true);try{setExportError('');downloadJson(await api.reproducibilityManifest(runId),runExportFilename(result,'reproducibility.json'));}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const exportSource=async()=>{if(exportBusy||!runId)return;setExportBusy(true);try{setExportError('');downloadJson(await api.strategySourceArchive(runId),runExportFilename(result,'strategy-source.json'));notifyActivity({title:'Source bundle exported',detail:'Captured strategy modules only; external dependencies and market data are not included.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const exportFullRun=async()=>{if(exportBusy)return;setExportBusy(true);try{setExportError('');const snapshot=runId?await api.strategyLabRun(runId):result;downloadJson(snapshot,runExportFilename(result,'full.json'));notifyActivity({title:'Export ready',detail:'Saved run JSON downloaded.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const symbols = (result.symbols || []).join(" · ") || "—";
 
   return <section className="mt-5">
+    <div className="ui-toolbar mb-3" aria-label="Download saved research evidence"><label>Download <select className="input" value={exportKind} onChange={e=>setExportKind(e.target.value)}>{[['bundle','Research Analysis Bundle (ZIP)'],['pack','Research Pack (JSON)'],['trades','Trades CSV'],['summary','Summary JSON'],['analysis','Analysis JSON'],['analysis-csv','Analysis CSV'],['provenance','Configuration + provenance'],['full','Full saved-result JSON']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportRecorded}>{exportBusy?'Preparing download…':'Download'}</button></div>
     {sectionBusy&&<p role="status" aria-busy="true">{sectionBusy}</p>}{sectionError&&<p role="alert">{sectionError} <button className="mini-btn" onClick={()=>loadSection(viewerTab.toLowerCase())}>Retry loading</button></p>}
     <div className="ui-toolbar mb-3"><button className="mini-btn" disabled={!loaded.current.has("trades")} title="Open Trades first to export filtered trades" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" disabled={!!sectionBusy} onClick={async()=>{const data=await loadSection("trades");if(data)downloadCsv(backtestExportRows(data),runExportFilename(data,"all-trades.csv"))}}>Export all trades CSV</button><button className="mini-btn" disabled={exportBusy} onClick={exportFullRun}>{exportBusy?"Preparing export...":"Export full run JSON"}</button><button className="mini-btn" disabled={exportBusy||!runId||result.strategy?.source_archive?.status!=="archived"} onClick={exportSource}>Export recorded strategy source</button><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportManifest}>Export reproducibility manifest</button>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">

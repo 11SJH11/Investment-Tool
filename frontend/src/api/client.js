@@ -7,6 +7,15 @@ async function request(path, options = {}) {
   const finish=label?beginRequest(label):()=>{};
   try{return await rawRequest(path,options)}finally{finish()}
 }
+
+export async function downloadRunExport(runId,kind='bundle') {
+  const finish=beginRequest('Preparing saved-run export');
+  try {
+    const response=await fetch(`${API_BASE}/strategy-lab/runs/${encodeURIComponent(runId)}/export?kind=${encodeURIComponent(kind)}`);
+    if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(typeof body.detail==='string'?body.detail:'Saved-run export failed');}
+    return response.blob();
+  }finally{finish();}
+}
 async function rawRequest(path, options = {}) {
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
   const profileRun=path.includes("/runs/");const started=performance.now();

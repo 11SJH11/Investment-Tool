@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_services
@@ -247,6 +248,27 @@ def backtest_reproducibility(run_id: int, services: AppServices = Depends(get_se
         return export_manifest(services.backtest.runs.database,run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404,detail=str(exc)) from exc
+
+
+@router.get('/runs/{run_id}/export')
+def backtest_export(run_id: int, kind: str = Query('bundle', pattern=r'^(bundle|pack|trades|summary|analysis|analysis-csv|provenance|full)$'),
+                    services: AppServices = Depends(get_services)):
+    from app.services.run_exports import export_files, zip_files
+    try:
+        if services.backtest.runs is None:
+            raise ValueError('Saved runs are unavailable')
+        files = export_files(services.backtest.runs, run_id)
+        mapping = {'pack':'research-pack.json','trades':'trades.csv','summary':'summary.json',
+                   'analysis':'analysis.json','analysis-csv':'analysis.csv',
+                   'provenance':'configuration-provenance.json','full':'saved-result.json'}
+        name = 'research-bundle.zip' if kind == 'bundle' else mapping[kind]
+        if kind != 'bundle' and name not in files:
+            raise ValueError('Requested evidence is unavailable for this run')
+        content = zip_files(files) if kind == 'bundle' else files[name]
+        media = 'application/zip' if kind == 'bundle' else 'text/csv' if name.endswith('.csv') else 'application/json'
+        return Response(content, media_type=media, headers={'Content-Disposition':f'attachment; filename="ledger-run-{run_id}-{name}"'})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
 
 
 @router.get("/runs/{run_id}/source-archive")
