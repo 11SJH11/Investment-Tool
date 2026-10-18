@@ -117,3 +117,28 @@ def zip_files(files):
             entry.compress_type = ZIP_DEFLATED
             archive.writestr(entry, content)
     return buffer.getvalue()
+
+
+def selected_export(repository, run_ids):
+    ids = sorted(set(run_ids))
+    if not ids or len(ids) > 30 or any(type(i) is not int or i < 1 for i in ids):
+        raise ValueError('Select between one and 30 saved runs')
+    files, comparisons, total = {}, [], 0
+    for run_id in ids:
+        exported = export_files(repository, run_id)
+        total += sum(map(len, exported.values()))
+        if total > MAX_EXPORT_BYTES:
+            raise ValueError('Selected export exceeds 100 MiB; select fewer runs')
+        files.update({f'run-{run_id}/{name}':content for name,content in exported.items()})
+        pack = json.loads(exported['research-pack.json'])
+        comparisons.append({key:pack[key] for key in ('run_id','run','metrics','experiment_contract','provenance')})
+    # Evidence for the existing comparison workflow; no alternate ranking/metric engine.
+    files['comparison-evidence.json'] = json_bytes({'format':'ledger.comparison_evidence.v1',
+        'runs':comparisons, 'warnings':['Independent portfolio returns must not be summed.',
+        'Compare instruments, periods, providers, currencies and execution assumptions before interpreting differences.',
+        'No parent/child relationship or automatic winner is inferred from selection order.']})
+    files['bundle-manifest.json'] = json_bytes({'format':'ledger.selected_research_bundle.v1',
+        'run_ids':ids, 'files':{name:{'bytes':len(content),'sha256':sha256(content).hexdigest()} for name,content in files.items()}})
+    if sum(map(len, files.values())) > MAX_EXPORT_BYTES:
+        raise ValueError('Selected export exceeds 100 MiB; select fewer runs')
+    return zip_files(files)

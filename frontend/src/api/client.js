@@ -16,6 +16,15 @@ export async function downloadRunExport(runId,kind='bundle') {
     return response.blob();
   }finally{finish();}
 }
+
+export async function downloadSelectedRuns(runIds) {
+  const finish=beginRequest('Preparing selected research export');
+  try {
+    const response=await fetch(`${API_BASE}/strategy-lab/runs/export-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run_ids:runIds})});
+    if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(typeof body.detail==='string'?body.detail:'Selected export failed');}
+    return response.blob();
+  }finally{finish();}
+}
 async function rawRequest(path, options = {}) {
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
   const profileRun=path.includes("/runs/");const started=performance.now();
@@ -161,6 +170,7 @@ export const api = {
   refreshBackendStrategies: () => request('/strategy-lab/strategies/refresh',{method:'POST'}),
   brokerProfiles: () => request('/brokers'),
   testBrokerConnection: (id) => request(`/brokers/${encodeURIComponent(id)}/test`, {method:'POST'}),
+  deleteSelectedRuns: ids => request('/strategy-lab/runs/delete-selected',{method:'POST',body:JSON.stringify({run_ids:ids})}),
   brokerSymbols: (id, search='', offset=0) => request(`/brokers/${encodeURIComponent(id)}/symbols?search=${encodeURIComponent(search)}&offset=${offset}&limit=100`),
   refreshBrokerSymbols: id => request(`/brokers/${encodeURIComponent(id)}/symbols/refresh`, {method:'POST'}),
   brokerMarketHistory: (id,payload) => request(`/brokers/${encodeURIComponent(id)}/market-history`, {method:'POST',body:JSON.stringify(payload)}),

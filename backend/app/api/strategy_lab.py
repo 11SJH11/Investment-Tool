@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from app.api.dependencies import get_services
 from app.api.safe_errors import safe_http_error
@@ -66,6 +66,33 @@ class BacktestRunUpdate(BaseModel):
 class JobSubmission(BaseModel):
     request_key: str = Field(min_length=1, max_length=100)
     runs: list[BacktestRequest] = Field(min_length=1, max_length=100)
+
+
+class RunSelection(BaseModel):
+    run_ids: list[StrictInt] = Field(min_length=1, max_length=30)
+
+
+@router.post('/runs/export-selected')
+def export_selected_runs(body: RunSelection, services: AppServices = Depends(get_services)):
+    from app.services.run_exports import selected_export
+    try:
+        content = selected_export(services.backtest.runs, body.run_ids)
+        return Response(content, media_type='application/zip', headers={
+            'Content-Disposition':'attachment; filename="ledger-selected-research.zip"'})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+
+
+@router.post('/runs/delete-selected')
+def delete_selected_runs(body: RunSelection, services: AppServices = Depends(get_services)):
+    from app.storage.research_retention import ResearchRunProtected
+    try:
+        services.backtest.runs.delete_selected(body.run_ids)
+        return {'deleted': sorted(set(body.run_ids))}
+    except ResearchRunProtected as exc:
+        raise HTTPException(409, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
 
 
 class ResearchExperimentRequest(BaseModel):

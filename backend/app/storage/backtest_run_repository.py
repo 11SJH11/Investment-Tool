@@ -197,6 +197,17 @@ class BacktestRunRepository:
             if cursor.rowcount == 0:
                 raise ValueError(f"Backtest run {run_id} was not found")
 
+    def delete_selected(self, run_ids: list[int]) -> None:
+        from .research_retention import require_deletable
+        ids = sorted(set(run_ids))
+        if not ids or len(ids) > 30 or any(type(i) is not int or i < 1 for i in ids):
+            raise ValueError('Select between one and 30 saved runs')
+        with self.database.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            for run_id in ids:
+                require_deletable(connection, run_id)
+            connection.executemany('DELETE FROM backtest_runs WHERE id=?', [(i,) for i in ids])
+
 
 def _normalise_tags(values) -> list[str]:
     if values is None:

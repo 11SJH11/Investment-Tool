@@ -172,8 +172,29 @@ frontend tests passed, production build passed. Mocked Run Viewer provenance and
 binary bundle-download smoke passed at 1024/1440/1920 without overflow or runtime
 errors. No migrations or original-checkout changes.
 
-7. Bulk exports/analysis bundles.
-8. Runs selection/comparison/download/deletion workflow.
+Stage 6 commit: `1501091`.
+
+Stages 7–8: Runs now exposes a selection toolbar with Open/Use settings for one
+run, explicit Compare selected for multiple runs, Download selected, atomic Delete
+selected, and Clear selection. Comparison reuses RunComparison; merely selecting
+rows no longer triggers heavyweight comparison loading. Downloads contain separate
+run folders and a checksummed comparison-evidence document; no automatic winner,
+parent relationship or aggregate portfolio return is inferred. Maximum 30 runs,
+100 MiB uncompressed. Existing visual/PDF workflows are preserved.
+
+Deletion checks all selected IDs in one SQLite transaction before removing any.
+Research ownership, campaign/action references and parent-experiment references
+block the whole deletion with a visible reason. No data migration is required.
+Focused checks: 34 export/retention/parent-research tests; browser single/bulk
+downloads, explicit comparison, protected-delete error and selection reset passed
+at 1024/1440/1920. All 136 frontend utility tests and production build passed.
+
+The broader regression run exposed a stale synthetic decision fixture which copied
+a real run's canonical contract then changed configuration/trades. Production hash
+validation remains strict; the fixture now identifies its synthetic executor and
+configuration explicitly. All 6 decision tests and 9 cost tests pass independently.
+Final full-tree regression remains pending until the verification record below.
+
 9. Measured 2k–3.5k-trade performance acceptance and necessary fixes.
 10. ExperimentExecutor integration.
 11. Real exact Python/MQL5 parity proof.

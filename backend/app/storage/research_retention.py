@@ -11,9 +11,9 @@ def require_deletable(connection, run_id):
     row=connection.execute('SELECT config_json FROM backtest_runs WHERE id=?',(run_id,)).fetchone()
     if row is None:raise ValueError(f'Backtest run {run_id} was not found')
     config=json.loads(row[0])
-    protected=any(config.get(key) for key in ('research_project_id','research_trial_id','research_validation_id'))
+    protected=any(config.get(key) for key in ('research_project_id','research_trial_id','research_validation_id','research_parent_id','research_campaign_id'))
     tables={r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for table in ('agent_projects','agent_trials','agent_candidates','agent_validations','agent_concept_audits','agent_decisions'):
+    for table in ('agent_projects','agent_trials','agent_candidates','agent_validations','agent_concept_audits','agent_decisions','agent_campaigns','agent_campaign_actions','research_experiments'):
         if protected:break
         if table not in tables:continue
         # Fixed identifiers only; nested cell/lineage references are included without loading results.

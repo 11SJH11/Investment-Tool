@@ -65,3 +65,28 @@ def test_export_api_and_unsupported_format(repository):
         assert client.get(f'/strategy-lab/runs/{run["id"]}/export?kind=pack').json()['format']=='ledger.research_pack.v1'
         assert client.get(f'/strategy-lab/runs/{run["id"]}/export?kind=../../other').status_code==422
         assert client.get('/strategy-lab/runs/999/export').status_code==400
+
+
+def test_selected_bundle_has_separate_runs_and_no_inferred_winner(repository):
+    from app.services.run_exports import selected_export
+    a=repository.create(config={},result={'trades':[]})
+    b=repository.create(config={},result={'trades':[]})
+    content=selected_export(repository,[b['id'],a['id'],a['id']])
+    with ZipFile(BytesIO(content)) as archive:
+        assert f'run-{a["id"]}/trades.csv' in archive.namelist()
+        assert f'run-{b["id"]}/research-pack.json' in archive.namelist()
+        evidence=json.loads(archive.read('comparison-evidence.json'))
+        assert [r['run_id'] for r in evidence['runs']]==[a['id'],b['id']]
+        assert 'winner' not in evidence
+        manifest=json.loads(archive.read('bundle-manifest.json'))
+        assert all(sha256(archive.read(name)).hexdigest()==entry['sha256'] for name,entry in manifest['files'].items())
+    with pytest.raises(ValueError):selected_export(repository,[])
+    with pytest.raises(ValueError):selected_export(repository,[a['id'],999])
+
+
+def test_selected_export_budget_and_api(repository, monkeypatch):
+    from app.services.run_exports import selected_export
+    a=repository.create(config={},result={})
+    monkeypatch.setattr('app.services.run_exports.MAX_EXPORT_BYTES',1)
+    with pytest.raises(ValueError, match='budget'):
+        selected_export(repository,[a['id']])

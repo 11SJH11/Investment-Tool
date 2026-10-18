@@ -9,7 +9,7 @@ import OrbDiagnosticAnalysis from './OrbDiagnosticAnalysis.jsx';
 import ExcursionAnalysis from './ExcursionAnalysis.jsx';
 import {tradeDiagnostics,displayDiagnostic,breakdownDiagnostics} from './tradeDiagnostics.js';
 import {downloadCsv,downloadJson,downloadFile} from '../../utils/csv.js';
-import {downloadRunExport} from '../../api/client.js';
+import {downloadRunExport,downloadSelectedRuns} from '../../api/client.js';
 import {backtestExportRows,runExportFilename} from '../../utils/researchExports.js';
 import {loadPreferences} from "../../app/preferences.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
@@ -466,22 +466,33 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
 
 function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment }) {
   const [selected, setSelected] = useState([]);
+  const [comparisonIds,setComparisonIds]=useState([]),[selectionBusy,setSelectionBusy]=useState(false),[selectionError,setSelectionError]=useState('');
   const [view, setView] = useUIPreference("runs.view", "all");
   useEffect(()=>{ if(view === "sensitivity") setView("research"); },[view]);
-  const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 30 ? old : [...old, id]);
-  const compared = selected.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
+  const toggle = (id) => {setComparisonIds([]);setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 30 ? old : [...old, id]);};
+  const compared = comparisonIds.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
+  useEffect(()=>{setSelected(old=>old.filter(id=>runs.some(run=>run.id===id)));},[runs]);
   const experimentGroups = Object.entries(runs.reduce((groups, run) => {
     if (!run.experiment_group || (run.tags || []).includes("sensitivity")) return groups;
     (groups[run.experiment_group] ||= []).push(run);
     return groups;
   }, {})).filter(([, items]) => new Set(items.map((item) => item.test_role)).size >= 2);
   const visibleRuns = runs.filter(r=>!String(r.experiment_group||'').startsWith('research:'));
-  const remove = async (id) => { if (!window.confirm(`Delete saved backtest run #${id}?`)) return; await api.deleteStrategyLabRun(id); setSelected((old) => old.filter((x) => x !== id)); onRefresh(); };
+  const remove = async (id) => { if (!window.confirm(`Delete saved backtest run #${id}?`)) return; setSelectionError('');try{await api.deleteStrategyLabRun(id); setSelected((old) => old.filter((x) => x !== id)); onRefresh();}catch(e){setSelectionError(e.message);} };
+  const downloadSelection=async()=>{setSelectionBusy(true);setSelectionError('');try{const blob=await downloadSelectedRuns(selected);downloadFile(blob,'ledger-selected-research.zip',blob.type);}catch(e){setSelectionError(e.message);}finally{setSelectionBusy(false);}};
+  const deleteSelection=async()=>{if(!window.confirm(`Delete ${selected.length} selected saved runs? Research-protected runs will block the entire deletion.`))return;setSelectionBusy(true);setSelectionError('');try{await api.deleteSelectedRuns(selected);setSelected([]);setComparisonIds([]);await onRefresh();}catch(e){setSelectionError(e.message);}finally{setSelectionBusy(false);}};
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
     <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="text-xs muted">Select up to 30 runs for shared equity, drawdown and metrics comparison.</p><p className="mt-1 max-w-4xl text-xs text-stone-500">Standalone runs, validation suites and parent research experiments are separated so grids remain easy to find without exposing every child cell as a top-level run.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
     {runs.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1") && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Momentum stock runs: Historical universe may contain survivorship bias.</p>}
     <div className="mt-4 flex gap-2">{[["all","Single runs"],["validation","Validation suites"],["research","Research experiments"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
+    {selectionError&&<p role="alert" className="mt-3">{selectionError}</p>}
+    {view==='all'&&selected.length>0&&<div className="ui-toolbar mt-3" aria-label="Selected run actions"><strong>{selected.length} selected</strong>
+      {selected.length===1?<><button className="mini-btn" disabled={selectionBusy} onClick={()=>onOpen(selected[0])}>Open selected</button><button className="mini-btn" disabled={selectionBusy} onClick={()=>onUseSettings(selected[0])}>Use settings</button></>:<button className="mini-btn" disabled={selectionBusy} onClick={()=>setComparisonIds([...selected])}>Compare selected</button>}
+      <button className="mini-btn" disabled={selectionBusy} onClick={downloadSelection}>{selectionBusy?'Working…':selected.length===1?'Download selected':'Download selected / analysis bundle'}</button>
+      <button className="mini-btn" disabled={selectionBusy} onClick={deleteSelection}>Delete selected</button>
+      <button className="mini-btn" disabled={selectionBusy} onClick={()=>{setSelected([]);setComparisonIds([]);}}>Clear selection</button>
+    </div>}
     {compared.length >= 2 && view === "all" && <RunComparison ids={compared.map(run => run.id)} />}
     {view === "validation" && <div className="mt-5">
       {!experimentGroups.length && <p className="rounded-lg bg-stone-50 p-6 text-center text-sm text-stone-500">No saved validation suites yet.</p>}
