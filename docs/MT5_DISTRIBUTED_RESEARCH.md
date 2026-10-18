@@ -53,7 +53,39 @@ build passed (existing large-bundle advisory). Mocked catalog browser smoke pass
 at 1024/1440/1920px with no page overflow or runtime errors. Actual terminal/provider
 acceptance has not run; no isolated credentials or terminal have been configured.
 
-Stages 3–17 remain pending. MT5 distribution must remain disabled until actual
+Stage 2 commit: `9763ab1`.
+
+## Broker-native history foundation (Stage 3)
+
+Settings -> MT5 broker instruments -> Metadata -> Historical data exposes explicit
+UTC window downloads and observed coverage. Bars support 1m/5m/15m/30m/1h/4h/1d;
+ticks preserve bid/ask/last, flags and separate provider volume fields. Zero last
+prices are unavailable. Equal millisecond ticks remain separate events. Bars must
+be completed before the requested end; conflicting duplicate bars fail closed.
+Neither the generic hub nor catalog changes NQ futures routing/accounting.
+
+History uses content-addressed Parquet under the isolated data directory, publishing
+the account-scoped manifest to app_settings only after validated atomic writes.
+No schema migration. SHA256 integrity is checked on cache hits. Provider errors
+or changed accounts publish no coverage. Exact repeated requests reuse local data.
+Observed first/last timestamps and per-field non-null/positive counts do NOT imply
+continuous coverage or exchange-volume availability. Weekly sessions and DOM remain
+unverified. Current symbol metadata is explicitly not historical contract metadata.
+
+Bounds: 366 days of bars / one day of ticks per request; native chunks are seven
+days / one hour respectively, with a total 500,000-row ceiling. Oversized history
+must be requested in smaller windows. Cached snapshots currently reuse exact
+requests, not arbitrary overlapping-window queries. These datasets are not yet
+wired into normal Backtest selection or Research Agent dataset approval (later stages).
+The Python API is synchronous: cancelling a browser request does not interrupt a
+native history call. No background download queue or fabricated gap filling.
+
+Verification after Stage 3: 68 focused backend tests passed (17 history-hub tests);
+136 frontend utility tests passed before the history UI addition; production build
+passed after it. Mocked catalog/coverage browser smoke passed at 1024/1440/1920px
+without overflow/runtime errors. Full-suite and real-provider acceptance are pending.
+
+Stages 4–17 remain pending. MT5 distribution must remain disabled until actual
 Ledger/MQL5 decision/state parity is demonstrated, not merely fixture P&L similarity.
 
 Official references: [MT5 symbols](https://www.mql5.com/en/docs/python_metatrader5/mt5symbolsget_py),

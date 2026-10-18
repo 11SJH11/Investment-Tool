@@ -1,10 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+from typing import Literal
 
 from app.api.dependencies import get_services
 from app.brokers.base import BrokerHistoryError
 
 router = APIRouter(tags=['broker connections'])
+
+
+class MT5HistoryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    symbol: str = Field(min_length=1, max_length=256)
+    data_type: Literal['1m', '5m', '15m', '30m', '1h', '4h', '1d', 'ticks']
+    start: datetime
+    end: datetime
+
+
+@router.post('/brokers/{profile_id}/market-history')
+def broker_market_history(profile_id: str, body: MT5HistoryRequest, services=Depends(get_services)):
+    try:
+        return services.broker_connections.market_history(profile_id, body.model_dump())
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.get('/brokers/{profile_id}/market-coverage')
+def broker_market_coverage(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.market_history(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
 
 
 @router.get('/brokers/{profile_id}/symbols')

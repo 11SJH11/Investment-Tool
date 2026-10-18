@@ -10,6 +10,8 @@ function fixtures(){
   const p=new URL(String(url),location.href).pathname;window.catalogCalls.push(p);let body={items:[]};
   if(p.endsWith('/brokers'))body={items:[{provider:'mt5',profile_id:'mt5-default',environment:'demo',configured:true,supported:true,destination:'journal',account_key:'a'.repeat(64),status:'never_synced'}]};
   else if(p.endsWith('/symbols')||p.endsWith('/symbols/refresh'))body={items:[{name:'NASUSD',description:'Broker Nasdaq CFD',instrument_id:'b'.repeat(64),instrument_type:'cfd',trade_tick_size:.1,canonical_symbol:null,futures_verified:false}],total:1,catalog_total:1,offset:0,observed_at:'2026-10-18T10:00:00Z'};
+  else if(p.endsWith('/market-history'))body={rows:3,cache_hit:false};
+  else if(p.endsWith('/market-coverage'))body={items:[{broker_symbol:'NASUSD',data_type:'1m',rows:3,observed_start:'2026-01-02T10:00Z',observed_end:'2026-01-02T10:02Z',requested_start:'2026-01-02T10:00Z',requested_end:'2026-01-02T10:03Z',data_fingerprint:'c'.repeat(64),dom:'unverified',fields:{real_volume:{non_null_rows:3,positive_rows:0}}}]};
   else if(p.endsWith('/jobs'))body={jobs:[],compute:{mode:'1',configured_budget:1,used_workers:0}};
   else if(p.endsWith('/data/status'))body={providers:{},symbols_cached:0};
   return new Response(JSON.stringify(body),{headers:{'Content-Type':'application/json'}});
@@ -25,6 +27,9 @@ assert(await evaluate(`window.catalogCalls.some(p=>p.endsWith('/symbols/refresh'
 await evaluate(`(()=>{[...document.querySelectorAll('button')].find(e=>e.textContent==='Metadata').click();})()`);
 await waitFor(`document.querySelector('[aria-label="Broker symbol metadata"]')`);
 assert(await evaluate(`document.querySelector('[aria-label="Broker symbol metadata"]').innerText.includes('Unknown')`));
+await evaluate(`(()=>{[...document.querySelectorAll('summary')].find(e=>e.textContent==='Historical data and observed coverage').click();[...document.querySelectorAll('button')].find(e=>e.textContent==='View cached coverage').click();})()`);
+await waitFor(`document.body.innerText.includes('Continuous coverage is unverified')`);
+assert(await evaluate(`document.body.innerText.includes('real_volume: 3/3 non-null, 0 positive')`));
 for(const width of [1024,1440,1920]){
  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
  assert(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`),'Overflow at '+width);

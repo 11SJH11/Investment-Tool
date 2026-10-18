@@ -245,6 +245,42 @@ class BrokerConnections:
                 adapter.close()
             lock.release()
 
+    def market_history(self, profile_id, request=None):
+        from app.data.mt5_history import history_request, read_history
+        from app.storage.mt5_history_store import MT5HistoryStore
+        p = self._profile(profile_id)
+        if p.provider != 'mt5':
+            raise BrokerHistoryError('Broker-native history requires MT5', category='configuration')
+        lock = self._profile_locks[profile_id]
+        if not lock.acquire(blocking=False):
+            raise BrokerHistoryError('A broker operation is already running for this profile', category='busy')
+        adapter = None
+        try:
+            selected = self._setting(self._selection(p))
+            if not selected:
+                raise BrokerHistoryError('Select a verified MT5 account first', category='configuration')
+            store = MT5HistoryStore(self.database)
+            if request is None:
+                return store.coverage(selected)
+            normalized = history_request(**request)
+            cached = store.cached(selected, normalized)
+            if cached:
+                return {**cached, 'cache_hit': True}
+            if not p.configured:
+                raise BrokerHistoryError('MT5 connection is disabled', category='configuration')
+            adapter = self.factories[p.provider](p.credentials, p.environment)
+            adapter.connect(selected)
+            frame, manifest = read_history(adapter, normalized)
+            return {**store.save(selected, normalized, frame, manifest), 'cache_hit': False}
+        except BrokerHistoryError:
+            raise
+        except Exception:
+            raise BrokerHistoryError('MT5 history unavailable; existing cache retained', category='history') from None
+        finally:
+            if adapter:
+                adapter.close()
+            lock.release()
+
     def _history_error(self, p, exc, adapter=None):
         category = exc.category if isinstance(exc, BrokerHistoryError) else 'provider'
         message = str(exc) if isinstance(exc, BrokerHistoryError) else 'Broker history could not be reconciled; previous data retained'

@@ -1,6 +1,7 @@
 import {useRef,useState} from 'react';
 import {api} from '../../api/client';
 import DataTable from '../../components/table/DataTable.jsx';
+import MT5HistoryPanel from './MT5HistoryPanel.jsx';
 
 const columns = [
   {key:'name',label:'Broker symbol'}, {key:'description',label:'Description'},
@@ -42,6 +43,7 @@ export default function MT5SymbolCatalog({profile,disabled}) {
         <button className="mini-btn" disabled={busy||catalog.offset+100>=catalog.total} onClick={()=>load(false,catalog.offset+100)}>Next 100</button></div>
     </>}
     {detail&&<section aria-label="Broker symbol metadata" className="mt-3"><h4>{detail.name} metadata</h4>
+      <MT5HistoryPanel key={detail.instrument_id} profile={profile} symbol={detail.name} disabled={disabled}/>
       <dl className="grid grid-cols-2 gap-2 text-xs">{Object.entries(detail).filter(([key])=>key!=='id').map(([key,value])=><div key={key} className="min-w-0 break-words"><dt>{key.replaceAll('_',' ')}</dt><dd>{value==null?'Unknown':String(value)}</dd></div>)}</dl>
     </section>}
   </details>;
