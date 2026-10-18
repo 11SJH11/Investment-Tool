@@ -39,8 +39,12 @@ def launch(services,payload):
         raise ValueError('Account, risk and cost settings must be finite and nonnegative')
     if any(config[k]<=0 for k in ('starting_balance','risk_value','max_leverage')):
         raise ValueError('Balance, risk and leverage must be positive')
-    if config.get('sizing_mode','risk_pct')!='risk_pct' or config.get('session','regular')!='regular':
-        raise ValueError('Campaign launch currently uses risk-percent sizing and regular sessions')
+    if config.get('sizing_mode','risk_pct')!='risk_pct' or config.get('session','auto') not in {'auto','regular','extended','24h'}:
+        raise ValueError('Campaign launch requires risk-percent sizing and a supported session')
+    from app.data.instruments import instrument_spec
+    if any(instrument_spec(s).session_profile == 'oanda_24h' for s in request['campaign']['policy']['symbols']) and config.get('session','auto') in {'regular','extended'}:
+        raise ValueError('Spot-metal campaigns require auto or full-provider session')
+    config.setdefault('session','auto')
     # Validate types with the canonical contract, without executing or choosing dates.
     BacktestRequest.model_validate({**config,'strategy_key':'validation_only','symbols':['QQQ'],
                                    'primary_timeframe':'1m','start_date':'2000-01-01','end_date':'2000-01-02'})

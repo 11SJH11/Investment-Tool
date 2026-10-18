@@ -299,3 +299,42 @@ opt-in Docker acceptance and optional local strategies; no Docker acceptance is
 claimed for this run. **137 frontend tests passed**, production build passed,
 `git diff --check` passed. The original checkout remained untouched and clean for
 tracked files. No DB schema migration was introduced by the holdings/Gold fixes.
+
+## Gold campaign preparation checkpoint (2026-10-18)
+
+The preceding limitation about equity-only campaign preparation is now addressed:
+- Spot-metal cached discovery and provider preparation are supported alongside
+  equities. Futures remain explicitly blocked pending correct session/provenance
+  integration, rather than being treated as stocks.
+- Campaign UI submits `session=auto`. Backend rejects equity-session filters for
+  spot-metal campaigns, while preserving explicit valid session choices.
+- Required strategy/concept timeframes are planned automatically. Gold IFVG needs
+  1m and 15m, but remains one primary-timeframe project. The existing engine's
+  optional ORB daily-diagnostic behaviour is preserved.
+- Every required input must cover the primary session dates and use the same
+  provider namespace. Missing history fails preparation; dates are not shortened
+  or shifted to hide gaps. This is observed-date coverage, not certification that
+  every intraday candle is present.
+- Input timestamp fingerprints and provider namespaces are part of the hashed
+  plan. Project bindings include both 1m and 15m. Existing dataset boundaries and
+  holdout guards apply to both; no extra holdout authority was added.
+- Preparation failures now carry safe, actionable categories/messages. Raw provider
+  exception text remains excluded. The frontend displays the safe explanation.
+
+Validation: **92 focused backend tests passed** across Gold campaign acceptance,
+cached discovery, provider preparation, launch, project provisioning and campaign
+control. The ten new Gold cases include a complete job-queue campaign using the
+real BacktestEngine and synthetic cached multi-session data: two saved development
+trades (+1R, -1R), Sunday execution enabled, untouched holdout, no model or Docker
+required. Separate tests verify missing 15m input, provider changes, holdout access,
+DST date labels, both prepared input jobs, and safe failure messages.
+**138 frontend tests passed**, production build passed, and diff checks passed.
+The latest whole-backend run remains the prior checkpoint's 1,522 passed/45 skipped;
+it is not presented as a full-suite run of this newer checkpoint.
+
+No schema migration: additional dependency provenance and failure detail live in
+existing versioned campaign/project JSON. Original checkout and credentials remain
+untouched. A genuine provider-backed Gold campaign with numeric research and
+Critic/Manager evidence is still required before full Priority A acceptance.
+Automatic provider selection, broker lot/margin integration, MT5 demo execution,
+performance/preview work and the advanced roadmap remain outstanding.

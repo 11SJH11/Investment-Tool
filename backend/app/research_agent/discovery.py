@@ -28,6 +28,40 @@ FAMILIES = (
 MAX_COVERAGE_ROWS = 2_000_000
 
 
+def required_timeframes(entries, primary):
+    from app.backtesting.strategies.intraday_baselines import ORB_DIAGNOSTIC_KEYS
+    from app.market_concepts import registry as concepts
+    specs = {s.key: s for s in strategy_registry.specs()}
+    result = list(primary)
+    for entry in entries:
+        spec = specs[entry['strategy_key']]
+        # BacktestService explicitly treats ORB daily diagnostics as optional.
+        frames = [tf for tf in spec.timeframes if not (tf == '1d' and spec.key in ORB_DIAGNOSTIC_KEYS)]
+        frames += [d['timeframe'] for d in concepts.declarations(spec.concepts).values()]
+        result.extend(frames)
+    return list(dict.fromkeys(result))
+
+
+def campaign_coverage(market_data, policy, entries, **bounds):
+    """Freeze dependencies without making independent projects or moving splits."""
+    output = []
+    required = required_timeframes(entries, policy['timeframes'])
+    for symbol in policy['symbols']:
+        inputs = {tf: cached_coverage(market_data, symbol, tf, **bounds) for tf in required}
+        for primary in policy['timeframes']:
+            coverage = inputs[primary]
+            for tf, dependency in inputs.items():
+                if dependency.provider_namespace != coverage.provider_namespace:
+                    raise ValueError('Required timeframes use different providers')
+                if not set(coverage.sessions) <= set(dependency.sessions):
+                    raise ValueError(f'Required {tf} history is missing primary session dates; prepare complete history')
+            output.append(coverage.model_copy(update={
+                'input_namespaces': {tf: d.provider_namespace for tf, d in inputs.items()},
+                'input_fingerprints': {tf: d.source_fingerprint for tf, d in inputs.items()},
+            }).model_dump(mode='json'))
+    return output
+
+
 def queue(request):
     specs = {s.key: s for s in strategy_registry.specs()}
     policy = request['policy']
@@ -54,11 +88,11 @@ def cached_coverage(market_data, symbol, timeframe, *, now=None, start=None, end
     now = now or utcnow()
     if now.utcoffset() is None:
         raise ValueError('Coverage clock must be timezone aware')
-    if instrument_spec(symbol).session_profile != 'us_equity':
-        raise ValueError('Automatic session discovery currently supports US equities only')
+    if instrument_spec(symbol).session_profile not in {'us_equity', 'oanda_24h'}:
+        raise ValueError('Automatic discovery requires supported equity or spot-metal identity')
     if not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,79}', symbol):
         raise ValueError('Unsupported cache symbol')
-    if timeframe not in {'1m', '5m', '15m', '30m', '1h'}:
+    if timeframe not in {'1m', '5m', '15m', '30m', '1h', '4h', '1d'}:
         raise ValueError('Unsupported cache timeframe')
     provider = market_data.provider_for(symbol)
     namespace = provider.cache_namespace
@@ -115,8 +149,7 @@ def prepare(services, identifier):
         raise ValueError('Market-data service unavailable')
     policy = item['request']['policy']
     entries = queue(item['request'])
-    coverages = [cached_coverage(services.market_data, s, tf).model_dump(mode='json')
-                 for s in policy['symbols'] for tf in policy['timeframes']]
+    coverages = campaign_coverage(services.market_data, policy, entries)
     discovery = dict(version='cached_discovery_v1', provider_calls=0,
             price_columns_read=False, warnings=[
                 'Observed cached dates are not a certified exchange calendar; missing sessions/intraday gaps are not inferred.',

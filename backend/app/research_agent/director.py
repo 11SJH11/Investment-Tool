@@ -233,12 +233,15 @@ class ResearchDirector:
                     try:
                         from .launch import advance
                         advance(self,item)
-                    except Exception:
+                    except Exception as exc:
+                        from .preparation_errors import preparation_failure
+                        detail=preparation_failure(exc)
                         with self.database.connect() as c:
                             current=self.campaigns._get(c,item['id'])
                             current.update(status='PREPARATION_FAILED',last_error='campaign_launch_failed')
+                            current['last_error_detail']=detail
                             self.campaigns._save(c,current)
-                            self.campaigns._event(c,item['id'],'LAUNCH_FAILED',{})
+                            self.campaigns._event(c,item['id'],'LAUNCH_FAILED',detail)
                     continue
                 if item['status']=='PREPARING':
                     from .preparation import advance

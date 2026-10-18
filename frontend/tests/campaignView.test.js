@@ -4,6 +4,12 @@ import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayl
 const form={mode:'FIND_STRATEGIES',strategy_key:'ignored',symbols:'qqq QQQ, spy',timeframe:'1m',prompt:'',history:'cached',
  model:false,structural:true,numeric_cycles:2,starting_balance:10000,risk_value:1,commission_per_order:0,spread_bps:1,slippage_bps:2,max_leverage:1};
 const policy={budget:{llm_usd:10},holdout:'human_approval',external_research:true};
+test('Gold campaigns use instrument-aware session resolution and 1m execution',()=>{
+ const request=campaignPayload({...form,mode:'IMPROVE_STRATEGY',strategy_key:'gold_asia_15m_ifvg_research_v1',symbols:'XAUUSD'},policy,'gold');
+ assert.equal(request.engine.session,'auto');
+ assert.deepEqual(request.campaign.policy.timeframes,['1m']);
+ assert.equal(request.structural,false);
+});
 test('Declared regimes require structural permission and remain explicit in the frozen payload',()=>{
  const regimes=[{name:'Low volatility',start:'2025-01-01',end:'2025-02-01',definition:'Declared threshold',evidence_source:'External study'}];
  assert.deepEqual(campaignPayload({...form,regime_windows:regimes},policy,'off').campaign.policy.regime_windows,[]);

@@ -105,6 +105,8 @@ def provision(database, campaign_id):
                     from .access import family
                     coverage = plan['coverage']
                     project['provider_bindings'] = {family(coverage['symbol']) + ':' + coverage['timeframe']: coverage['provider_namespace']}
+                    project['provider_bindings'].update({family(coverage['symbol'])+':'+tf: namespace
+                        for tf,namespace in coverage.get('input_namespaces',{}).items()})
                 c.execute('INSERT INTO agent_projects VALUES (?,?)', (pid, json.dumps(project)))
                 c.executemany('INSERT INTO agent_dataset_memberships VALUES (?,?)', [(pid, d) for d in datasets])
                 c.execute('INSERT INTO agent_events(project_id,action,detail) VALUES (?,?,?)',
