@@ -152,6 +152,8 @@ export const api = {
   refreshBackendStrategies: () => request('/strategy-lab/strategies/refresh',{method:'POST'}),
   brokerProfiles: () => request('/brokers'),
   testBrokerConnection: (id) => request(`/brokers/${encodeURIComponent(id)}/test`, {method:'POST'}),
+  brokerSymbols: (id, search='', offset=0) => request(`/brokers/${encodeURIComponent(id)}/symbols?search=${encodeURIComponent(search)}&offset=${offset}&limit=100`),
+  refreshBrokerSymbols: id => request(`/brokers/${encodeURIComponent(id)}/symbols/refresh`, {method:'POST'}),
   selectBrokerAccount: (id, account_key) => request(`/brokers/${encodeURIComponent(id)}/account`, {method:'PUT',body:JSON.stringify({account_key})}),
   configureBrokerConnection: (id, payload) => request(`/brokers/${encodeURIComponent(id)}/connection`, {method:'PATCH',body:JSON.stringify(payload)}),
   brokerSchedule: (id, payload) => request(`/brokers/${encodeURIComponent(id)}/schedule`, {method:'PATCH',body:JSON.stringify(payload)}),

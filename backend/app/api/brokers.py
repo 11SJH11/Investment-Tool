@@ -7,6 +7,24 @@ from app.brokers.base import BrokerHistoryError
 router = APIRouter(tags=['broker connections'])
 
 
+@router.get('/brokers/{profile_id}/symbols')
+def symbol_catalog(profile_id: str, search: str = Query('', max_length=256),
+                   limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                   services=Depends(get_services)):
+    try:
+        return services.broker_connections.symbol_catalog(profile_id, search=search, limit=limit, offset=offset)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.post('/brokers/{profile_id}/symbols/refresh')
+def refresh_symbol_catalog(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.symbol_catalog(profile_id, refresh=True)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
 @router.post('/brokers/{profile_id}/test')
 def test_connection(profile_id: str, services=Depends(get_services)):
     try:

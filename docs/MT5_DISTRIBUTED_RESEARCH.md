@@ -36,6 +36,23 @@ must be audited before extensions. No terminal execution/parity claims yet.
 
 Follow the requested 17 stages. Stage 1 isolation is implemented. Stage 2 starts
 with actual broker symbol metadata; futures verification remains a distinct path.
+Stage 2 now exposes explicit terminal symbol refresh and cached, searchable,
+paginated metadata in Settings -> MT5 broker instruments. Select a verified account
+first. Catalogs use the existing atomic app-settings store, scoped by opaque
+provider/environment/server/account identity; no schema migration is required.
+Raw broker names are preserved, calculation-mode classification is conservative,
+and no discovered symbol becomes a verified CME instrument automatically.
+Python symbol info does not expose weekly trading schedules: these remain unknown.
+Failed discovery/account switches preserve the previous catalog. No automatic
+terminal discovery happens on page load. Native errors are sanitized.
+
+Stage 1 commit: `2fa2112`.
+Verification after Stage 2: 51 focused backend tests passed (including 8 catalog
+tests and 2 isolation tests); all 136 frontend utility tests passed; production
+build passed (existing large-bundle advisory). Mocked catalog browser smoke passed
+at 1024/1440/1920px with no page overflow or runtime errors. Actual terminal/provider
+acceptance has not run; no isolated credentials or terminal have been configured.
+
 Stages 3–17 remain pending. MT5 distribution must remain disabled until actual
 Ledger/MQL5 decision/state parity is demonstrated, not merely fixture P&L similarity.
 

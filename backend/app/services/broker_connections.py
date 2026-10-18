@@ -204,6 +204,47 @@ class BrokerConnections:
         finally:
             lock.release()
 
+    def symbol_catalog(self, profile_id, *, refresh=False, search='', limit=100, offset=0):
+        """Explicit refresh only. Ordinary browsing never connects to a terminal."""
+        from app.brokers.mt5_symbols import read_catalog
+        p = self._profile(profile_id)
+        if p.provider != 'mt5':
+            raise BrokerHistoryError('Symbol discovery requires an MT5 profile', category='configuration')
+        if not 1 <= limit <= 500 or offset < 0:
+            raise BrokerHistoryError('Invalid catalog page', category='configuration')
+        lock = self._profile_locks[profile_id]
+        if not lock.acquire(blocking=False):
+            raise BrokerHistoryError('A broker operation is already running for this profile', category='busy')
+        adapter = None
+        try:
+            selected = self._setting(self._selection(p))
+            if not selected:
+                raise BrokerHistoryError('Test the MT5 connection and select an account first', category='configuration')
+            key = 'mt5_symbol_catalog:' + selected
+            if refresh:
+                if not p.configured:
+                    raise BrokerHistoryError('MT5 connection is disabled', category='configuration')
+                adapter = self.factories[p.provider](p.credentials, p.environment)
+                adapter.connect(selected)
+                catalog = read_catalog(adapter)
+                self.database.set_setting(key, json.dumps(catalog, allow_nan=False))
+            else:
+                catalog = json.loads(self._setting(key) or '{}')
+            items = catalog.get('items', [])
+            query = search.casefold().strip()
+            matching = [row for row in items if query in ' '.join(str(row.get(k) or '') for k in ('name', 'description', 'path', 'instrument_type')).casefold()]
+            return {**catalog, 'items': matching[offset:offset + limit], 'total': len(matching),
+                    'catalog_total': len(items), 'offset': offset, 'limit': limit,
+                    'status': 'available' if catalog else 'not_discovered'}
+        except BrokerHistoryError:
+            raise
+        except Exception:
+            raise BrokerHistoryError('MT5 symbol catalog unavailable; previous catalog retained', category='provider') from None
+        finally:
+            if adapter:
+                adapter.close()
+            lock.release()
+
     def _history_error(self, p, exc, adapter=None):
         category = exc.category if isinstance(exc, BrokerHistoryError) else 'provider'
         message = str(exc) if isinstance(exc, BrokerHistoryError) else 'Broker history could not be reconciled; previous data retained'
