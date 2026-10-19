@@ -30,3 +30,7 @@ Thumbs.db
 htmlcov/
 
 .ledger-runtime/
+
+# Local integration recovery and disposable test outputs
+.ledger-integration-recovery/
+.ledger-test-artifacts/
