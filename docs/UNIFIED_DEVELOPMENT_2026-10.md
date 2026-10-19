@@ -205,3 +205,45 @@ Next: collect complete broker account-risk observations, implement serialized
 durable submission/uncertainty reconciliation, protective-order verification and
 mocked gateway acceptance before terminal dry-run and demo authorization UI.
 Checkpoint 2 remains in progress; Checkpoints 3-6 remain as described above.
+
+### Checkpoint 2 continuation: native read-only account-risk observation
+
+Added `backend/app/brokers/mt5_risk_observation.py` and
+`backend/tests/test_mt5_risk_observation.py`. The collector uses the existing
+adapter's terminal lifecycle (caller must hold terminal/profile locks), reads
+all positions and pending orders, and reads the UTC day's deals. It includes
+manual/other-strategy exposure, negative trading P&L and individual fees,
+commissions and swaps; deposit/withdrawal principal is excluded. Unsupported
+separate cash operations reject, rather than silently dropping charges.
+
+Remaining stop risk uses native `order_calc_profit` in account currency. Gross
+notional currently supports only same-account-currency Forex and CFD calculation
+modes using broker contract size. Futures, unsupported calculation modes and
+currency conversions reject. Missing/invalid stops, unknown pending-order types,
+missing/duplicate/oversized history, stale/crossed quotes, identity changes and
+structural changes between repeated broker reads all reject. Collection takes a
+bounded observation window and uses the lower observed equity/free margin.
+These remain sequential observations, not an atomic broker snapshot.
+
+The returned strict risk-facts object always has `reconciled=False`: broker rows
+alone do not establish durable intent reconciliation. Tests demonstrate that the
+risk evaluator therefore rejects entry until the separate reconciliation gate is
+implemented. This collector is internal, not yet wired into a public gateway or
+submission route. It calls neither order_check nor order_send.
+
+Validation: **34 new tests**; all `tests/test_mt5*.py` **219 passed**, one existing
+Starlette warning, 26.62 seconds. A first test found floating-point multiplication
+noise in gross notional; calculation now uses Decimal multiplication before
+conversion to the API numeric representation. The complete MT5 suite passed after
+that correction. No frontend/application-route changes or schema additions in
+this increment. No fresh full-backend/build or real-terminal acceptance claim.
+No credentials were read and no broker orders were sent.
+
+Official references:
+- https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
+- https://www.mql5.com/en/docs/python_metatrader5/mt5historydealsget_py
+
+Next required work remains the serialized durable submission/reconciliation
+coordinator, wiring these observations and preflight into that gateway, protective
+order verification/management, mocked end-to-end acceptance and terminal dry run.
+Checkpoint 2 is not complete. Existing application workflows remain unchanged.
