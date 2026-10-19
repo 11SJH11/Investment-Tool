@@ -175,6 +175,7 @@ export const api = {
   refreshBrokerSymbols: id => request(`/brokers/${encodeURIComponent(id)}/symbols/refresh`, {method:'POST'}),
   brokerMarketHistory: (id,payload) => request(`/brokers/${encodeURIComponent(id)}/market-history`, {method:'POST',body:JSON.stringify(payload)}),
   brokerSizingPreview: (id,payload) => request(`/brokers/${encodeURIComponent(id)}/sizing-preview`, {method:'POST',body:JSON.stringify(payload)}),
+  brokerAccountSnapshot: id => request(`/brokers/${encodeURIComponent(id)}/account-snapshot`, {method:'POST'}),
   brokerMarketCoverage: id => request(`/brokers/${encodeURIComponent(id)}/market-coverage`),
   selectBrokerAccount: (id, account_key) => request(`/brokers/${encodeURIComponent(id)}/account`, {method:'PUT',body:JSON.stringify({account_key})}),
   configureBrokerConnection: (id, payload) => request(`/brokers/${encodeURIComponent(id)}/connection`, {method:'PATCH',body:JSON.stringify(payload)}),

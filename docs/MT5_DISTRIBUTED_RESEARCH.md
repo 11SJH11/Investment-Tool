@@ -449,3 +449,66 @@ order intent/idempotency journal, demo-only submission with broker checks,
 reconnect/reconciliation, and only then separately authorized live capability.
 Priority A campaign/data limitations above remain unresolved; later preview,
 Replay, performance and distributed research work remains pending.
+
+
+## MT5 account snapshot and durable execution groundwork (19 October 2026)
+
+The Settings MT5 card now has an explicit read-only Account, positions and pending
+orders panel. It displays current balance, equity, margin/free margin, open lots,
+stops/targets and pending orders. BUY/SELL labels derive from provider type facts.
+Opening the page does not connect; Refresh requests a new snapshot. Failed refresh
+preserves the prior display with a stale warning. Account/environment changes
+remount the panel so the old account is not displayed as the new account.
+
+POST /brokers/{profile_id}/account-snapshot reuses the native terminal and profile
+locks, checks the selected account before and after reads, bounds row counts and
+allowlists fields. Login/server/password/comments are not returned. Missing data,
+provider exceptions or identity changes fail instead of returning empty holdings.
+Snapshots are sequential observations, not atomic broker state or risk approval.
+Real demo-terminal acceptance returned USD, zero open positions/pending orders,
+execution disabled. No orders were submitted or modified.
+
+Internal MT5ExecutionLedger groundwork is also implemented and tested. It is NOT
+wired to a production submission gateway or exposed as an arming UI. Policies
+freeze account, environment, strategy/source hash, symbols, currency and numeric
+risk limits. All remain disabled/unreconciled. Draft intent creation is atomic and
+idempotent per policy/request key; conflicting payload reuse is rejected. Restart
+fences prior writers and requires reconciliation. Research contexts cannot create
+policies or drafts. Emergency stop records disablement without claiming positions
+were closed. authorize_submission always rejects. The numeric limits are stored,
+not yet an implemented/enforced live risk engine. No submission/retry/reconciliation
+or live-authorization capability should be inferred from these storage tests.
+
+Storage is additive and initialized only when the internal ledger is instantiated:
+mt5_execution_owner, mt5_execution_policies, mt5_execution_intents. Existing broker,
+Portfolio and Journal records are not migrated or rewritten. The original database
+is untouched. No new packages or credential variables were added.
+
+New files: backend/app/brokers/mt5_account.py,
+backend/app/brokers/mt5_execution_ledger.py,
+backend/tests/test_mt5_account.py,
+backend/tests/test_mt5_execution_ledger.py,
+frontend/src/features/brokers/MT5AccountSnapshot.jsx.
+Existing broker API/service/client/card and MT5 browser acceptance were extended.
+
+Focused verification: 71 backend tests passed (including 8 account-snapshot and
+15 execution-ledger tests, plus sizing and broker connection regressions).
+138 frontend tests passed and the production build passed. Mocked browser checks
+at 1024/1440/1920 passed with no runtime errors/page overflow, including retaining
+stale snapshots on errors. Full-backend verification is recorded separately below.
+
+Next unresolved work remains the actual account risk gateway, durable submission
+outcomes and broker reconciliation, demo-order acceptance, separately authorized
+live capability, Live Backtest Preview, Replay/performance improvements, and the
+advanced research roadmap. Gold campaign data/model blockers are unchanged.
+
+
+Final whole-tree verification for the account/ledger checkpoint: 1,587 backend
+tests passed, 45 skipped, one existing Starlette/httpx deprecation warning, in
+547.62 seconds. Opt-in real Docker/optional strategy skips are not fresh Docker
+acceptance. All 138 frontend utility tests passed; production build passed with
+the existing chunk-size advisory. git diff --check passed. Browser regressions
+for Gold defaults, Portfolio current/stale holdings and Run single/bulk downloads,
+comparison/deletion also passed at 1024/1440/1920, alongside the new MT5 checks.
+The original checkout has no tracked modifications from this work; its user-owned
+untracked strategies and research outputs remain untouched.

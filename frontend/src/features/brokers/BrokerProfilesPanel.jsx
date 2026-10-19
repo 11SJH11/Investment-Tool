@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {api} from '../../api/client';
 import MT5SymbolCatalog from './MT5SymbolCatalog.jsx';
+import MT5AccountSnapshot from './MT5AccountSnapshot.jsx';
 import {BROKER_NAMES,canConfigureConnection,canSelectAccount,connectionSummary,connectionHint} from './brokerConnectionUtils.js';
 const date=value=>value?new Date(value).toLocaleString():'Not yet';
 
@@ -77,6 +78,7 @@ export default function BrokerProfilesPanel({destination,onSynced}) {
         </div>}
         {p.error&&<p className="mt-2 text-xs text-red-700">{p.error}</p>}
         {p.provider==='mt5'&&<MT5SymbolCatalog key={`${p.profile_id}:${p.environment}:${p.account_key||''}`} profile={p} disabled={disabled}/>}
+        {p.provider==='mt5'&&<MT5AccountSnapshot key={`account-${p.profile_id}:${p.environment}:${p.account_key||''}`} profile={p} disabled={disabled}/>}
       </article>;
     })}</div>
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}{message&&<p role="status" className="mt-3 text-sm">{message}</p>}
