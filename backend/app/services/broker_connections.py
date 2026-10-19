@@ -204,6 +204,32 @@ class BrokerConnections:
         finally:
             lock.release()
 
+    def sizing_preview(self, profile_id, request):
+        from app.brokers.mt5_sizing import estimate, SizingRequest
+        # Validate before connecting; no native trading methods are called.
+        try:
+            request = SizingRequest.model_validate(request)
+        except ValueError:
+            raise BrokerHistoryError('Invalid sizing inputs', category='configuration') from None
+        p = self._profile(profile_id)
+        if p.provider != 'mt5' or not p.configured:
+            raise BrokerHistoryError('An enabled MT5 profile is required', category='configuration')
+        lock = self._profile_locks[profile_id]
+        if not lock.acquire(blocking=False):
+            raise BrokerHistoryError('A broker operation is already running for this profile', category='busy')
+        adapter = None
+        try:
+            selected = self._setting(self._selection(p))
+            if not selected:
+                raise BrokerHistoryError('Select an MT5 account first', category='configuration')
+            adapter = self.factories[p.provider](p.credentials, p.environment)
+            adapter.connect(selected)
+            return estimate(adapter, request)
+        finally:
+            if adapter is not None:
+                adapter.close()
+            lock.release()
+
     def symbol_catalog(self, profile_id, *, refresh=False, search='', limit=100, offset=0):
         """Explicit refresh only. Ordinary browsing never connects to a terminal."""
         from app.brokers.mt5_symbols import read_catalog

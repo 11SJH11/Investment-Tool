@@ -8,6 +8,16 @@ from app.brokers.base import BrokerHistoryError
 
 router = APIRouter(tags=['broker connections'])
 
+from app.brokers.mt5_sizing import SizingRequest
+
+
+@router.post('/brokers/{profile_id}/sizing-preview')
+def sizing_preview(profile_id: str, body: SizingRequest, services=Depends(get_services)):
+    try:
+        return services.broker_connections.sizing_preview(profile_id, body)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
 
 class MT5HistoryRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')

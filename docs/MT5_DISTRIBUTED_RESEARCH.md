@@ -405,3 +405,47 @@ Local reports: `.ledger-runtime/gold-acceptance/campaign-feasibility.json` and
 `campaign-older-history-probe.json` in the same directory. A longer verified 1m
 source and enabled/authorized model service remain necessary for full campaign
 acceptance. These read-only probes introduced no application or schema changes.
+
+
+## Priority B foundation: read-only broker sizing (19 October 2026)
+
+Settings -> MT5 broker instruments -> Metadata now includes a collapsed Broker
+sizing estimate. Enter broker prices and monetary target risk to calculate current
+account-currency stop loss, broker lots and margin. The backend also accepts an
+exclusive equity-percent risk input. Broker quantity is rounded down to volume
+step and capped at volume maximum; minimum-lot risk, actual rounded risk and free
+margin failures are explicit. Entry/stop must align with tick size. The resulting
+size is recalculated through the native broker function before presentation.
+
+The API is POST /brokers/{profile_id}/sizing-preview. It uses the existing profile
+and process-global terminal locks, selected account/environment verification and
+sanitized errors. No order_send or order_check call exists in this implementation.
+Execution remains disabled for demo AND live. This estimate is not an approval or
+an executable order: costs, gap/slippage risk, stop-distance rules, aggregate
+exposure, daily loss and pending-order risk require the future execution gateway.
+MT5 margin estimates exclude existing positions/pending orders; the UI says so.
+No historical backtest sizing or strategy rules were changed. No migration.
+
+Official calculation contracts:
+- https://www.mql5.com/en/docs/python_metatrader5/mt5ordercalcprofit_py
+- https://www.mql5.com/en/docs/python_metatrader5/mt5ordercalcmargin_py
+
+Real demo-terminal calculation for XAUUSDs, hypothetical buy 4200 / stop 4190 /
+$100 target: 0.10 broker lots, $100 estimated stop loss, $420 estimated margin.
+No orders sent. Local ignored report: .ledger-runtime/gold-acceptance/sizing-preview.json.
+
+Verification: 69 focused backend tests passed, including 19 new sizing cases;
+138 frontend tests passed, production build passed, git diff --check passed.
+Mocked browser acceptance exercised explicit calculation and the request/result
+contract at 1024/1440/1920px, with no overflow/runtime errors. Backend cases cover
+long/short, equity-percent sizing, volume rounding/max/min, margin failure,
+account changes, disabled profiles, safe native failures, non-linear recalculation,
+API validation and read-only live estimates. The previous whole-suite result of
+1,545 passed/45 skipped predates this sizing checkpoint; it is not a whole-suite
+claim for this newer tree.
+
+Next Priority B steps: durable per-account/strategy authorization and risk policy,
+order intent/idempotency journal, demo-only submission with broker checks,
+reconnect/reconciliation, and only then separately authorized live capability.
+Priority A campaign/data limitations above remain unresolved; later preview,
+Replay, performance and distributed research work remains pending.
