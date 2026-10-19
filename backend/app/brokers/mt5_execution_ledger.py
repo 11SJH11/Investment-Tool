@@ -51,6 +51,9 @@ class MT5ExecutionLedger:
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_intents(
                 id TEXT PRIMARY KEY, policy_id TEXT NOT NULL REFERENCES mt5_execution_policies(id),
                 request_key TEXT NOT NULL, document TEXT NOT NULL, UNIQUE(policy_id,request_key))''')
+            c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_risk_assessments(
+                id TEXT PRIMARY KEY, policy_id TEXT NOT NULL REFERENCES mt5_execution_policies(id),
+                document TEXT NOT NULL)''')
             c.execute('BEGIN IMMEDIATE')
             c.execute('INSERT INTO mt5_execution_owner VALUES(1,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner', (self.owner,))
             for row in c.execute('SELECT id,document FROM mt5_execution_policies').fetchall():
@@ -116,6 +119,41 @@ class MT5ExecutionLedger:
     def intents(self,policy_id):
         with self.database.connect() as c:
             return [json.loads(r[0]) for r in c.execute('SELECT document FROM mt5_execution_intents WHERE policy_id=? ORDER BY rowid',(policy_id,))]
+
+    def assess_risk(self, policy_id, facts, proposed, *, now_ms, session_key, max_session_trades=1):
+        """Persist diagnostic acceptance/rejection, without arming or reserving.
+
+        Only backend-collected, complete account facts belong here. This method
+        is deliberately not a public API accepting user-supplied risk totals.
+        """
+        from app.brokers.mt5_execution_risk import AccountRiskFacts, ProposedRisk, assess
+
+        self._manual_only()
+        facts = AccountRiskFacts.model_validate(facts).model_dump()
+        proposed = ProposedRisk.model_validate(proposed).model_dump()
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution policy')
+            policy = json.loads(row[0])['policy']
+            decision = assess(policy, facts, proposed, now_ms=now_ms,
+                              session_key=session_key, max_session_trades=max_session_trades)
+            record = dict(id=str(uuid4()), policy_id=policy_id, facts=facts, proposed=proposed,
+                          decision=decision, max_session_trades=max_session_trades,
+                          execution_enabled=False)
+            c.execute('INSERT INTO mt5_execution_risk_assessments VALUES(?,?,?)',
+                      (record['id'], policy_id, encoded(record)))
+            return record
+
+    def risk_assessments(self, policy_id, *, limit=100):
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError('Risk assessment limit must be between 1 and 1000')
+        with self.database.connect() as c:
+            return [json.loads(r[0]) for r in c.execute(
+                'SELECT document FROM mt5_execution_risk_assessments WHERE policy_id=? ORDER BY rowid DESC LIMIT ?',
+                (policy_id, limit))]
 
     def emergency_stop(self):
         # Disabling remains permitted even for a superseded process.

@@ -160,3 +160,48 @@ semantics:
 - https://www.mql5.com/en/docs/python_metatrader5/mt5ordersend_py
 - https://www.mql5.com/en/docs/constants/environment_state/accountinformation
 - https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
+
+### Checkpoint 2 continuation: account-wide risk assessment and audit
+
+Added a strict deterministic risk evaluator and durable, bounded assessment audit
+in the existing execution ledger. It checks demo/account/currency identity,
+complete reconciliation, five-second observation freshness, UTC risk-day and
+strategy/session identity, unresolved submissions, permitted symbols, per-trade
+risk, available margin, account-wide position and gross-exposure limits, daily
+loss budget and session entry count (default one).
+
+The conservative daily budget uses gross realized losses including costs, floating
+losses, remaining open stop risk, pending stop risk and proposed trade risk.
+Profits do not replenish this budget. Pending entries count toward position and
+exposure limits. Monetary facts must already be in account currency; unknown facts
+must reject evaluation, never become zero. Decimal comparisons protect boundaries.
+This rule must be disclosed in deployment configuration before execution approval.
+
+Assessments are diagnostic only: neither a passing record nor a restored record
+arms a policy or reserves risk. The actual gateway still needs serialized
+account-wide observation/reservation/submission and broker reconciliation. Native
+account-risk collection/conversion is not wired yet. No public route accepts these
+risk totals. Research scopes cannot write assessments, and superseded processes
+cannot append them. Existing authorization remains disabled.
+
+Storage: one additive table, `mt5_execution_risk_assessments`, created lazily by
+`MT5ExecutionLedger`, alongside its existing tables. Stores validated allowlisted
+facts, policy reference, proposal, decision/reasons and evaluation timestamp. No
+existing user database was explicitly migrated or rewritten by this development.
+
+Changed files:
+- `backend/app/brokers/mt5_execution_ledger.py`
+- new `backend/app/brokers/mt5_execution_risk.py`
+- new `backend/tests/test_mt5_execution_risk.py`
+- this handoff
+
+Verification: **42 new tests**; focused execution/preflight/sizing/account group
+**117 passed**. All `tests/test_mt5*.py`: **185 passed**, one existing Starlette
+warning, 19.32 seconds. `git diff --check` passed. No frontend changes; no fresh
+frontend build or full backend result is claimed for this increment. No native
+order operations or real-terminal dry runs were performed.
+
+Next: collect complete broker account-risk observations, implement serialized
+durable submission/uncertainty reconciliation, protective-order verification and
+mocked gateway acceptance before terminal dry-run and demo authorization UI.
+Checkpoint 2 remains in progress; Checkpoints 3-6 remain as described above.
