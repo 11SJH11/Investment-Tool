@@ -80,8 +80,13 @@ def test_snapshots_history_dedup_notes_and_preservation(setup):
     assert again['note']=='My note' and again['tags']==['Long term'] and again['facts']['quantity']==3
     assert s.portfolio.records(key,'orders')['total']==2
     p.positions=[];s.sync('trading212-default')
-    old=s.portfolio.records(key,'position')['items'][0]
+    assert s.portfolio.records(key,'position') == {'total': 0, 'items': []}
+    old=s.portfolio.records(key,'position',include_inactive=True)['items'][0]
     assert old['active']==0 and old['note']=='My note'
+    assert old['tags']==['Long term'] and old['id']==row['id']
+    assert s.portfolio.records(key,'orders')['total']==2
+    assert s.portfolio.records(key,'dividends')['total']==1
+    assert s.portfolio.records(key,'transactions')['total']==1
     assert PortfolioRepository(db).list_transactions()==[manual]
     assert JournalRepository(db).list_trades()==[]
     before=s.portfolio.records(key);db.initialize();db.initialize()
@@ -98,6 +103,20 @@ def test_failed_history_preserves_all_facts_and_cursor(setup):
     with pytest.raises(BrokerHistoryError,match='HTTP 403') as error:s.sync('trading212-default')
     assert 'key-secret' not in str(error.value)
     assert s.portfolio.records(key)==before and s.state.state('trading212',key)['cursor']==cursor
+    assert s.portfolio.accounts()[0]['sync_status']=='error'
+    p.failure=None;s.sync('trading212-default')
+    assert s.portfolio.accounts()[0]['sync_status']=='success'
+    assert s.portfolio.records(key,'position')['total']==0
+
+
+def test_closing_positions_does_not_affect_other_accounts(setup):
+    _,p,s=setup;s.sync('trading212-default')
+    first=s.portfolio.accounts()[0]['account_key']
+    p.account+=1;s.sync('trading212-default')
+    second=next(a['account_key'] for a in s.portfolio.accounts() if a['account_key']!=first)
+    p.positions=[];s.sync('trading212-default')
+    assert s.portfolio.records(second,'position')['total']==0
+    assert s.portfolio.records(first,'position')['total']==1
 
 
 @pytest.mark.parametrize('next_path',['https://evil.example/api/v0/equity/history/orders','//evil.example/path','/api/v0/equity/orders','/api/v0/equity/history/orders?limit=50'])
@@ -211,7 +230,8 @@ def test_conflicting_page_records_roll_back_snapshot(setup):
     old=s.portfolio.records(key);account=s.portfolio.accounts()
     duplicate=deepcopy(p.orders[0]);duplicate['fill']['price']=999;p.orders.append(duplicate)
     with pytest.raises(BrokerHistoryError):s.sync('trading212-default')
-    assert s.portfolio.records(key)==old and s.portfolio.accounts()==account
+    assert s.portfolio.records(key)==old
+    assert s.portfolio.accounts()==[{**a,'sync_status':'error'} for a in account]
 
 
 def test_missing_quantity_cannot_replace_valid_holdings(setup):

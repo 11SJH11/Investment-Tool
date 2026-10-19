@@ -1,10 +1,72 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+from typing import Literal
 
 from app.api.dependencies import get_services
 from app.brokers.base import BrokerHistoryError
 
 router = APIRouter(tags=['broker connections'])
+
+from app.brokers.mt5_sizing import SizingRequest
+
+
+@router.post('/brokers/{profile_id}/account-snapshot')
+def account_snapshot(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.account_snapshot(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.post('/brokers/{profile_id}/sizing-preview')
+def sizing_preview(profile_id: str, body: SizingRequest, services=Depends(get_services)):
+    try:
+        return services.broker_connections.sizing_preview(profile_id, body)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+class MT5HistoryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    symbol: str = Field(min_length=1, max_length=256)
+    data_type: Literal['1m', '5m', '15m', '30m', '1h', '4h', '1d', 'ticks']
+    start: datetime
+    end: datetime
+
+
+@router.post('/brokers/{profile_id}/market-history')
+def broker_market_history(profile_id: str, body: MT5HistoryRequest, services=Depends(get_services)):
+    try:
+        return services.broker_connections.market_history(profile_id, body.model_dump())
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.get('/brokers/{profile_id}/market-coverage')
+def broker_market_coverage(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.market_history(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.get('/brokers/{profile_id}/symbols')
+def symbol_catalog(profile_id: str, search: str = Query('', max_length=256),
+                   limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                   services=Depends(get_services)):
+    try:
+        return services.broker_connections.symbol_catalog(profile_id, search=search, limit=limit, offset=offset)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
+@router.post('/brokers/{profile_id}/symbols/refresh')
+def refresh_symbol_catalog(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.symbol_catalog(profile_id, refresh=True)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
 
 
 @router.post('/brokers/{profile_id}/test')

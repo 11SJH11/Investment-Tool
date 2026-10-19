@@ -8,7 +8,8 @@ import {refreshedSelection,normalBacktestTab} from './strategyRefresh.js';
 import OrbDiagnosticAnalysis from './OrbDiagnosticAnalysis.jsx';
 import ExcursionAnalysis from './ExcursionAnalysis.jsx';
 import {tradeDiagnostics,displayDiagnostic,breakdownDiagnostics} from './tradeDiagnostics.js';
-import {downloadCsv,downloadJson} from '../../utils/csv.js';
+import {downloadCsv,downloadJson,downloadFile} from '../../utils/csv.js';
+import {downloadRunExport,downloadSelectedRuns} from '../../api/client.js';
 import {backtestExportRows,runExportFilename} from '../../utils/researchExports.js';
 import {loadPreferences} from "../../app/preferences.js";
 import {useWorkflow} from "../../app/WorkflowContext.js";
@@ -32,11 +33,11 @@ import useBacktestJobs from "./useBacktestJobs.js";
 import RunsTable from "./RunsTable.jsx";
 import RunComparison from "./RunComparison.jsx";
 import ComputeControl from "./ComputeControl.jsx";
+import {WEEKDAYS as weekdays,defaultTradingWeekdays} from './backtest-workflow.js';
 
 const runSections=createSectionCache((id,section)=>api.strategyLabRunSection(id,section));
 const EMPTY_TRADES=Object.freeze([]);
 const timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
-const weekdays = [[0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"]];
 function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
 function number(value, digits = 2) { return value == null || Number.isNaN(Number(value)) ? "—" : Number(value).toFixed(digits); }
 function pct(value) { return value == null ? "—" : `${number(value, 2)}%`; }
@@ -71,7 +72,9 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   const [symbols, setSymbols] = useState(["AAPL"]);
   const [symbolInput, setSymbolInput] = useState("");
   const [entryWindows, setEntryWindows] = useState([]);
-  const [selectedWeekdays, setSelectedWeekdays] = useState([0, 1, 2, 3, 4]);
+  const [weekdayOverride, setWeekdayOverride] = useState(null);
+  const selectedWeekdays=weekdayOverride??defaultTradingWeekdays(symbols);
+  const setSelectedWeekdays=value=>setWeekdayOverride(typeof value==='function'?value(selectedWeekdays):value);
   const autoRunName = useRef(true);
   const [runMeta, setRunMeta] = useState({ name: "Run 1", notes: "", tags: "", test_role: "development" });
   const [form, setForm] = useState({
@@ -113,7 +116,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
   useEffect(() => {
     if (!strategy) return;
     setParams({ ...(strategy.defaults || {}) });
-    if ((strategy.key === "xau_liquidity_type3_baseline_v1" || strategy.key.startsWith("xau_type3_experiment_"))) {
+    if ((strategy.key === "xau_liquidity_type3_baseline_v1" || strategy.key.startsWith("xau_type3_experiment_") || strategy.key === 'gold_asia_15m_ifvg_research_v1')) {
       setSymbols(["XAUUSD"]);
       setEntryWindows([]);
       setForm((old) => ({ ...old, primary_timeframe: "1m", session: "auto", allow_overnight: "true", force_close_time: "" }));
@@ -227,7 +230,7 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
         max_consecutive_losses: config.max_consecutive_losses ?? "", cooldown_minutes: String(config.cooldown_minutes ?? 0),
       }));
       setEntryWindows(config.entry_windows?.length ? config.entry_windows : []);
-      setSelectedWeekdays(config.trading_weekdays || [0, 1, 2, 3, 4]);
+      setSelectedWeekdays(config.trading_weekdays || defaultTradingWeekdays(config.symbols||saved.symbols));
       autoRunName.current = false;
       setRunMeta({ name: saved.name ? `${saved.name} · copy` : nextRunName(runs), notes: saved.notes || "", tags: (saved.tags || []).join(", "), test_role: "development" });
       setTimeout(() => setParams({ ...(config.strategy_params || {}) }), 0);
@@ -274,9 +277,12 @@ export default function StrategyLabPage({ initialTab = "Backtest", standaloneTab
           </div>
           <div>
             <h3 className="font-semibold">Account sizing</h3><p className="mt-1 text-xs text-stone-500">Controls position size. Strategy code continues to own stop, target and position-management logic.</p>
+            <p className="mt-2 text-xs muted">Risk is a target before costs. The {form.max_leverage}× exposure cap and contract increments can reduce actual risk. Broker margin is not verified; no broker leverage is assumed.</p>
+            {symbols.some(s=>/^XAU_?USD$/.test(s))&&<p className="mt-2 text-xs muted">XAUUSD uses metal units, not MT5 lots. Gold defaults include Sunday evening; provider bars determine available trading hours. MT5 lot economics require the verified broker execution model.</p>}
+            {[form.commission_per_order,form.slippage_bps,form.spread_bps].every(v=>Number(v)===0)&&<p className="mt-2 text-xs warning">Frictionless research: commission, spread and slippage are all zero.</p>}
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Starting balance"><NumberInput value={form.starting_balance} onChange={(v) => setForm({ ...form, starting_balance: v })} /></Field>
-              <Field label="Sizing mode"><select className="input" value={form.sizing_mode} onChange={(e) => setForm({ ...form, sizing_mode: e.target.value })}><option value="risk_pct">Risk % of account</option><option value="cash_risk">Fixed cash risk</option><option value="quantity">Fixed share quantity</option><option value="cash_position">Fixed cash position</option><option value="position_pct">Position % of account</option></select></Field>
+              <Field label="Sizing mode"><select className="input" value={form.sizing_mode} onChange={(e) => setForm({ ...form, sizing_mode: e.target.value })}><option value="risk_pct">Risk % of account</option><option value="cash_risk">Fixed cash risk</option><option value="quantity">Fixed instrument quantity</option><option value="cash_position">Fixed cash position</option><option value="position_pct">Position % of account</option></select></Field>
               <Field label={sizingLabel(form.sizing_mode)}><NumberInput value={form.risk_value} onChange={(v) => setForm({ ...form, risk_value: v })} /></Field>
             </div>
           </div>
@@ -395,12 +401,15 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
   const runId = result.saved_run?.id;
   const [exportBusy,setExportBusy]=useState(false);
   const [exportError,setExportError]=useState('');
+  const [exportKind,setExportKind]=useState('bundle');
+  const exportRecorded=async()=>{if(exportBusy||!runId)return;setExportBusy(true);setExportError('');try{const blob=await downloadRunExport(runId,exportKind);downloadFile(blob,runExportFilename(result,`${exportKind}.${exportKind==='bundle'?'zip':['trades','analysis-csv'].includes(exportKind)?'csv':'json'}`),blob.type);notifyActivity({title:'Export ready',detail:'Recorded research evidence downloaded.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false);}};
   const exportManifest=async()=>{if(exportBusy||!runId)return;setExportBusy(true);try{setExportError('');downloadJson(await api.reproducibilityManifest(runId),runExportFilename(result,'reproducibility.json'));}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const exportSource=async()=>{if(exportBusy||!runId)return;setExportBusy(true);try{setExportError('');downloadJson(await api.strategySourceArchive(runId),runExportFilename(result,'strategy-source.json'));notifyActivity({title:'Source bundle exported',detail:'Captured strategy modules only; external dependencies and market data are not included.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const exportFullRun=async()=>{if(exportBusy)return;setExportBusy(true);try{setExportError('');const snapshot=runId?await api.strategyLabRun(runId):result;downloadJson(snapshot,runExportFilename(result,'full.json'));notifyActivity({title:'Export ready',detail:'Saved run JSON downloaded.'});}catch(e){setExportError(e.message);}finally{setExportBusy(false)}};
   const symbols = (result.symbols || []).join(" · ") || "—";
 
   return <section className="mt-5">
+    <div className="ui-toolbar mb-3" aria-label="Download saved research evidence"><label>Download <select className="input" value={exportKind} onChange={e=>setExportKind(e.target.value)}>{[['bundle','Research Analysis Bundle (ZIP)'],['pack','Research Pack (JSON)'],['trades','Trades CSV'],['summary','Summary JSON'],['analysis','Analysis JSON'],['analysis-csv','Analysis CSV'],['provenance','Configuration + provenance'],['full','Full saved-result JSON']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportRecorded}>{exportBusy?'Preparing download…':'Download'}</button></div>
     {sectionBusy&&<p role="status" aria-busy="true">{sectionBusy}</p>}{sectionError&&<p role="alert">{sectionError} <button className="mini-btn" onClick={()=>loadSection(viewerTab.toLowerCase())}>Retry loading</button></p>}
     <div className="ui-toolbar mb-3"><button className="mini-btn" disabled={!loaded.current.has("trades")} title="Open Trades first to export filtered trades" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" disabled={!!sectionBusy} onClick={async()=>{const data=await loadSection("trades");if(data)downloadCsv(backtestExportRows(data),runExportFilename(data,"all-trades.csv"))}}>Export all trades CSV</button><button className="mini-btn" disabled={exportBusy} onClick={exportFullRun}>{exportBusy?"Preparing export...":"Export full run JSON"}</button><button className="mini-btn" disabled={exportBusy||!runId||result.strategy?.source_archive?.status!=="archived"} onClick={exportSource}>Export recorded strategy source</button><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportManifest}>Export reproducibility manifest</button>{exportError&&<p role="alert">{exportError}</p>}</div>
     <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -410,6 +419,14 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
       </div>
       <p className="mt-2 break-all text-xs text-stone-500">{result.strategy?.implementation?.source_sha256?`Recorded strategy SHA-256: ${result.strategy.implementation.source_sha256}`:'Historical run: strategy source fingerprint was not recorded.'}</p>
       <p className="mt-1 text-xs muted">{result.strategy?.source_archive?.status==='archived'?'Loaded strategy source archived. Bundle excludes the engine, dependencies and market data; it is not an executable environment.':'No recorded strategy source bundle for this run. Current source is not a substitute for historical code.'}</p>
+      <details className="mt-2 text-xs"><summary>Recorded experiment provenance</summary>{result.experiment_contract?<div className="space-y-1 break-all mt-2">
+        <p>Executor: {result.experiment_contract.executor.kind.replaceAll('_',' ')} · {result.experiment_contract.executor.version||'Version unavailable'} · {result.experiment_contract.executor.execution_tier.replaceAll('_',' ')}</p>
+        <p>Core source: {result.experiment_contract.executor.source_sha256||'Unavailable'}</p>
+        <p>Configuration: {result.experiment_contract.configuration_sha256}</p>
+        <p>Unavailable evidence: {Object.entries(result.experiment_contract.availability).filter(([,status])=>status==='UNAVAILABLE').map(([name])=>name.replaceAll('_',' ')).join(', ')||'None recorded'}</p>
+        <p>Executor identity does not establish Python/MT5 parity.</p>
+        {Object.entries(result.experiment_contract.data?.providers||{}).map(([symbol,source])=><p key={symbol}>{symbol}: {source.provider} / {source.feed||'Feed unspecified'}{source.source_details?.broker_symbol?` / broker symbol ${source.source_details.broker_symbol}`:''}</p>)}
+      </div>:<p>Unavailable for this historical snapshot. Current code is not substituted for its execution history.</p>}</details>
       <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3" role="tablist" aria-label="Run viewer sections">{["Summary","Trades","Analysis"].map(item=><button key={item} role="tab" aria-selected={viewerTab===item} className={`mini-btn ${viewerTab===item?"active-btn":""}`} onClick={()=>{setViewerTab(item);if(item!=="Summary")loadSection(item.toLowerCase())}}>{item}{item==="Trades"?` (${m.trades??trades.length})`:""}</button>)}</div>
     </div>
 
@@ -455,22 +472,33 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
 
 function RunsPanel({ runs, onRefresh, onOpen, onUseSettings, onOpenExperiment }) {
   const [selected, setSelected] = useState([]);
+  const [comparisonIds,setComparisonIds]=useState([]),[selectionBusy,setSelectionBusy]=useState(false),[selectionError,setSelectionError]=useState('');
   const [view, setView] = useUIPreference("runs.view", "all");
   useEffect(()=>{ if(view === "sensitivity") setView("research"); },[view]);
-  const toggle = (id) => setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 30 ? old : [...old, id]);
-  const compared = selected.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
+  const toggle = (id) => {setComparisonIds([]);setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : old.length >= 30 ? old : [...old, id]);};
+  const compared = comparisonIds.map((id) => runs.find((run) => run.id === id)).filter(Boolean);
+  useEffect(()=>{setSelected(old=>old.filter(id=>runs.some(run=>run.id===id)));},[runs]);
   const experimentGroups = Object.entries(runs.reduce((groups, run) => {
     if (!run.experiment_group || (run.tags || []).includes("sensitivity")) return groups;
     (groups[run.experiment_group] ||= []).push(run);
     return groups;
   }, {})).filter(([, items]) => new Set(items.map((item) => item.test_role)).size >= 2);
   const visibleRuns = runs.filter(r=>!String(r.experiment_group||'').startsWith('research:'));
-  const remove = async (id) => { if (!window.confirm(`Delete saved backtest run #${id}?`)) return; await api.deleteStrategyLabRun(id); setSelected((old) => old.filter((x) => x !== id)); onRefresh(); };
+  const remove = async (id) => { if (!window.confirm(`Delete saved backtest run #${id}?`)) return; setSelectionError('');try{await api.deleteStrategyLabRun(id); setSelected((old) => old.filter((x) => x !== id)); onRefresh();}catch(e){setSelectionError(e.message);} };
+  const downloadSelection=async()=>{setSelectionBusy(true);setSelectionError('');try{const blob=await downloadSelectedRuns(selected);downloadFile(blob,'ledger-selected-research.zip',blob.type);}catch(e){setSelectionError(e.message);}finally{setSelectionBusy(false);}};
+  const deleteSelection=async()=>{if(!window.confirm(`Delete ${selected.length} selected saved runs? Research-protected runs will block the entire deletion.`))return;setSelectionBusy(true);setSelectionError('');try{await api.deleteSelectedRuns(selected);setSelected([]);setComparisonIds([]);await onRefresh();}catch(e){setSelectionError(e.message);}finally{setSelectionBusy(false);}};
 
   return <section className="mt-5 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
     <div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold">Saved backtest research</h3><p className="text-xs muted">Select up to 30 runs for shared equity, drawdown and metrics comparison.</p><p className="mt-1 max-w-4xl text-xs text-stone-500">Standalone runs, validation suites and parent research experiments are separated so grids remain easy to find without exposing every child cell as a top-level run.</p></div><button onClick={onRefresh} className="rounded-md border border-stone-300 px-3 py-2 text-xs">Refresh</button></div>
     {runs.some((run) => run.strategy_key === "momentum_vcp_breakout_baseline_v1") && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Momentum stock runs: Historical universe may contain survivorship bias.</p>}
     <div className="mt-4 flex gap-2">{[["all","Single runs"],["validation","Validation suites"],["research","Research experiments"]].map(([key,label]) => <button key={key} onClick={() => setView(key)} className={`rounded-md border px-3 py-2 text-xs ${view === key ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white"}`}>{label}</button>)}</div>
+    {selectionError&&<p role="alert" className="mt-3">{selectionError}</p>}
+    {view==='all'&&selected.length>0&&<div className="ui-toolbar mt-3" aria-label="Selected run actions"><strong>{selected.length} selected</strong>
+      {selected.length===1?<><button className="mini-btn" disabled={selectionBusy} onClick={()=>onOpen(selected[0])}>Open selected</button><button className="mini-btn" disabled={selectionBusy} onClick={()=>onUseSettings(selected[0])}>Use settings</button></>:<button className="mini-btn" disabled={selectionBusy} onClick={()=>setComparisonIds([...selected])}>Compare selected</button>}
+      <button className="mini-btn" disabled={selectionBusy} onClick={downloadSelection}>{selectionBusy?'Working…':selected.length===1?'Download selected':'Download selected / analysis bundle'}</button>
+      <button className="mini-btn" disabled={selectionBusy} onClick={deleteSelection}>Delete selected</button>
+      <button className="mini-btn" disabled={selectionBusy} onClick={()=>{setSelected([]);setComparisonIds([]);}}>Clear selection</button>
+    </div>}
     {compared.length >= 2 && view === "all" && <RunComparison ids={compared.map(run => run.id)} />}
     {view === "validation" && <div className="mt-5">
       {!experimentGroups.length && <p className="rounded-lg bg-stone-50 p-6 text-center text-sm text-stone-500">No saved validation suites yet.</p>}
@@ -516,7 +544,7 @@ function ParameterField({ parameter, value, onChange }) {
 }
 function normaliseParams(strategy, params) { const result = {}; for (const p of strategy?.parameters || []) { const value = params[p.key]; result[p.key] = p.kind === "int" ? Number.parseInt(value,10) : p.kind === "float" ? Number(value) : p.kind === "bool" ? Boolean(value) : value; } return result; }
 function optionalNumber(value) { return value === "" || value == null ? null : Number(value); }
-function sizingLabel(mode) { if (mode === "risk_pct") return "Risk per trade (%)"; if (mode === "cash_risk") return "Cash risk per trade"; if (mode === "quantity") return "Shares per trade"; if (mode === "cash_position") return "Cash position size"; return "Position size (% of account)"; }
+function sizingLabel(mode) { if (mode === "risk_pct") return "Target risk per trade (%)"; if (mode === "cash_risk") return "Target cash risk per trade"; if (mode === "quantity") return "Units / contracts per trade"; if (mode === "cash_position") return "Cash position size"; return "Position size (% of account)"; }
 function NumberInput({ value, onChange }) { return <input type="number" step="any" className="input" value={value} onChange={(e) => onChange(e.target.value)} />; }
 function OptionalNumberInput({ value, onChange, placeholder }) { return <input type="number" step="any" min="0" className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />; }
 function Field({ label, children }) { return <label className="block"><span className="mb-1 block text-xs font-medium text-stone-500">{label}</span>{children}</label>; }

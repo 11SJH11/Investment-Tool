@@ -66,16 +66,21 @@ def test_bounded_batch_states_cancellation_and_immutable_save(queue):
     batch = jobs.enqueue([{'symbols': [s]} for s in ['AAPL', 'MSFT', 'NVDA', 'AMZN']], 'batch')
     wait_for(lambda: service.active == 2)
     assert service.maximum == 2
-    assert jobs.get(batch[2]['id'])['status'] == 'queued'
-    assert jobs.get(batch[3]['id'])['status'] == 'queued'
-    jobs.cancel(batch[2]['id'])
-    jobs.cancel(batch[0]['id'])
-    wait_for(lambda: jobs.get(batch[0]['id'])['status'] == 'cancelled')
+    # Thread scheduling does not guarantee that ordinal 0/1 acquire the shared
+    # simulation budget first. Verify bounded admission and cancel one job from
+    # each actual state rather than assuming executor thread acquisition order.
+    waiting = [j for j in batch if jobs.get(j['id'])['status'] == 'queued']
+    active = [j for j in batch if j not in waiting]
+    assert len(waiting) == len(active) == 2
+    jobs.cancel(waiting[0]['id'])
+    jobs.cancel(active[0]['id'])
+    wait_for(lambda: jobs.get(active[0]['id'])['status'] == 'cancelled')
     service.release.set()
     wait_for(lambda: all(j['status'] in ('completed', 'cancelled') for j in jobs.list()))
-    assert [jobs.get(j['id'])['status'] for j in batch] == ['cancelled', 'completed', 'cancelled', 'completed']
+    cancelled = {waiting[0]['id'], active[0]['id']}
+    assert all(jobs.get(j['id'])['status'] == ('cancelled' if j['id'] in cancelled else 'completed') for j in batch)
     assert len(service.runs.list()) == 2
-    completed = jobs.get(batch[1]['id'])
+    completed = jobs.get(active[1]['id'])
     before = service.runs.get(completed['run_id'])
     jobs.cancel(completed['id'])
     assert service.runs.get(completed['run_id']) == before

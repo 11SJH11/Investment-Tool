@@ -192,11 +192,15 @@ class BacktestService:
                     symbol: {
                         "provider": getattr(self._provider(symbol), "key", None),
                         "feed": getattr(self._provider(symbol), "historical_feed", None),
+                        "source_details": deepcopy(getattr(self._provider(symbol), "research_provenance", None)),
+                        "cache_namespace": getattr(self._provider(symbol), "cache_namespace", None),
                         "adjustment": 'unadjusted' if self._instrument(symbol).asset_type == 'future' else getattr(self._provider(symbol), "adjustment", None),
                         'roll_schedule_versions': sorted(set(str(v) for frame in frames_by_symbol[symbol].values() if 'roll_schedule_version' in frame for v in frame.roll_schedule_version)),
                         "instrument": self._instrument(symbol).as_dict(),
                     } for symbol in symbols
                 }
+        if any(p['provider']=='mt5_spot_metal' for p in providers.values()):
+            diagnostic_warnings.append('MT5 Gold research uses broker bid candles and tick-count volume, not OANDA midpoint candles or exchange volume. The generic OHLC cost/fill model is not broker bid/ask execution parity; historical margin, lot constraints and complete session coverage are not verified.')
         return dict(strategy_key=strategy_key, symbols=symbols, primary=primary,
                     additional=additional, session=session, requested_session=requested_session,
                     start=start, end=end, delay=delay, frames_by_symbol=frames_by_symbol,
@@ -244,7 +248,10 @@ class BacktestService:
         if workspace:
             payload = {**payload, 'workspace': dict(workspace)}
         entry_windows = _entry_windows(payload.get("entry_windows"))
-        weekdays = _weekdays(payload.get("trading_weekdays"))
+        from app.data.instruments import default_trading_weekdays
+        weekdays = (_weekdays(payload['trading_weekdays']) if payload.get('trading_weekdays') is not None
+                    else default_trading_weekdays(symbols))
+        payload = {**payload, 'trading_weekdays': list(weekdays)}
         allow_overnight = bool(payload.get("allow_overnight", True))
         force_close_time = _optional_clock(payload.get("force_close_time")) if not allow_overnight else None
         config = BacktestConfig(
@@ -311,12 +318,20 @@ class BacktestService:
         from app.storage.reproducibility import environment_snapshot
         result['execution_environment'] = environment_snapshot()
         result['performance'] = {**snapshot(), 'scope': 'through reporting; persistence/total available to caller profiler'}
+        from app.backtesting.experiment_result import canonical_result, python_executor_identity
+        saved_config = _snapshot_config(payload, strategy_key=strategy_key, symbols=symbols)
+        effective_config = asdict(config)
+        cost_keys = ('commission_per_order', 'slippage_bps', 'spread_bps')
+        result = canonical_result(result, saved_config, executor=python_executor_identity(),
+            test_role=str(payload.get('test_role') or 'development'),
+            execution_model={key:value for key,value in effective_config.items() if key not in cost_keys},
+            cost_model={key:effective_config[key] for key in cost_keys})
         if self.runs is not None and bool(payload.get("save_run", True)):
             if workspace:
                 result['workspace'] = dict(workspace)
             def save():
                 return self.runs.create(
-                    config=_snapshot_config(payload, strategy_key=strategy_key, symbols=symbols),
+                    config=saved_config,
                     result=result,
                     strategy_sources=inputs.get("strategy_sources", strategy_registry.sources()),
                     name=str(payload.get("run_name") or ""),
@@ -790,6 +805,7 @@ def _snapshot_config(payload: dict, *, strategy_key: str, symbols: list[str]) ->
         "max_open_positions", "same_bar_policy", "entry_windows", "trading_weekdays",
         "allow_overnight", "force_close_time", "max_trades_per_day", "max_daily_loss_r",
         "max_consecutive_losses", "cooldown_minutes", "queue_job_id", "workspace", "research_experiment", "research_parent_id", "market_data_fingerprint", "strategy_provenance", "research_project_id", "research_trial_id", "research_trial_cell", "research_validation_id", "research_validation_cell",
+        "research_program_id", "research_campaign_id", "family_id", "experiment_group",
     )
     snapshot = {key: payload.get(key) for key in keys if key in payload}
     snapshot["strategy_key"] = strategy_key

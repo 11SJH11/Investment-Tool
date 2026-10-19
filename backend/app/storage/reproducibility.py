@@ -41,6 +41,7 @@ def export_manifest(database,run_id):
               'strategy_source_archive':archive or None,'concepts':strategy.get('concepts',{}),
               'market_data_fingerprint':fingerprint,'execution_environment':result.get('execution_environment'),
               'results_sha256':digest({'trades':result.get('trades',[]),'metrics':result.get('metrics'),'equity_curve':result.get('equity_curve')}),
+              'experiment_contract':result.get('experiment_contract'),
               'missing_artifacts':missing,'replayable_archive':False,
               'limitations':['Manifest and hashes identify evidence; they do not contain bars or guarantee exact reruns.',
                              'Only recorded environment/source information is used. Legacy omissions remain unavailable.',

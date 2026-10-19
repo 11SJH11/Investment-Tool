@@ -13,7 +13,7 @@ export function campaignPayload(form,policy,requestKey){
   engine[key]=value;
  }
  if(engine.starting_balance<=0||engine.risk_value<=0||engine.max_leverage<=0)throw new Error('Balance, risk and leverage must be positive.');
- engine.sizing_mode='risk_pct';engine.session='regular';
+ engine.sizing_mode='risk_pct';engine.session='auto';
  if(form.mode==='IMPROVE_STRATEGY'&&!form.strategy_key)throw new Error('Select a strategy.');
  const structuralCycles=Number(form.structural_cycles??1);
  if(!Number.isInteger(structuralCycles)||structuralCycles<1||structuralCycles>3)throw new Error('Choose one to three structural attempts.');

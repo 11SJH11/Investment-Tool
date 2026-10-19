@@ -618,6 +618,18 @@ class BacktestEngine:
         if quantity <= 0 or not math.isfinite(quantity):
             return "position_size_zero"
         initial_risk = risk_per_share * quantity * point_value
+        target_risk = (balance * float(self.config.risk_value) / 100 if self.config.sizing_mode == 'risk_pct'
+                       else float(self.config.risk_value) if self.config.sizing_mode == 'cash_risk' else None)
+        sizing_evidence = {
+            'target_risk_amount': target_risk,
+            'actual_initial_risk_amount': initial_risk,
+            'actual_initial_risk_pct': 100 * initial_risk / balance if balance > 0 else None,
+            'initial_notional_exposure': entry * quantity * point_value,
+            'sizing_limited': target_risk is not None and initial_risk < target_risk - 1e-8,
+            'sizing_limitation': ('leverage_or_quantity_step' if target_risk is not None and initial_risk < target_risk - 1e-8 else None),
+            'max_leverage': self.config.max_leverage,
+            'broker_margin_verified': False,
+        }
         commission = max(0.0, float(self.config.commission_per_order))
         return Position(
             symbol=symbol,
@@ -631,7 +643,7 @@ class BacktestEngine:
             initial_risk_amount=initial_risk,
             entry_commission=commission,
             signal_reason=signal.reason,
-            metadata={**dict(signal.metadata), **({"contract_multiplier": point_value, "tick_size": tick, "quantity_unit": "contracts", "currency": "USD"} if tick else {})},
+            metadata={**dict(signal.metadata), **sizing_evidence, **({"contract_multiplier": point_value, "tick_size": tick, "quantity_unit": "contracts", "currency": "USD"} if tick else {})},
             contract_multiplier=point_value, tick_size=tick, quantity_step=step,
         )
 

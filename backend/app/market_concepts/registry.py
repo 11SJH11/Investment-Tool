@@ -20,12 +20,14 @@ class Definition:
     status: str='EXPERIMENTAL'
     limitations: str='Descriptive definition; not evidence of profitability.'
     implementation_files: tuple[str,...]=()
+    input_kind: str='bars'
 
 class ConceptRegistry:
     def __init__(self):
         self.items={};self.cache=OrderedDict();self.lock=RLock()
     def register(self,definition):
         ConceptRequest(key=definition.key)
+        if definition.input_kind not in {'bars','ticks'}:raise ValueError('Unknown concept input kind')
         if definition.key in self.items:raise ValueError('Concept version already registered; create a new version')
         self.items[definition.key]=definition
         try:self._graph(definition.key,(),allow_missing=True)
@@ -49,13 +51,30 @@ class ConceptRegistry:
     def declarations(self,requests):
         return {alias:self.provenance(request) for alias,request in requests.items()}
     def describe(self):
-        return [{**self.provenance({'key':d.key}),'description':d.description,'status':d.status,
-                 'limitations':d.limitations,'parameter_schema':d.parameters.model_json_schema()} for d in self.items.values()]
+        return [{**self.provenance({'key':d.key,'timeframe':'ticks' if d.input_kind=='ticks' else '1m'}),'description':d.description,'status':d.status,
+                 'limitations':d.limitations,'input_kind':d.input_kind,'parameter_schema':d.parameters.model_json_schema()} for d in self.items.values()]
     def evaluate(self,request,bars,*,symbol,decision_time):
         request=ConceptRequest.model_validate(request);provenance=self.provenance(request)
         from app.backtesting.context import _completed_bars, timeframe_delta
-        frame=_completed_bars(bars,request.timeframe,decision_time)
-        if not frame.empty:
+        definition=self.items[request.key]
+        if definition.input_kind=='ticks':
+            if request.timeframe!='ticks':raise ValueError('Tick concept requires explicit ticks timeframe')
+            if pd.Timestamp(decision_time).tzinfo is None:raise ValueError('Decision time must include a timezone')
+            if 'timestamp' not in bars:raise ValueError('Tick concept requires event timestamps')
+            frame=bars.copy()
+            if not frame.empty:
+                for values in (frame.timestamp, frame.get('available_at',frame.timestamp)):
+                    if pd.to_datetime(values).dt.tz is None:raise ValueError('Tick timestamps must include a timezone')
+            frame['timestamp']=pd.to_datetime(frame.timestamp,utc=True)
+            frame['available_at']=pd.to_datetime(frame.get('available_at',frame.timestamp),utc=True)
+            if frame.timestamp.isna().any() or frame.available_at.isna().any() or (frame.available_at<frame.timestamp).any():raise ValueError('Invalid tick availability')
+            frame=frame[(frame.timestamp<=pd.Timestamp(decision_time))&(frame.available_at<=pd.Timestamp(decision_time))].copy()
+            if not frame.timestamp.is_monotonic_increasing:raise ValueError('Tick events must be ordered')
+            if not frame.available_at.is_monotonic_increasing:raise ValueError('Tick availability must be ordered')
+        else:
+            if request.timeframe=='ticks':raise ValueError('Bar concept cannot consume ticks')
+            frame=_completed_bars(bars,request.timeframe,decision_time)
+        if definition.input_kind=='bars' and not frame.empty:
             required={'timestamp','open','high','low','close','volume'}
             if not required.issubset(frame):raise ValueError('Concept input requires OHLCV bars')
             if not frame[['open','high','low','close','volume']].map(lambda v:isinstance(v,(int,float)) and math.isfinite(v)).all().all():raise ValueError('Concept input has non-finite OHLCV')
@@ -71,7 +90,7 @@ class ConceptRegistry:
         dependencies={k:self.evaluate({'key':k,'timeframe':request.timeframe},frame,symbol=symbol,decision_time=decision_time)['observations'] for k in definition.dependencies}
         if 'available_at' not in frame:frame=frame.assign(available_at=pd.to_datetime(frame.timestamp,utc=True)+timeframe_delta(request.timeframe))
         observations=tuple(Observation.model_validate(o) for o in definition.calculate(frame,provenance['params'],dependencies))
-        if any(o.confirmed_at>pd.Timestamp(decision_time) for o in observations):raise ValueError('Concept exposed unconfirmed evidence')
+        if any(o.confirmed_at>pd.Timestamp(decision_time) or o.available_at>pd.Timestamp(decision_time) for o in observations):raise ValueError('Concept exposed unconfirmed evidence')
         output={'observations':observations,'provenance':provenance,'data_fingerprint':data,'cache_key':key}
         # Bound both entry count and per-entry retained evidence. Large results are uncached.
         if len(observations)<=10000:

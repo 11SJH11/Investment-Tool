@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     max_concurrent_backtests: int = Field(default=2, ge=1, le=8, validation_alias="MAX_CONCURRENT_BACKTESTS")
     environment: str = Field(default="development", validation_alias="LEDGER_ENV")
     api_prefix: str = Field(default="/api", validation_alias="LEDGER_API_PREFIX")
+    cors_origins: list[str] = Field(default=["http://localhost:5173", "http://127.0.0.1:5173"], validation_alias="LEDGER_CORS_ORIGINS")
     data_dir: Path = Field(default=Path("./data"), validation_alias="LEDGER_DATA_DIR")
     http_timeout_seconds: float = Field(default=30.0, validation_alias="LEDGER_HTTP_TIMEOUT_SECONDS")
 

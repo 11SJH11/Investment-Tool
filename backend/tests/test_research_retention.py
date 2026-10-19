@@ -13,7 +13,7 @@ def test_ordinary_run_deletion_and_missing_run_still_work(repository):
     with pytest.raises(ValueError,match='not found'):repository.delete(run['id'])
 
 
-@pytest.mark.parametrize('key',['research_project_id','research_trial_id','research_validation_id'])
+@pytest.mark.parametrize('key',['research_project_id','research_trial_id','research_validation_id','research_parent_id','research_campaign_id'])
 def test_owned_run_cannot_be_deleted_before_coordinator_records_it(repository,key):
     run=repository.create(config={key:'fixture'},result={})
     with pytest.raises(ResearchRunProtected):repository.delete(run['id'])
@@ -28,6 +28,9 @@ def test_owned_run_cannot_be_deleted_before_coordinator_records_it(repository,ke
     ('agent_validations',{'cells':[{'run_id':1}]}),
     ('agent_concept_audits',{'baseline_run_id':1}),
     ('agent_decisions',{'evidence':{'candidate_run_id':1}}),
+    ('agent_campaigns',{'baseline_run_id':1}),
+    ('agent_campaign_actions',{'run_id':1}),
+    ('research_experiments',{'cells':[{'run_id':1}]}),
 ])
 def test_existing_references_remain_protected_including_archived_projects(repository,table,document):
     run=repository.create(config={},result={});assert run['id']==1
@@ -37,6 +40,18 @@ def test_existing_references_remain_protected_including_archived_projects(reposi
     with pytest.raises(ResearchRunProtected):repository.delete(run['id'])
     unrelated=repository.create(config={},result={});repository.delete(unrelated['id'])
     assert repository.get(run['id'])==run
+
+
+def test_selected_deletion_is_atomic_and_enforces_retention(repository):
+    free=repository.create(config={},result={})
+    protected=repository.create(config={'research_project_id':'fixture'},result={})
+    with pytest.raises(ResearchRunProtected):repository.delete_selected([free['id'],protected['id']])
+    assert repository.get(free['id'])==free
+    with pytest.raises(ValueError):repository.delete_selected([free['id'],999])
+    assert repository.get(free['id'])==free
+    other=repository.create(config={},result={})
+    repository.delete_selected([free['id'],other['id']])
+    assert [row['id'] for row in repository.list()]==[protected['id']]
 
 
 def test_delete_api_returns_conflict_without_removing_evidence(repository):

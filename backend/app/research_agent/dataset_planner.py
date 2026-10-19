@@ -19,6 +19,8 @@ class SessionCoverage(Strict):
     timeframe: str = Field(min_length=1, max_length=10)
     provider_namespace: str = Field(min_length=1, max_length=200)
     source_fingerprint: str = Field(min_length=1, max_length=200)
+    input_namespaces: dict[str, str] = Field(default_factory=dict)
+    input_fingerprints: dict[str, str] = Field(default_factory=dict)
     completed_through: date
     sessions: list[date] = Field(min_length=1, max_length=50000)
 

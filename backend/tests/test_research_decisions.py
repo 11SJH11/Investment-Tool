@@ -8,6 +8,7 @@ from app.research_agent.decisions import Decisions
 from app.research_agent.validation import Validations
 from app.research_agent.analysis import compare
 from app.storage.backtest_run_repository import BacktestRunRepository
+from app.backtesting.experiment_result import canonical_result
 
 ACK='Record this research decision; it does not authorize live trading'
 
@@ -26,6 +27,8 @@ def passing(frozen):
         config.update(start_date='2027-01-01',end_date='2027-12-31',market_data_fingerprint='validation-fixture',research_validation_id='validation',research_validation_cell=index)
         result['trades']=[{'symbol':'QQQ','direction':'long','entry_time':f'2027-01-0{4+i}T14:30:00+00:00','exit_time':f'2027-01-0{4+i}T14:35:00+00:00','net_pnl':r,'r_multiple':r,'exit_reason':'fixture'} for i,r in enumerate((2,-1))]
         result['metrics']={'fixture':True};result['equity_curve']=[]
+        # This is newly authored synthetic evidence, not the copied run's execution.
+        result=canonical_result(result,config,executor={'kind':'unavailable','version':'synthetic-validation-fixture'},test_role='validation')
         run=BacktestRunRepository(db).create(config=config,result=result,test_role='validation');records.append(service.runs.get(run['id']))
         cells.append({'index':index,'run_id':run['id'],'payload':config,'status':'COMPLETED'})
     document={'id':'validation','candidate_id':candidate['id'],'candidate_hash':candidate['snapshot_hash'],'project_id':project['id'],

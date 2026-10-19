@@ -64,7 +64,7 @@ export default function AutonomousResearch({strategies}){
   <label className="block">Campaign<select className="input" value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Select campaign</option>{items.map(c=><option key={c.id} value={c.id}>{c.request.prompt||c.request.mode} · {c.created_at}</option>)}</select></label>
   {campaign&&<><article className="insight-panel"><h4 className="font-semibold">{campaign.status.replaceAll('_',' ')}</h4>
    <p className="text-sm muted mt-2">{report.worker.running?'Backend coordinator running':'Backend coordinator is not running'}{report.worker.error?' · '+report.worker.error:''}</p>
-   {campaign.last_error&&<p role="alert">{campaign.last_error}. Check history coverage, model configuration, Docker and budget allowances before creating a new campaign.</p>}
+   {campaign.last_error&&<p role="alert">{campaign.last_error_detail?.message||`${campaign.last_error}. Check history coverage, model configuration and budget allowances before creating a new campaign.`}</p>}
    <div className="ui-toolbar mt-3">{campaignActions(campaign.status).map(action=><button className="mini-btn" disabled={busy} key={action} onClick={()=>control(action)}>{action.replaceAll('_',' ')}</button>)}</div>
    <p className="text-sm mt-3">Baselines: {report.summary.baseline_runs_completed} · Numeric cycles: {report.summary.numeric_cycles_completed} · Structural checks: {report.summary.structural_checks_completed}</p>
    <p className="text-xs muted">Model reservation ${number(campaign.reserved.llm_usd)} · Simulations reserved {campaign.reserved.simulations} · Holdout {report.summary.holdout_consumed_by_campaign?'consumed':'not consumed'}</p>
