@@ -388,3 +388,20 @@ with numeric/Critic/Manager evidence. Terminal history is limited by the connect
 broker/terminal; missing history is not fabricated. MT5-only routing requires a
 configured profile at backend startup. Controlled demo/live execution and the
 remaining broader roadmap are not complete.
+
+
+Campaign feasibility follow-up (19 October): the 20 July to 17 October 2026
+request retrieved 88,931 minute bars and 5,971 fifteen-minute bars across 78
+observed New York dates. The unchanged default dataset policy (250 warmup,
+252 development, 63 holdout dates) rejected this history as insufficient.
+A separate 21-28 October 2024 probe failed for 1m with BrokerHistoryError but
+returned 460 requested 15m bars. The market-cache service also filled intervening
+15m history, yielding 622 observed cached dates at that timeframe. Older 15m
+availability does not satisfy the required 1m execution input. This establishes
+an unresolved minute-history availability issue, not its cause or an exact broker
+retention limit. No policy thresholds were reduced and no campaign was falsely
+marked complete. Probes inspected timestamps/counts, not holdout performance.
+Local reports: `.ledger-runtime/gold-acceptance/campaign-feasibility.json` and
+`campaign-older-history-probe.json` in the same directory. A longer verified 1m
+source and enabled/authorized model service remain necessary for full campaign
+acceptance. These read-only probes introduced no application or schema changes.
