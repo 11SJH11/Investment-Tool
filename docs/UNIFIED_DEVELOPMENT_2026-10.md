@@ -125,3 +125,38 @@ MT5 history, Gold preparation, Portfolio, exports and broker-foundation evidence
 These results cover the integrated application and the final queue regression
 correction. No MT5 orders were submitted. Checkpoint 1 is verified; subsequent
 execution/deployment checkpoints remain outstanding as listed above.
+
+## Checkpoint 2 progress: read-only executable-price preflight
+
+Development continues in the original directory on `feature/mt5-demo-execution`.
+Verified integration commit `822abd9` was fast-forwarded onto local master; recovery
+branches and the feature worktree remain. Nothing was pushed.
+
+Added `backend/app/brokers/mt5_execution_preflight.py` and its deterministic test
+module. The helper requires actual demo account classification, matching account
+identity/currency, terminal/account trading permissions, supported protected market
+entries, a non-crossed quote no older than five seconds (future quotes rejected),
+price tick alignment, and broker minimum stop distances measured from the closing
+side of the spread. It reuses existing broker-calculated lot/margin sizing with
+current executable ask/bid and checks account binding again after calculations.
+It calls neither order_check nor order_send and is not exposed as authorization.
+
+Validation: **75 passed**, one existing Starlette deprecation warning, in the
+preflight, execution-ledger, sizing and account suites (11.10 seconds). This
+includes **33 new preflight cases**. The first targeted run caught a changed
+adapter account binding during calculation; the final identity check was corrected
+and the entire targeted group rerun successfully. Whitespace check passed.
+The full 1,601-test integration result above predates this additional module;
+no new full-suite/build claim is made for this incremental backend-only step.
+
+Still required before Checkpoint 2 is complete: account-wide risk limits,
+durable authorization/submission transitions, uncertainty reconciliation,
+broker-confirmed protections and modification/closure, terminal dry-run acceptance.
+The new helper is internal groundwork, not a wired gateway. No orders were sent,
+no application routes changed, and no database migrations were added in this step.
+
+Official references consulted for native account/symbol restrictions and request
+semantics:
+- https://www.mql5.com/en/docs/python_metatrader5/mt5ordersend_py
+- https://www.mql5.com/en/docs/constants/environment_state/accountinformation
+- https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
