@@ -44,6 +44,11 @@ class MarketDataService:
         spec = instrument_spec(ticker)
         if spec.asset_type == 'future':
             spec = replace(spec, provider_key=self.provider_for(ticker).key)
+        if spec.asset_type == 'spot_metal':
+            provider=self.provider_for(ticker)
+            if provider.key=='mt5_spot_metal':
+                spec=replace(spec,provider_key=provider.key,provider_symbol=provider.identity['name'],
+                             name='Gold / U.S. Dollar (MT5 broker spot)',exchange='Broker OTC')
         return spec
 
     def provider_for(self, ticker: str) -> MarketDataProvider:

@@ -270,7 +270,14 @@ def build_services(settings: Settings) -> AppServices:
         "oanda": oanda_provider,
     }
 
+    broker_sync = BrokerSyncService(settings, database)
+    broker_connections = BrokerConnections(settings, database, legacy_oanda=broker_sync)
+    from app.data.providers.mt5_spot_metal import GoldDataRoute
+    gold_route = GoldDataRoute(oanda_provider, broker_connections)
+
     def resolve_market_provider(symbol: str, spec: InstrumentSpec):
+        if spec.asset_type == 'spot_metal':
+            return gold_route.resolve()
         key = settings.futures_data_provider if spec.root in {'NQ','MNQ'} and spec.asset_type=='future' else spec.provider_key
         provider = market_providers.get(key)
         if key == 'unsupported_cfd':
@@ -288,7 +295,7 @@ def build_services(settings: Settings) -> AppServices:
     default_market_provider = alpaca_provider or oanda_provider or massive_provider or mt5_provider
     market_data = (
         MarketDataService(default_market_provider, market_store, coverage, provider_resolver=resolve_market_provider)
-        if default_market_provider is not None else None
+        if default_market_provider is not None or any(p.provider=='mt5' and p.configured for p in broker_connections.profiles.values()) else None
     )
     market_warmup = MarketWarmupManager(market_data, database) if market_data is not None else None
 
@@ -305,8 +312,6 @@ def build_services(settings: Settings) -> AppServices:
     backtest_runs = BacktestRunRepository(database)
     backtest = BacktestService(market_data, backtest_runs)
 
-    broker_sync = BrokerSyncService(settings, database)
-    broker_connections = BrokerConnections(settings, database, legacy_oanda=broker_sync)
     return AppServices(
         settings=settings, database=database, providers=providers, symbols=symbols,
         mt5_market_data_error=mt5_error,

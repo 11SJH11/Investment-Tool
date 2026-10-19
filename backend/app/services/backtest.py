@@ -192,11 +192,15 @@ class BacktestService:
                     symbol: {
                         "provider": getattr(self._provider(symbol), "key", None),
                         "feed": getattr(self._provider(symbol), "historical_feed", None),
+                        "source_details": deepcopy(getattr(self._provider(symbol), "research_provenance", None)),
+                        "cache_namespace": getattr(self._provider(symbol), "cache_namespace", None),
                         "adjustment": 'unadjusted' if self._instrument(symbol).asset_type == 'future' else getattr(self._provider(symbol), "adjustment", None),
                         'roll_schedule_versions': sorted(set(str(v) for frame in frames_by_symbol[symbol].values() if 'roll_schedule_version' in frame for v in frame.roll_schedule_version)),
                         "instrument": self._instrument(symbol).as_dict(),
                     } for symbol in symbols
                 }
+        if any(p['provider']=='mt5_spot_metal' for p in providers.values()):
+            diagnostic_warnings.append('MT5 Gold research uses broker bid candles and tick-count volume, not OANDA midpoint candles or exchange volume. The generic OHLC cost/fill model is not broker bid/ask execution parity; historical margin, lot constraints and complete session coverage are not verified.')
         return dict(strategy_key=strategy_key, symbols=symbols, primary=primary,
                     additional=additional, session=session, requested_session=requested_session,
                     start=start, end=end, delay=delay, frames_by_symbol=frames_by_symbol,

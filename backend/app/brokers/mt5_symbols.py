@@ -12,7 +12,7 @@ TEXT_FIELDS = ('name', 'description', 'path', 'exchange', 'currency_base',
 NUMBER_FIELDS = ('digits', 'point', 'trade_tick_size', 'trade_tick_value',
                  'trade_tick_value_profit', 'trade_tick_value_loss', 'trade_contract_size',
                  'volume_min', 'volume_max', 'volume_step', 'volume_limit',
-                 'trade_calc_mode', 'trade_mode', 'margin_initial', 'margin_maintenance',
+                 'trade_calc_mode', 'trade_mode', 'chart_mode', 'margin_initial', 'margin_maintenance',
                  'margin_hedged', 'start_time', 'expiration_time', 'spread', 'time',
                  'bid', 'ask', 'session_open', 'session_close')
 BOOL_FIELDS = ('custom', 'select', 'visible', 'spread_float', 'margin_hedged_use_leg')

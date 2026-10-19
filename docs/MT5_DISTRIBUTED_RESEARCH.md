@@ -338,3 +338,53 @@ untouched. A genuine provider-backed Gold campaign with numeric research and
 Critic/Manager evidence is still required before full Priority A acceptance.
 Automatic provider selection, broker lot/margin integration, MT5 demo execution,
 performance/preview work and the advanced roadmap remain outstanding.
+
+
+## Gold provider routing and real baseline (verified 19 October 2026)
+
+Automatic Gold history routing now supports the intraday research path. Configured
+OANDA remains preferred. Otherwise Ledger requires exactly one verified XAU/USD
+spot symbol from selected MT5 accounts, with bid-chart metadata and positive
+contract/tick/lot specifications. Ambiguous or incomplete catalogs fail explicitly.
+Selection is pinned: provider failures do not switch sources. This is eligibility
+routing, not yet an empirical ranking of provider quality or coverage.
+
+MT5 datasets use separate account/environment/specification-derived namespaces.
+History reuses the read-only hub, bounded seven-day requests and verified Parquet
+hashes. Canonical caches retain broker symbol, bid-price basis, tick-count volume,
+real volume and spread fields. Saved results record source details and namespace;
+Run Viewer exposes provider/feed/broker symbol. Warnings distinguish bid candles
+from OANDA midpoint candles and tick counts from exchange volume. Daily bars and
+live quotes are unsupported by this adapter until their semantics are established.
+
+Real-terminal acceptance saved an isolated Gold IFVG baseline for Sunday
+11 October 2026: XAUUSD mapped to XAUUSDs, 175 minute bars and 12 fifteen-minute
+bars, one trade, zero rejected signals. The short entered at 4190.63 at
+2026-10-12 03:00 UTC and stopped at 4199.48 at 03:10, returning -1R. Quantity
+was 2.386276049185922 metal units; actual initial risk was $21.11854303529411
+versus the $100 target because of the 1x exposure cap. This is frictionless
+bid-bar research, not broker-lot execution parity. No orders were sent. Observed
+minute history starts at 21:05 New York: complete coverage from the strategy's
+20:00 session start is NOT certified. The local, ignored acceptance report is
+`.ledger-runtime/gold-acceptance/sunday-baseline.json`.
+
+Final verification against this code tree:
+- Full backend: 1,545 passed, 45 skipped, one existing deprecation warning,
+  587.35 seconds. Skips include opt-in real Docker tests and optional strategies;
+  no fresh Docker acceptance is claimed.
+- Focused routing/history/catalog/services/Gold campaign tests: 50 passed.
+- Frontend: 138 passed, zero failed/skipped.
+- Production build: passed; existing bundle-size advisory remains.
+- Mocked Gold settings and Portfolio holdings/stale-state browser checks passed
+  at 1024, 1440 and 1920px without runtime errors or page overflow.
+
+No schema migration: existing result JSON and optional Parquet columns carry the
+new evidence. The original checkout and its credentials remain untouched.
+
+Remaining Priority A work: OANDA/MT5 quality comparison (isolated OANDA credentials
+are unavailable), complete historical-session validation, broker lot/margin and
+bid/ask execution modeling, and a genuine multi-session Gold research campaign
+with numeric/Critic/Manager evidence. Terminal history is limited by the connected
+broker/terminal; missing history is not fabricated. MT5-only routing requires a
+configured profile at backend startup. Controlled demo/live execution and the
+remaining broader roadmap are not complete.

@@ -12,7 +12,8 @@ from app.performance import count
 
 
 _REQUIRED_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
-_OPTIONAL_COLUMNS = PROVENANCE_COLUMNS
+_OPTIONAL_COLUMNS = PROVENANCE_COLUMNS + ['broker_symbol', 'price_basis', 'volume_semantics',
+                                        'tick_volume', 'real_volume', 'spread_points']
 
 
 class MarketCacheCorruption(RuntimeError):

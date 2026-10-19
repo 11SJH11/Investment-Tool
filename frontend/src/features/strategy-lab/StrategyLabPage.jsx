@@ -425,6 +425,7 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
         <p>Configuration: {result.experiment_contract.configuration_sha256}</p>
         <p>Unavailable evidence: {Object.entries(result.experiment_contract.availability).filter(([,status])=>status==='UNAVAILABLE').map(([name])=>name.replaceAll('_',' ')).join(', ')||'None recorded'}</p>
         <p>Executor identity does not establish Python/MT5 parity.</p>
+        {Object.entries(result.experiment_contract.data?.providers||{}).map(([symbol,source])=><p key={symbol}>{symbol}: {source.provider} / {source.feed||'Feed unspecified'}{source.source_details?.broker_symbol?` / broker symbol ${source.source_details.broker_symbol}`:''}</p>)}
       </div>:<p>Unavailable for this historical snapshot. Current code is not substituted for its execution history.</p>}</details>
       <div className="mt-4 flex gap-2 border-t border-stone-100 pt-3" role="tablist" aria-label="Run viewer sections">{["Summary","Trades","Analysis"].map(item=><button key={item} role="tab" aria-selected={viewerTab===item} className={`mini-btn ${viewerTab===item?"active-btn":""}`} onClick={()=>{setViewerTab(item);if(item!=="Summary")loadSection(item.toLowerCase())}}>{item}{item==="Trades"?` (${m.trades??trades.length})`:""}</button>)}</div>
     </div>
