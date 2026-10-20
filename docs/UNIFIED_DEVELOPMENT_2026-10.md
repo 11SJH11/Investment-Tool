@@ -319,3 +319,20 @@ terminal, explicitly switch the current terminal later, or defer terminal
 acceptance. The current live TradeQuo account remains unchanged and is suitable
 for read-only Journal sync only. No demo authorization or order submission has
 occurred. Checkpoint 2 remains incomplete; the separate Journal repair is complete.
+
+### Separate demo terminal verified (20 October)
+
+User supplied `C:/Program Files/Trade Quo MT5 Terminal/terminal64.exe` for demo
+acceptance. A read-only connection verified both the terminal installation path
+and native demo account classification. Terminal connected; XAUUSDs available,
+Forex calculation mode and profit currency matching account currency. Account-risk
+observation succeeded: zero open positions and zero pending orders. It correctly
+remains unreconciled (no execution gateway approval implied).
+
+Native terminal reports `trade_allowed=False` and `tradeapi_disabled=False`.
+Algorithmic trading is currently disabled; leave it unchanged until explicit demo
+execution acceptance is ready. No login/account change, credential read, order
+check or order send was performed. The live terminal was not targeted. Sanitized
+local evidence: `.ledger-test-artifacts/backend/tradequo-demo-readonly-acceptance.json`.
+This resolves the missing demo-terminal path/identity prerequisite, not the remaining
+submission gateway, protection management or end-to-end execution requirements.
