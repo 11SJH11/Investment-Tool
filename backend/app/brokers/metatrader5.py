@@ -116,18 +116,9 @@ class MetaTrader5History:
             end = int(self._clock() * 1000)
             if end < start:
                 raise ValueError()
-            deals = self._module.history_deals_get(datetime.fromtimestamp(start / 1000, timezone.utc),
-                                                   datetime.fromtimestamp(end / 1000, timezone.utc))
-            if deals is None or len(deals) > 100000:
-                raise BrokerHistoryError('MetaTrader 5 history is unavailable or exceeds the safe sync budget', category='history')
-            position_ids = {d.position_id for d in deals if d.position_id}
+            histories, positions, diagnostics = self._stable_history(start, end)
             mapped = {}
-            for position_id in sorted(position_ids):
-                # Retrieve complete position history even if the opening is older
-                # than the incremental cursor. Deal tickets deduplicate overlap.
-                history = self._module.history_deals_get(position=int(position_id))
-                if history is None or len(history) > 100000 or len(mapped) + len(history) > 100000:
-                    raise BrokerHistoryError('MetaTrader 5 position history is unavailable or too large', category='history')
+            for position_id, history in histories.items():
                 for deal in history:
                     if deal.type not in (0, 1):
                         if any(number(getattr(deal, name, 0)) != 0 for name in ('profit', 'commission', 'swap', 'fee')):
@@ -136,8 +127,6 @@ class MetaTrader5History:
                     if deal.position_id != position_id or deal.entry not in (0, 1, 3):
                         raise BrokerHistoryError('MetaTrader 5 reversal or unsupported position history requires reconciliation', category='history')
                     stamp = getattr(deal, 'time_msc', deal.time * 1000)
-                    if stamp > end:
-                        raise BrokerHistoryError('MetaTrader 5 history changed during sync; retry', category='history')
                     symbol = self._module.symbol_info(deal.symbol)
                     if symbol is None or getattr(symbol, 'name', None) != deal.symbol:
                         raise BrokerHistoryError('MetaTrader 5 symbol is unknown; mapping was not guessed', category='history')
@@ -158,13 +147,75 @@ class MetaTrader5History:
                     if e.external_id in mapped and mapped[e.external_id] != e:
                         raise BrokerHistoryError('MetaTrader 5 returned conflicting deal tickets', category='history')
                     mapped[e.external_id] = e
-            positions = self._module.positions_get()
-            if positions is None:
-                raise BrokerHistoryError('MetaTrader 5 open positions are unavailable', category='history')
             if self._account()[1] != self.account_key:
                 raise BrokerHistoryError('MetaTrader 5 account changed during sync; previous data retained', category='connection')
-            return ExecutionBatch(list(mapped.values()), str(end), {identity(p.identifier) for p in positions})
+            return ExecutionBatch(list(mapped.values()), str(end), {identity(p.identifier) for p in positions}, diagnostics)
         except BrokerHistoryError:
             raise
         except Exception:
             raise BrokerHistoryError('MetaTrader 5 history could not be read; previous data retained', category='history') from None
+
+    def _stable_history(self, start, cutoff):
+        # MT5 may report broker epochs ahead of the host. Preserve those facts;
+        # never reinterpret them as a guessed local timezone or advance the
+        # durable cursor into the future. The existing 24h overlap remains.
+        horizon = cutoff + 86400000
+        deadline = time.monotonic() + 30
+        fields = ('ticket', 'order', 'position_id', 'entry', 'type', 'volume',
+                  'price', 'profit', 'commission', 'swap', 'fee', 'symbol',
+                  'time', 'time_msc', 'reason')
+
+        def signature(rows):
+            return sorted(tuple(getattr(d, f, None) for f in fields) for d in rows)
+
+        def read(**kwargs):
+            if time.monotonic() > deadline:
+                raise BrokerHistoryError('MT5 history stability budget exceeded; retry', category='history')
+            rows = (self._module.history_deals_get(**kwargs) if kwargs else
+                    self._module.history_deals_get(datetime.fromtimestamp(start/1000, timezone.utc),
+                                                   datetime.fromtimestamp(horizon/1000, timezone.utc)))
+            if rows is None or len(rows) >= 100000:
+                raise BrokerHistoryError('MetaTrader 5 history is unavailable or exceeds the safe sync budget', category='history')
+            tickets = set()
+            for d in rows:
+                stamp = getattr(d, 'time_msc', d.time * 1000)
+                if (type(stamp) is not int or stamp < 0 or stamp > horizon
+                        or abs(stamp - d.time * 1000) > 999):
+                    raise BrokerHistoryError('MT5 deal timestamps exceed the bounded clock-skew window or disagree; cursor preserved', category='history')
+                if d.ticket in tickets:
+                    raise BrokerHistoryError('MT5 returned duplicate history tickets; retry', category='history')
+                tickets.add(d.ticket)
+            return rows
+
+        for attempt in range(1, 4):
+            deals = read()
+            ids = {d.position_id for d in deals if d.position_id}
+            if len(ids) > 1000:
+                raise BrokerHistoryError('MT5 position history exceeds the bounded sync budget', category='history')
+            histories = {pid: read(position=int(pid)) for pid in sorted(ids)}
+            full = {d.ticket: d for rows in histories.values() for d in rows}
+            if any(d.ticket not in full or signature([d]) != signature([full[d.ticket]])
+                   for d in deals if d.position_id):
+                # Position detail lagging discovery is not a complete batch.
+                continue
+            if sum(map(len, histories.values())) >= 100000:
+                raise BrokerHistoryError('MT5 complete position histories exceed the safe sync budget', category='history')
+            positions = self._module.positions_get()
+            if positions is None or len(positions) > 10000:
+                raise BrokerHistoryError('MetaTrader 5 open positions are unavailable', category='history')
+            # Two matching full reads: a newly arriving close/partial causes a
+            # bounded retry of the whole batch, never a truncated position.
+            stable = all(signature(rows) == signature(read(position=int(pid)))
+                         for pid, rows in histories.items())
+            stable = signature(deals) == signature(read()) and stable
+            final_positions = self._module.positions_get()
+            if final_positions is None:
+                raise BrokerHistoryError('MetaTrader 5 open positions are unavailable', category='history')
+            stable = sorted(p.identifier for p in positions) == sorted(p.identifier for p in final_positions) and stable
+            if stable:
+                stamps = [getattr(d, 'time_msc', d.time*1000) for rows in histories.values() for d in rows]
+                return histories, final_positions, dict(deals_retrieved=len(stamps),
+                    positions_processed=len(histories), history_attempts=attempt,
+                    deals_ahead_of_host=sum(s > cutoff for s in stamps),
+                    max_deal_ahead_ms=max([0] + [s-cutoff for s in stamps]))
+        raise BrokerHistoryError('MetaTrader 5 history kept changing across three reads; retry; cursor preserved', category='history')

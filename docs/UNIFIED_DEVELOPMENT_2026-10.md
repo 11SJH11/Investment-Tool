@@ -285,3 +285,14 @@ Changed: `backend/app/brokers/mt5_execution_ledger.py`, new
 Checkpoint 2 remains in progress: submission/result state transitions, explicit
 reconciliation/recovery, protective-order verification/management, end-to-end
 mocked gateway tests and successful demo-terminal dry run remain outstanding.
+
+### Priority MT5 Journal repair completed (20 October)
+
+See `BROKER_CONNECTIONS.md`, MT5 history cutoff repair, for diagnosis, bounded
+algorithm, limits and exact live acceptance results. The connected live account
+was used strictly read-only: 11 missing closed trades imported, 32 existing Journal
+records unchanged, repeat sync zero duplicates. 291 focused broker regression
+tests passed. This is a separate repair commit; demo execution remains disabled.
+The underlying discrepancy is broker deal epochs ahead of the host, not a seconds/
+milliseconds conversion error. The code preserves reported timestamps and does
+not assert a verified broker timezone correction.

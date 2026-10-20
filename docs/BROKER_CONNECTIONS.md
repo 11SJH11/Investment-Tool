@@ -224,3 +224,38 @@ backend environment credentials; do not interrupt active research to restart.
 New Journal providers use the existing minimum/default 60-second backend schedule.
 Trading 212 remains 300 seconds. Rate-limit backoff can extend the next run. One
 backend process per database remains required; locking is not distributed.
+
+## MT5 history cutoff repair (20 October 2026)
+
+MT5 position-history queries are not limited by the discovery query's cutoff.
+A new close arriving during sync, or broker-reported epochs ahead of the host,
+previously made every subsequent sync fail at `deal.time_msc > cutoff`.
+Live read-only diagnosis found 22 deals ahead of the host by up to 9,853.584
+seconds; seconds and milliseconds agreed. No guessed timezone conversion is
+applied: broker-reported timestamps are retained as evidence.
+
+Discovery now covers the host cutoff plus a bounded 24-hour forward window.
+The cursor remains the original host cutoff, with the existing 24-hour overlap.
+Two matching discovery/full-position reads and open-position identity snapshots
+are required; changing batches retry up to three times within a 30-second budget
+(checked between native calls). Bounds: 1,000 positions, fewer than 100,000 deals.
+Incomplete detail, inconsistent timestamp units, timestamps beyond the horizon,
+and unstable history fail without committing executions, Journal rows or cursor.
+This is bounded reconciliation, not an atomic broker snapshot. Extreme clock
+skew and unsupported reversal/cash-adjustment histories still fail explicitly.
+
+Successful sync responses include `history_diagnostics` (deals retrieved,
+positions processed, attempts, ahead-of-host count and maximum offset),
+`closed_trades_processed`, and existing `created`/`updated`/`executions_changed`.
+
+Acceptance: 6 new deterministic tests; 291 MT5/broker/TradeLocker/execution tests
+passed (35.49s, one existing Starlette warning). Live read-only full scan found
+66 position-linked deals / 32 positions / 32 reconstructed closed trades.
+The actual incremental Journal sync read 50 deals / 24 positions and imported
+11 missing closed trades (22 changed executions). All 32 previously stored Journal
+rows were exactly unchanged, bringing the total to 43. Immediate repeat: zero
+created/updated trades and zero changed executions. No order APIs were called.
+A pre-import snapshot and sanitized report remain in
+`.ledger-integration-recovery/20261020/`; these are recovery evidence, not disposable
+test artifacts. Restart the backend normally to load the repaired implementation
+for subsequent UI/automatic syncs. The running process was not restarted here.

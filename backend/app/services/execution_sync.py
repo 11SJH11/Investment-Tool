@@ -48,6 +48,8 @@ def reconcile(adapter, database):
         if any(f'{e.environment}:{e.account_key}:{e.position_id}' in existing_ids - closed_ids for e in fills):
             raise BrokerHistoryError('Correction would invalidate a closed position; manual reconciliation required', category='history')
         result = repo.commit(adapter, HistoryBatch(trades, incoming.cursor, list(changed.values())), cursor)
-        return dict(status='success', **result, executions_changed=len(changed))
+        return dict(status='success', **result, executions_changed=len(changed),
+                    history_diagnostics=incoming.diagnostics,
+                    closed_trades_processed=len(trades))
     finally:
         lock.release()

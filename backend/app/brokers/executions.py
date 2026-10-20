@@ -95,6 +95,7 @@ class ExecutionBatch:
     executions: list[Execution]
     cursor: str
     open_position_ids: set[str] = field(default_factory=set)
+    diagnostics: dict = field(default_factory=dict)
 
 
 def closed_positions(executions, account_label, currency, open_position_ids=()):
