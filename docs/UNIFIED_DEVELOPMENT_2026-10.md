@@ -336,3 +336,65 @@ check or order send was performed. The live terminal was not targeted. Sanitized
 local evidence: `.ledger-test-artifacts/backend/tradequo-demo-readonly-acceptance.json`.
 This resolves the missing demo-terminal path/identity prerequisite, not the remaining
 submission gateway, protection management or end-to-end execution requirements.
+
+### Order preparation and expanded requested scope (20 October)
+
+New internal `mt5_order_preparation.py` composes fresh demo preflight, native
+symbol execution/fill modes, broker-supported FOK/IOC selection, protected SL/TP
+request construction and non-executing `order_check`. Market Execution requests
+omit price; other supported modes include executable bid/ask. Identity and quote
+age are rechecked after validation. Returned broker codes are allowlisted numeric
+facts; native comments/errors are not exposed. Every result remains execution
+-disabled, and there is no order_send call. This still needs durable gateway and
+account-wide risk wiring; it is not submission authorization.
+
+Installed-package inspection found Python MT5 omits SYMBOL_ORDER_* and
+SYMBOL_FILLING_* flag constants. Corrected preflight/preparation to use documented
+symbol bitmask values (distinct from exported ORDER_FILLING request enums). Added
+16 deterministic tests, including absence of those constants, broker rejection,
+account switch, expired quotes and no-order guarantees. Final combined
+MT5/broker/TradeLocker/execution tests: **324 passed**, one existing Starlette
+warning, 37.68 seconds. No frontend changes/build in this increment.
+
+Real demo check: Algo Trading is enabled. XAUUSDs initially had no subscribed
+quote; enabled Market Watch subscription only after verifying the exact separate
+terminal path and native demo classification. No login changes or order sends.
+Fresh quotes became available, but quote time was 10,798.592 seconds ahead of UTC.
+Preparation correctly rejected freshness, so native order_check was not reached.
+Evidence: `.ledger-test-artifacts/backend/mt5-demo-order-check.json`.
+This is a remaining acceptance blocker, not a successful broker-check claim.
+
+Need broker-confirmed timestamp semantics, UTC offset and DST rule for the
+specific demo server before normalizing execution quotes/session candles. User
+was asked for the policy/documentation. Do not silently apply a permanent -3h
+shift or alter existing saved research/Journal timestamps. TradeQuo's ZERO policy
+mentions GMT+3 but alone does not establish this server's year-round DST rules:
+https://tradequo.ae/company/faq/zero-low-liquidity-risk-protection
+Native non-executing check reference:
+https://www.mql5.com/en/docs/python_metatrader5/mt5ordercheck_py
+
+User additionally requested, after the existing roadmap:
+1. Trade screenshots/annotations across Journal/manual/broker, backtest and
+   forward trades: background deterministic chart rendering, Context/Entry/Exit
+   and optional full path; immutable base images with separately versioned
+   text/arrows/lines/zones/circles/labels; thumbnail/lazy viewer/editor; retries,
+   bounded backfill, clean/annotated exports and Research Pack manifests;
+   repository/app-owned storage, safe cleanup, performance/browser acceptance.
+   Full attachment: d098c449-2997-4400-a33e-83801dad6d3a/Pasted text.txt.
+2. Dedicated main-nav Algo Trading monitoring, reusing the planned deployment
+   backend rather than a second execution service. Full dashboard brief received.
+   Phase A: actual demo accounts/deployments/heartbeats/positions/trades, metrics,
+   charts and persistent events. Phase B: supported authenticated controls,
+   risk/notifications, account snapshots and matched backtest comparisons.
+   Phase C: multiple strategies/accounts, attribution and shared account risk.
+   Separate currencies/environments, deduplicate shared account balances,
+   distinguish simulated from actual performance, expose sample N, never label
+   saved enabled configuration as a running process or fabricate missing data.
+   No controls that exceed verified backend capabilities; no orders as part of
+   dashboard development. Live TradeQuo must remain ineligible for automation.
+
+Screenshot and Algo UI implementation has not begun: preserve the requested
+sequence, reuse existing attachment/render/export/design-system/notification
+facilities when reaching them. The Algo page will be the monitoring surface for
+planned deployments, not a competing dashboard. Existing Checkpoints 2-6 remain
+incomplete as already listed. No additional strategy rules were changed.

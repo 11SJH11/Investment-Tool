@@ -49,7 +49,9 @@ def preflight(adapter, request, *, now_ms, max_quote_age_ms=5000):
         allowed_modes = {module.SYMBOL_TRADE_MODE_FULL,
                          module.SYMBOL_TRADE_MODE_LONGONLY if request.side == 'buy'
                          else module.SYMBOL_TRADE_MODE_SHORTONLY}
-        required_orders = module.SYMBOL_ORDER_MARKET | module.SYMBOL_ORDER_SL | module.SYMBOL_ORDER_TP
+        # Official SYMBOL_ORDER_MODE bit flags. MetaTrader5 Python exposes
+        # order_mode but does not export these MQL5 symbol flag constants.
+        required_orders = 1 | 16 | 32  # MARKET | SL | TP
         if info.trade_mode not in allowed_modes or info.order_mode & required_orders != required_orders:
             raise ValueError('protected_market_entry_unsupported')
         quote = module.symbol_info_tick(request.symbol)
