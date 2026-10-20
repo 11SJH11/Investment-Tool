@@ -296,3 +296,26 @@ tests passed. This is a separate repair commit; demo execution remains disabled.
 The underlying discrepancy is broker deal epochs ahead of the host, not a seconds/
 milliseconds conversion error. The code preserves reported timestamps and does
 not assert a verified broker timezone correction.
+
+### Main roadmap resumed: positive-evidence order reconciliation
+
+Added internal `mt5_execution_reconciliation.py` and 17 deterministic tests.
+The classifier requires an explicit broker order ID, matching demo account,
+canonical execution identities, complete evidence and verified remaining position
+volume/protection. It distinguishes filled/partial protected positions, closed or
+partially filled-then-closed orders, unverified protection, conflicting evidence
+and unresolved submissions. Empty history or a missing broker order ID never
+permits a retry. Another entry order netted into the position is rejected rather
+than attributed to this strategy. It neither submits orders nor clears account
+guards; gateway wiring, durable result recording and protection actions remain.
+
+Final combined MT5/broker/TradeLocker/execution regression result: **308 passed**,
+one existing Starlette warning, 29.43s. Four initial new tests constructed invalid
+canonical executions and failed before reaching the classifier; corrected them to
+exercise invalid native position quantities, then reran the whole group.
+
+User input requested for the upcoming real demo acceptance: use a separate demo
+terminal, explicitly switch the current terminal later, or defer terminal
+acceptance. The current live TradeQuo account remains unchanged and is suitable
+for read-only Journal sync only. No demo authorization or order submission has
+occurred. Checkpoint 2 remains incomplete; the separate Journal repair is complete.
