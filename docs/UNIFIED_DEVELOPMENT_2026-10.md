@@ -247,3 +247,41 @@ Next required work remains the serialized durable submission/reconciliation
 coordinator, wiring these observations and preflight into that gateway, protective
 order verification/management, mocked end-to-end acceptance and terminal dry run.
 Checkpoint 2 is not complete. Existing application workflows remain unchanged.
+
+### 20 October: durable per-account operation guard
+
+Added an account-wide operation guard to the existing execution ledger. SQLite
+serializes acquisition across strategies/processes; no transaction remains open
+during broker IO. Successful operation releases its own token only. Exceptions,
+cancellation and process death retain the account for reconciliation. Restart
+marks retained guards RECONCILIATION_REQUIRED and fences the old owner; no timeout
+or automatic takeover can silently permit a retry. Guard acquisition is demo-only
+and forbidden in Research Agent scope, but still grants no submission permission.
+
+Storage: additive lazy table `mt5_execution_account_guards` (account key, process
+owner, operation token, state and timestamp). No production database initialization
+was performed in this increment. Existing intents and risk records are preserved.
+Explicit recovery/reconciliation remains to be implemented; retained guards cannot
+yet be cleared through an API. The guard is internal and not wired to live order
+submission. Existing authorization remains disabled.
+
+Verification: **11 new tests**, including an actual child process exiting via
+os._exit while holding a guard. Focused authority/ledger tests **26 passed**.
+All `tests/test_mt5*.py`: **230 passed**, one existing Starlette warning, 22.86s.
+No frontend changes or fresh frontend/full-backend verification in this increment.
+
+A local read-only terminal acceptance was attempted without reading credentials
+or .env, using the existing logged-in terminal. It stopped at account verification:
+`MetaTrader 5 account environment does not match this profile` for the required
+demo environment. This is NOT a passed demo dry run. It did not proceed to risk
+observation and sent no orders. The native proxy prohibited order_send,
+order_check, login and symbol_select. Sanitized evidence is in ignored
+`.ledger-test-artifacts/backend/mt5-risk-readonly-acceptance.json`.
+The user must select a verified demo account in the terminal before demo-terminal
+acceptance can pass; do not change accounts automatically.
+
+Changed: `backend/app/brokers/mt5_execution_ledger.py`, new
+`backend/tests/test_mt5_execution_authority.py`, and this handoff.
+Checkpoint 2 remains in progress: submission/result state transitions, explicit
+reconciliation/recovery, protective-order verification/management, end-to-end
+mocked gateway tests and successful demo-terminal dry run remain outstanding.

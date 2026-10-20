@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from uuid import uuid4
+from contextlib import contextmanager
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
@@ -54,7 +55,13 @@ class MT5ExecutionLedger:
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_risk_assessments(
                 id TEXT PRIMARY KEY, policy_id TEXT NOT NULL REFERENCES mt5_execution_policies(id),
                 document TEXT NOT NULL)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_account_guards(
+                account_key TEXT PRIMARY KEY, owner TEXT NOT NULL, token TEXT NOT NULL,
+                state TEXT NOT NULL, created_at TEXT NOT NULL)''')
             c.execute('BEGIN IMMEDIATE')
+            # A crash can occur after a broker accepted a request but before its
+            # response was saved. Never expire or silently steal that authority.
+            c.execute("UPDATE mt5_execution_account_guards SET state='RECONCILIATION_REQUIRED'")
             c.execute('INSERT INTO mt5_execution_owner VALUES(1,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner', (self.owner,))
             for row in c.execute('SELECT id,document FROM mt5_execution_policies').fetchall():
                 item=json.loads(row['document'])
@@ -154,6 +161,61 @@ class MT5ExecutionLedger:
             return [json.loads(r[0]) for r in c.execute(
                 'SELECT document FROM mt5_execution_risk_assessments WHERE policy_id=? ORDER BY rowid DESC LIMIT ?',
                 (policy_id, limit))]
+
+    @contextmanager
+    def account_guard(self, policy_id):
+        """Serialize future gateway operations across strategies and processes.
+
+        This grants no trading permission. An interrupted/failed operation keeps
+        the account blocked for explicit broker reconciliation, with no timeout
+        takeover. No database transaction is held during broker IO.
+        """
+        self._manual_only()
+        token = str(uuid4())
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution policy')
+            policy = json.loads(row[0])['policy']
+            if policy['environment'] != 'demo':
+                raise ValueError('MT5 execution authority requires a demo policy')
+            account = policy['account_key']
+            if c.execute('SELECT 1 FROM mt5_execution_account_guards WHERE account_key=?', (account,)).fetchone():
+                raise ValueError('MT5 account busy or awaiting broker reconciliation')
+            c.execute('INSERT INTO mt5_execution_account_guards VALUES(?,?,?,?,?)',
+                      (account, self.owner, token, 'HELD', datetime.now(timezone.utc).isoformat()))
+        try:
+            yield token
+        except BaseException:
+            # Also retain authority after cancellation/KeyboardInterrupt. Never
+            # record exception text, native replies or secrets.
+            with self.database.connect() as c:
+                c.execute('BEGIN IMMEDIATE')
+                c.execute("""UPDATE mt5_execution_account_guards SET state='RECONCILIATION_REQUIRED'
+                             WHERE account_key=? AND owner=? AND token=?""", (account, self.owner, token))
+            raise
+        else:
+            with self.database.connect() as c:
+                c.execute('BEGIN IMMEDIATE')
+                self._owns(c)
+                deleted = c.execute("""DELETE FROM mt5_execution_account_guards
+                    WHERE account_key=? AND owner=? AND token=? AND state='HELD'""",
+                    (account, self.owner, token)).rowcount
+                if deleted != 1:
+                    raise ValueError('MT5 account authority changed; broker reconciliation required')
+
+    def account_guard_status(self, policy_id):
+        with self.database.connect() as c:
+            row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution policy')
+            account = json.loads(row[0])['policy']['account_key']
+            guard = c.execute('SELECT state,created_at FROM mt5_execution_account_guards WHERE account_key=?',
+                              (account,)).fetchone()
+            return dict(state=guard['state'] if guard else 'IDLE',
+                        since=guard['created_at'] if guard else None, execution_enabled=False)
 
     def emergency_stop(self):
         # Disabling remains permitted even for a superseded process.
