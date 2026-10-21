@@ -66,7 +66,7 @@ def launch(services,payload):
         runner=getattr(services,'research_sandbox',None)
         if not runner or not getattr(services,'research_author',None):
             raise ValueError('Author and Docker services are unavailable')
-        runner.docker.image()
+        runner.docker.preflight()
     campaigns=Campaigns(services.database)
     campaign=campaigns.create(request['campaign'])
     execution={k:v for k,v in request.items() if k not in {'campaign','consent'}}

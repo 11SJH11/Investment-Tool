@@ -1,6 +1,26 @@
 # Research Agent current status / handoff
 
-## Current: session replay and timing closeout (17 October)
+## Current: structural Docker repair (21 October)
+
+See the [major update, Docker repair appendix](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md#21-october-structural-docker-execution-repair)
+for diagnosis, exact image identity, isolation, verification and use instructions.
+Tag resolution failed on the healthy Docker Desktop daemon, and the installed
+image was stale. Exact verified immutable-ID resolution and an allowlisted rebuild
+restore execution without weakening isolation. Structural launch now probes the
+actual worker; campaign and sandbox views expose persisted execution timelines.
+The final combined real-Docker suite passed **59 tests**; frontend **139 passed**;
+documented isolated production build passed, with the existing chunk-size warning.
+Final full backend: **1,773 passed, 41 skipped** (588.16s); diff check passed.
+No Ledger research containers remain; six unrelated stopped containers remain.
+No paid model call, user campaign mutation, live order or account switch occurred.
+Restart Ledger normally when no campaign is active to load the backend changes.
+
+The [unified development handoff](UNIFIED_DEVELOPMENT_2026-10.md) is authoritative
+for the ongoing MT5/deployment, screenshot and Algo Trading roadmap. MT5 demo
+clock evidence is saved, but the server's DST transition rule is unconfirmed;
+automated execution remains disabled. This repair does not complete that roadmap.
+
+## Previous: session replay and timing closeout (17 October)
 
 Completed-session parity is now available in Forward Validation. It creates fresh
 strategy/engine instances, replays the immutable prefix through the provider close,

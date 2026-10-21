@@ -1512,3 +1512,126 @@ is excluded and untouched. No obsolete-file purge was performed in this phase.
 ### Deleted tracked files
 
 None.
+
+## 21 October: structural Docker execution repair
+
+### Diagnosis and repair
+
+The daemon was healthy: Linux/amd64, Docker Engine 29.6.1, seccomp and cgroups v2.
+Ledger and the ordinary CLI reached the same Docker Desktop Linux engine.
+The failing command was:
+
+```text
+docker.exe --config <private-empty-temporary-directory> --host npipe:////./pipe/dockerDesktopLinuxEngine image inspect ledger-research-sandbox:v1
+exit: 1
+stderr: Error response from daemon: No such image: ledger-research-sandbox:v1
+```
+
+Nevertheless, `image ls` listed that exact tag and inspection by immutable image
+ID succeeded. This also affected the Python base-image tag. It reproduced with
+both inherited and sanitized environments; this was not evidence of a stopped
+daemon or missing user registry credentials. The precise internal Docker cause of
+the tag-resolution anomaly remains unknown. Ledger now resolves a failed exact
+tag lookup to one immutable ID, verifies both its ID and exact RepoTags membership,
+then applies the existing platform/build-fingerprint checks. Ambiguous, missing,
+wrong-platform and stale images still fail closed. There is no alternate-image or
+host-execution fallback.
+
+The installed sandbox also had an obsolete build fingerprint. Rebuilt using
+`backend/.venv/Scripts/python.exe backend/tools/build_research_sandbox.py` from
+the repository root (or `.venv/Scripts/python.exe tools/build_research_sandbox.py`
+inside backend). Only the allowlisted context was supplied to Docker. Current
+image ID: `sha256:8b2d5dc361816341c5867bdd9446f3dc529a5188c9989a5e3ee2a8b155202be2`.
+Build fingerprint: `f7c209e6b3cb17f0da14131f7525ebce02523da72cb187e6fc1fc8dc30e38906`.
+Rebuild whenever allowlisted worker/canonical calculation inputs change.
+
+### Readiness, diagnostics and monitoring
+
+Structural launch, director dispatch and sandbox approval now verify a real,
+short-lived worker under the same container restrictions. The trusted fixed probe
+initializes and resets through the normal RPC path, then must clean up. A failed
+launch probe does not create a campaign. Docker errors distinguish executable
+access, daemon access, image lookup and command deadlines. Failed commands retain
+operation, exit code and stderr SHA-256; arbitrary daemon stderr is not reflected
+into API/UI responses because it may contain secrets or host paths.
+
+Each actual simulation persists timestamped preparing, container-started,
+strategy-initialized, backtest-running, results-received, failure and cleanup
+events with per-check elapsed seconds. Campaign reports and individual sandbox
+views display the same timeline. These events do not infer progress from a
+coordinator heartbeat. Historical runs without lifecycle records remain readable.
+No database migration: additional evidence lives in existing JSON documents.
+
+Isolation is unchanged: non-root UID/GID 65532, no network, no mounts or Docker
+socket, read-only root, dropped capabilities, no-new-privileges, 512 MiB RAM/swap
+ceiling, one CPU, 64-process limit, bounded noexec scratch, timeouts, bounded RPC
+and independent guardian cleanup on backend death. Generated source remains inert
+on the host. Only completed historical prefixes cross the RPC boundary.
+
+### Gold and structural acceptance
+
+Independent tests cover XAUUSD cached history, all required strategy timeframes,
+automatic provider sessions, Sunday evening, New York DST and completed 15m
+signals. No Gold trading rule was changed by this repair.
+
+A deterministic Gold test prepares a campaign using synthetic XAUUSD 1m/15m data,
+then creates a separately authorized development project (never reopening the
+completed campaign or copying its protected holdout). It selects archived source,
+changes only the child's registry identity plus a neutral comment, quarantines it,
+and runs control/candidate/prefix checks in real Docker. The saved result contains
+two trades; control parity and prefix causality pass; the parent remains immutable
+and cleanup is recorded. This is genuine engine/container/storage acceptance,
+not an assertion of provider-history quality or strategy profitability.
+
+Mocked-model campaign acceptance covers six full structural state-machine paths,
+including restart/iteration and candidate-bound validation. No paid model calls,
+MT5 orders, account changes or user campaign mutations were made. Existing
+campaigns were inspected read-only; none was active at the initial inspection.
+The running user backend was not restarted to activate these changes.
+
+### Verification and use
+
+Final verification against the repaired tree:
+
+| Command / check | Result |
+| --- | --- |
+| `python -m pytest tests -q` | 1,773 passed, 41 skipped; 588.16s |
+| `LEDGER_TEST_DOCKER=1 python -m pytest tests/test_research_sandbox_docker.py tests/test_sandbox_research_loop.py tests/test_campaign_structural.py tests/test_gold_campaign_preparation.py -q` | 59 passed; 496.54s |
+| `node --test tests/*.test.js` | 139 passed |
+| `node verify-build.mjs C:/Users/jamie/Project/ledger-verification-docker-repair/frontend` | Exit 0, 168 modules; existing bundle-size warning |
+| `git diff --check` | Passed |
+| Read-only Docker state after tests | Zero Ledger containers; six unrelated stopped containers retained |
+
+Backend runs emitted the existing Starlette/httpx deprecation warning. The normal
+suite skips opt-in Docker/provider checks; the separate Docker command runs its
+selected integration checks explicitly. Counts overlap and must not be summed.
+The stopped-daemon and missing-image branches use mocks, rather than stopping the
+user's daemon or removing its images. Hostile execution/timeouts/cleanup and Gold
+parity use real Docker. No new browser smoke was run for the timeline UI.
+Ordinary `npm run build` intermittently reported unresolved existing files on this
+host; unchanged retries passed. The repository's documented dotenv-free runner
+build passed twice with the final frontend tree. No dependency changes were made.
+Logs are local under `.ledger-test-artifacts/logs/`: `docker-repair-closeout.log`,
+`docker-repair-full-backend.log`, `docker-repair-frontend.log`, and
+`docker-repair-build.log`. The focused Research Agent run passed 543 tests with
+41 opt-in skips; the full run above supersedes that narrower result.
+
+After any active campaign finishes, restart Ledger normally to load the backend
+repair and refresh the frontend. Keep Docker Desktop's Linux engine running.
+Use Research campaigns → Improve a strategy → Gold Asia 15m IFVG, XAUUSD, 1m,
+matching 1m/15m provider history and explicit account/cost assumptions. Enable
+model review and structural research only with configured model pricing and the
+desired bounded budget. The application runs the readiness probe before accepting
+structural launch; missing/stale images require the explicit builder above.
+Inspect each family's Docker execution timeline and source/control/causality
+evidence. No child is automatically deployed. Holdout remains governed by the
+existing selected policy. Paid/provider acceptance was not performed here.
+
+Changed production files: `research_agent/{sandbox,sandbox_runs,launch,director,
+campaign_report}.py`, `tools/build_research_sandbox.py`, frontend
+`{AutonomousResearch,ResearchSandbox}.jsx` and `researchSandbox.js`.
+New presentation file: `SandboxTimeline.jsx`.
+New tests: `backend/tests/test_sandbox_readiness.py`; extended campaign launch,
+structural campaign, Gold preparation, real-Docker security, sandbox-loop and
+frontend sandbox tests. Current handoff and unified roadmap were updated. No
+tracked files deleted, no user strategy files or research exports modified.

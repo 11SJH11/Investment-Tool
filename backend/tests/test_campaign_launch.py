@@ -12,6 +12,22 @@ from app.research_agent.launch import launch, CONSENT
 from app.services.backtest_jobs import BacktestJobs
 
 
+def test_structural_worker_failure_rejects_launch_before_persistence(launchable):
+    from unittest.mock import Mock
+    from app.research_agent.sandbox import SandboxError
+    services,request,backtest=launchable
+    request.update(structural=True)
+    request['campaign']['policy']={'send_development_summaries':True,'code_generation':True}
+    services.research_loop=SimpleNamespace(committee=SimpleNamespace(model=SimpleNamespace(status=lambda:dict(configured=True,pricing=True))))
+    services.research_author=object()
+    probe=Mock(side_effect=SandboxError('DOCKER_DAEMON_UNAVAILABLE'))
+    services.research_sandbox=SimpleNamespace(docker=SimpleNamespace(preflight=probe))
+    with pytest.raises(SandboxError,match='DOCKER_DAEMON_UNAVAILABLE'):
+        launch(services,request)
+    probe.assert_called_once()
+    assert not services.research_director.campaigns.list() and not backtest.calls
+
+
 @pytest.fixture
 def launchable(repo,tmp_path):
     backtest=Backtest(repo.database)

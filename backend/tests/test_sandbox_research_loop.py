@@ -63,6 +63,10 @@ def test_mocked_llm_child_control_causality_results_and_immutable_parent(frozen)
         result=finish(runner,item)
         assert result['status']=='COMPLETED',result
         assert result['control_parity'] and result['causality']['prefix_match']
+        phases={event['phase'] for event in result['sandbox_events']}
+        for phase in phases:
+            events=[event['event'] for event in result['sandbox_events'] if event['phase']==phase]
+            assert events==['preparing_sandbox','container_started','strategy_initialized','backtest_running','results_received','cleanup_completed']
         assert result['summary']['n']==0
         assert result['provenance']['source_sha256']==draft['source_sha256']
         assert runner.backtest.runs.get(candidate['run_id'])==parent

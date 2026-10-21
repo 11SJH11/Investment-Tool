@@ -398,3 +398,58 @@ sequence, reuse existing attachment/render/export/design-system/notification
 facilities when reaching them. The Algo page will be the monitoring surface for
 planned deployments, not a competing dashboard. Existing Checkpoints 2-6 remain
 incomplete as already listed. No additional strategy rules were changed.
+
+### 2026-10-21 priority interruption: structural Docker execution repair
+
+Paused the above roadmap at its verified, execution-disabled boundary (83b79a7).
+User requested the Research Agent Docker repair first, then continuation.
+No active user campaign will be restarted, cancelled or modified by acceptance.
+TradeQuo's supplied Client Services Agreement section 3.1 confirms UTC+2 winter /
+UTC+3 summer for company hours; it does not specify the demo server's DST switch
+dates or Python timestamp representation. Verified the accessible PDF on 21 October:
+https://www.tradequo.com/fsu/wp-content/uploads/2024/09/Client-Services-Agreement-TQ-FSU.pdf
+The supplied 2022 terms PDF could not be retrieved by the documentation tool.
+Read-only native demo verification succeeded: exact separate terminal path and
+native demo classification, connected terminal, three XAUUSDs raw tick samples.
+Offsets ahead of UTC receipt were 10800.174, 10800.175 and 10800.276 seconds.
+This is strong evidence of a current server-aligned epoch on this installation,
+not proof of a year-round DST schedule. Evidence (server name, raw milliseconds,
+UTC receipt; no login/credentials):
+`.ledger-test-artifacts/backend/mt5-demo-clock-20261021.json`.
+No login changes, trading settings changes or orders were made. Automated entry
+remains disabled. Need broker confirmation of this server's exact transition rule
+(US, European, or another calendar), effective dates and whether historical quote
+and bar epochs use the same convention before implementing normalized execution.
+Do not hardcode a permanent UTC+3 offset or infer a DST schedule from one quote.
+MT5 gateway/deployments, remaining CP2–6, screenshots/annotations and Algo Trading
+remain pending in the order above. No test orders are authorized for this work.
+
+Docker diagnosis: the Linux daemon is reachable; exact tag inspection reports
+`No such image` while image listing and inspection by immutable ID succeed on
+the same daemon. The installed sandbox fingerprint was also stale. Repair uses
+verified exact-tag-to-ID resolution (no alternate image) and rebuilds only the
+allowlisted sandbox context. Repair verification is complete:
+
+- Full backend: 1,773 passed, 41 skipped, 588.16s.
+- Combined real-Docker security, research loop, structural campaigns and Gold
+  preparation/archived-source acceptance: 59 passed, 496.54s.
+- Frontend: 139 passed. Documented isolated production build: exit 0, 168 modules.
+- Diff check passed. Zero Ledger research containers; six unrelated stopped
+  containers retained. User campaign states remain PREPARATION_FAILED/CANCELLED.
+- Existing Starlette deprecation and frontend chunk-size warnings remain.
+  Standard Vite builds had intermittent existing-file resolution failures;
+  documented dotenv-free runner builds passed twice. No new browser acceptance.
+
+Full diagnosis, changed-file summary, exact commands and manual instructions:
+[major update repair appendix](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md#21-october-structural-docker-execution-repair).
+No migration, frozen-strategy change, paid model call, order or user data rewrite.
+The user backend was not restarted. Restart normally when no campaign is active
+to activate this backend repair. Structural research is technically verified with
+deterministic/mocked-model tests; provider history and model quality remain
+external acceptance, not guarantees of profitable research.
+
+Next roadmap boundary: obtain/independently verify this demo server's precise DST
+rule before quote normalization and safe submission acceptance. Continue the
+remaining gateway/deployment work under execution-disabled defaults, then CP3–6,
+screenshots and Algo Trading in the recorded order. The read-only clock evidence
+above is the resumed roadmap work; those larger features are not complete.

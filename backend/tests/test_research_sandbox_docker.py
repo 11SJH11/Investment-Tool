@@ -38,6 +38,34 @@ def context():
     return StrategyContext(symbol='QQQ',primary_timeframe='1m',decision_time=pd.Timestamp('2026-01-01T15:01Z'),frames={'1m':frame},position=None,equity=10000)
 
 
+def test_real_readiness_worker_is_removed(docker):
+    report=docker.preflight()
+    assert report['status']=='ready' and report['cleanup_completed']
+    assert not docker.call('ps','-aq','--filter',f'label={LABEL}={docker.owner}')
+
+
+def test_gold_ifvg_control_parity_on_sunday_completed_frames(docker):
+    from pathlib import Path
+    from app.backtesting.engine import BacktestEngine
+    from app.backtesting.models import BacktestConfig
+    from app.backtesting.strategies.gold_asia_15m_ifvg_research_v1 import GoldAsia15mIfvgResearchV1
+    from app.research_agent.sandbox_runs import core
+    from tests.test_gold_ifvg_acceptance import fixture
+    frames=fixture('2026-03-08')
+    config=BacktestConfig(trading_weekdays=(0,1,2,3,4,6))
+    source=Path('app/backtesting/strategies/gold_asia_15m_ifvg_research_v1.py').read_text(encoding='utf-8')
+    expected=BacktestEngine(config).run(symbol_frames={'XAUUSD':frames},strategies={'XAUUSD':GoldAsia15mIfvgResearchV1()},primary_timeframe='1m')
+    session=Session(docker,docker.image(),seconds=60)
+    try:
+        remote=RemoteStrategy(session,source,'gold_asia_15m_ifvg_research_v1',{})
+        actual=BacktestEngine(config).run(symbol_frames={'XAUUSD':frames},strategies={'XAUUSD':remote},primary_timeframe='1m')
+        assert core(actual)==core(expected)
+        assert len(actual['trades'])==1 and actual['trades'][0]['r_multiple']==pytest.approx(1)
+        assert actual['trades'][0]['metadata']['asia_session_key']=='2026-03-08'
+    finally:
+        session.close()
+
+
 def test_real_strategy_interface_signal_and_container_policy(docker):
     session=Session(docker,docker.image())
     try:

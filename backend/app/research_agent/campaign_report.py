@@ -39,6 +39,8 @@ def evidence_report(database,campaign):
                 trial=json.loads(row[0]) if row else {}
                 comparison=trial.get('comparison',{})
                 item.update(sandbox_id=entry['sandbox_id'],reference_run_id=entry.get('reference_run_id'),
+                            sandbox_events=trial.get('sandbox_events',[]),sandbox_status=trial.get('status'),
+                            sandbox_error=trial.get('error'),sandbox_diagnostics=trial.get('error_diagnostics'),
                             evaluation_scope='full_period' if trial.get('request',{}).get('full_period') else 'bounded_samples',
                             child_summary=trial.get('summary'),control_parity=trial.get('control_parity'),
                             prefix_causality=trial.get('causality'),source_sha256=trial.get('source_sha256'),

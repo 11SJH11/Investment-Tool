@@ -158,7 +158,7 @@ class SandboxRuns:
             config=candidate['snapshot']['configuration']
             validate_windows(request['regime_windows'],config['start_date'],config['end_date'])
             if draft['parent_hash']!=candidate['snapshot_hash']:raise ValueError('Draft parent changed')
-            image=self.docker.image()
+            image=self.docker.preflight()['image_id']
             item=dict(id=str(uuid4()),project_id=project_id,candidate_id=candidate_id,draft_id=draft_id,
                       status='QUEUED',phase='APPROVED',request=request,reserved_runs=simulation_count(request['windows'])+8*len(request['regime_windows']),image_id=image,
                       candidate_hash=candidate['snapshot_hash'],source_sha256=draft['source_sha256'],
@@ -229,9 +229,20 @@ class SandboxRuns:
             def simulate(parameters,phase,prefix=False,*,prepared=None,payload=None):
                 self._guard(item,deadline);item['phase']=phase;self._save(item)
                 started=time.monotonic()
-                session=Session(self.docker,item['image_id'],seconds=max(.1,deadline-time.monotonic()),cancel=self.cancel_event)
+                def lifecycle(event, **detail):
+                    item.setdefault('sandbox_events', []).append(dict(event=event, phase=phase,
+                        at=datetime.now(timezone.utc).isoformat(), elapsed_seconds=round(time.monotonic()-started,4), **detail))
+                    self._save(item)
+                lifecycle('preparing_sandbox')
                 try:
+                    session=Session(self.docker,item['image_id'],seconds=max(.1,deadline-time.monotonic()),cancel=self.cancel_event)
+                except SandboxError as exc:
+                    lifecycle('container_start_failed', reason=str(exc))
+                    raise
+                try:
+                    lifecycle('container_started')
                     strategy=RemoteStrategy(session,source,key,parameters,modules=modules)
+                    lifecycle('strategy_initialized')
                     data=prepared or inputs
                     selected_engine=engine_config(payload,data['session']) if payload is not None else engine
                     frames=data['frames_by_symbol']
@@ -245,12 +256,18 @@ class SandboxRuns:
                         else:end=max(1,len(primary)//2)
                         frames[symbol][data['primary']]=primary.iloc[:end].copy()
                     active_payload=payload if payload is not None else config
+                    lifecycle('backtest_running')
                     result=BacktestEngine(selected_engine).run(symbol_frames=frames,strategies={symbol:strategy},primary_timeframe=data['primary'],progress=lambda *a:self._guard(item,deadline),
                         evaluation_start=data['start'] if active_payload.get('warmup_start_date') else None)
+                    lifecycle('results_received')
                     return result,strategy.trace,session.provenance
+                except BaseException as exc:
+                    lifecycle('container_failed', reason=str(exc) if isinstance(exc,SandboxError) else 'STRATEGY_EXECUTION_FAILED')
+                    raise
                 finally:
                     item.setdefault('resource_usage',[]).append({'phase':phase,'wall_seconds':round(time.monotonic()-started,4),'docker_terminal_sample':session.usage(),'sample_is_peak':False})
                     session.close()
+                    lifecycle('cleanup_completed')
             control,_,_=simulate(item['request']['control_parameters'],'CONTROL_PARITY')
             item['control_parity']=core(control)==core(parent)
             if not item['control_parity']:
@@ -320,6 +337,7 @@ class SandboxRuns:
         except BaseException as exc:
             code=str(exc) if isinstance(exc,SandboxError) else 'SANDBOX_VALIDATION_OR_EXECUTION_FAILED'
             item.update(status='CANCELLED' if self.cancel_event.is_set() else 'FAILED',error=code)
+            if isinstance(exc,SandboxError):item['error_diagnostics']=exc.diagnostics
             if item.get('robustness'):
                 item['robustness']['status']=item['status']
                 for cell in item['robustness']['cells']:

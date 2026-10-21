@@ -86,7 +86,7 @@ class ResearchDirector:
                     raise ValueError('Campaign policy must authorize code generation')
                 if not getattr(self.services,'research_author',None) or not getattr(self.services,'research_sandbox',None):
                     raise ValueError('Code author and Docker sandbox services are required')
-                self.services.research_sandbox.docker.image()
+                self.services.research_sandbox.docker.preflight()
             if set(configurations) != {p['project_id'] for p in links}:
                 raise ValueError('Explicit engine configuration is required for every campaign project')
             if set(campaign['request']['policy']['directions']) != {'long', 'short'}:

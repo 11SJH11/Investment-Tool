@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sandboxApproval,sandboxActive,SANDBOX_ACK} from '../src/features/strategy-lab/researchSandbox.js';
+import {sandboxApproval,sandboxActive,sandboxTimeline,SANDBOX_ACK} from '../src/features/strategy-lab/researchSandbox.js';
+test('execution timeline uses recorded lifecycle events, never inferred heartbeat progress',()=>{
+ assert.deepEqual(sandboxTimeline({status:'RUNNING',heartbeat_at:'now'}),[]);
+ const event={event:'container_start_failed',at:'2026-10-21T00:00:00Z',phase:'CONTROL_PARITY',elapsed_seconds:2,reason:'SANDBOX_IMAGE_MISSING'};
+ assert.deepEqual(sandboxTimeline({sandbox_events:[event]}),[{...event,label:'Container could not start'}]);
+});
 test('sandbox approval preserves explicit control/candidate parameters and consent',()=>{
  const p=sandboxApproval('{"enabled":false}','{"enabled":true}');assert.deepEqual(p.control_parameters,{enabled:false});assert.deepEqual(p.candidate_parameters,{enabled:true});assert.equal(p.acknowledgement,SANDBOX_ACK);assert.equal(p.timeout_seconds,120);
 });

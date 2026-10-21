@@ -20,7 +20,7 @@ from app.research_agent.sandbox_runs import SandboxRuns
 
 class SandboxFixture:
     def __init__(self):
-        self.docker=SimpleNamespace(image=lambda:'fixture-image')
+        self.docker=SimpleNamespace(image=lambda:'fixture-image',preflight=lambda:dict(image_id='fixture-image',status='ready'))
         self.thread=None
         self.calls=[]
         self.items={}
@@ -320,6 +320,9 @@ def test_campaign_full_loop_with_mock_model_and_real_docker(structural,promising
         assert director.campaigns.report(campaign['id'])['morning_report']['families'][0]['disposition'] == entry['disposition']
         assert entry['structural_result']['causality']['prefix_match']
         trial=runner.get(entry['sandbox_id'])
+        reported=director.campaigns.report(campaign['id'])['morning_report']['families'][0]
+        assert reported['sandbox_events']==trial['sandbox_events']
+        assert reported['sandbox_status']==trial['status']
         assert trial['reserved_runs']==(28 if promising=='regime' else 20)
         if promising=='regime':
             assert started['reserved']['simulations']==30

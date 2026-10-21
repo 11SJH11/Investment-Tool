@@ -20,7 +20,10 @@ from .sandbox_image import TAG
 LABEL = 'com.ledger.research.sandbox'
 
 
-class SandboxError(ValueError): pass
+class SandboxError(ValueError):
+    def __init__(self, message, *, diagnostics=None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
 
 
 class Docker:
@@ -36,16 +39,47 @@ class Docker:
     def call(self, *args, timeout=30):
         try:
             result = subprocess.run([*self.command,*args],env=self.env,capture_output=True,timeout=timeout)
-        except (OSError,subprocess.TimeoutExpired) as exc:
-            raise SandboxError('DOCKER_UNAVAILABLE_OR_TIMEOUT') from None
-        if result.returncode: raise SandboxError('DOCKER_COMMAND_FAILED')
+        except subprocess.TimeoutExpired:
+            raise SandboxError('DOCKER_COMMAND_TIMEOUT: Docker did not complete within the operation deadline') from None
+        except OSError:
+            raise SandboxError('DOCKER_UNAVAILABLE: Docker executable or engine access is unavailable') from None
+        if result.returncode:
+            stderr = result.stderr.decode('utf-8', errors='replace')
+            operation = ' '.join(args[:2]) if args[:1] == ('image',) else str(args[0])
+            if 'no such image' in stderr.lower():
+                message = 'SANDBOX_IMAGE_MISSING: required image cannot be resolved; build the research sandbox image'
+            elif any(s in stderr.lower() for s in ('cannot connect', 'is the docker daemon running', 'pipe', 'connection refused')):
+                message = 'DOCKER_DAEMON_UNAVAILABLE: Docker daemon is not responding or access is denied'
+            else:
+                message = 'DOCKER_COMMAND_FAILED: Docker operation failed; inspect its stage and exit code'
+            # Never relay arbitrary daemon output: it can echo paths, URLs or
+            # secrets. Preserve bounded operational evidence and a correlation hash.
+            raise SandboxError(message, diagnostics={'operation': operation, 'exit_code': result.returncode,
+                'stderr_sha256': sha256(result.stderr).hexdigest()})
         return result.stdout.decode('utf-8').strip()
+
+    def inspect_image(self, reference):
+        try:
+            return json.loads(self.call('image','inspect',reference))[0]
+        except SandboxError as exc:
+            if not str(exc).startswith('SANDBOX_IMAGE_MISSING'):
+                raise
+            # Docker Desktop can list a local tag yet fail name-based inspect.
+            # Resolve only its exact tag to one immutable ID, then verify RepoTags.
+            ids = set(self.call('image','ls','--no-trunc','--quiet','--filter','reference='+reference).split())
+            if len(ids) != 1 or not re.fullmatch('sha256:[a-f0-9]{64}', next(iter(ids), '')):
+                raise exc
+            identifier = next(iter(ids))
+            info = json.loads(self.call('image','inspect',identifier))[0]
+            if info.get('Id') != identifier or reference not in info.get('RepoTags', []):
+                raise SandboxError('SANDBOX_IMAGE_IDENTITY_MISMATCH')
+            return info
 
     def image(self):
         server = json.loads(self.call('info','--format','{{json .}}'))
         if server.get('OSType')!='linux' or server.get('CgroupVersion')!='2' or not any('seccomp' in s for s in server.get('SecurityOptions',[])):
             raise SandboxError('DOCKER_SECURITY_PREREQUISITES_MISSING')
-        image = json.loads(self.call('image','inspect',TAG))[0]
+        image = self.inspect_image(TAG)
         if image.get('Os')!='linux' or image.get('Architecture')!='amd64': raise SandboxError('SANDBOX_IMAGE_PLATFORM_MISMATCH')
         from .sandbox_image import stage
         with tempfile.TemporaryDirectory(prefix='ledger-image-check-') as folder:
@@ -53,6 +87,23 @@ class Docker:
         if image.get('Config',{}).get('Labels',{}).get('com.ledger.research.build')!=expected:
             raise SandboxError('SANDBOX_IMAGE_STALE_REBUILD_REQUIRED')
         return image['Id']
+
+    def preflight(self):
+        started = time.monotonic()
+        image = self.image()
+        session = Session(self, image, seconds=20)
+        try:
+            source = ('from app.backtesting.strategies.base import Strategy, StrategySpec\n'
+                      'class Probe(Strategy):\n'
+                      ' spec=StrategySpec(key="research_readiness_probe",name="Readiness",timeframes=("1m",))\n'
+                      ' def reset(self): self.ready=True\n'
+                      ' def on_bar(self,ctx): return None\n')
+            strategy = RemoteStrategy(session, source, 'research_readiness_probe', {})
+            strategy.reset()
+        finally:
+            session.close()
+        return dict(status='ready', image_id=image, wall_seconds=round(time.monotonic()-started, 4),
+                    cleanup_completed=True, network='none', read_only=True)
 
     def cleanup(self):
         # Only this Ledger database's labelled containers. No global Docker prune.

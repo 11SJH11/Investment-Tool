@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -119,7 +120,8 @@ def test_missing_dependency_launch_has_actionable_failure(launchable,tmp_path):
     assert not backtest.calls
 
 
-def test_gold_campaign_runs_real_engine_on_synthetic_cache_without_model_or_docker(repo,tmp_path):
+@pytest.mark.parametrize('isolated',[False,pytest.param(True,marks=pytest.mark.skipif(os.environ.get('LEDGER_TEST_DOCKER')!='1',reason='Opt-in Gold structural Docker acceptance'))])
+def test_gold_campaign_runs_real_engine_on_synthetic_cache_without_model_or_docker(repo,tmp_path,isolated):
     from tests.test_gold_ifvg_acceptance import fixture
     from tests.test_research_director import advance_until
     from app.services.market_data import MarketDataService
@@ -158,5 +160,42 @@ def test_gold_campaign_runs_real_engine_on_synthetic_cache_without_model_or_dock
         assert [t['r_multiple'] for t in result['result']['trades']]==[1,-1]
         assert done['plans']['XAUUSD:1m']['holdout']['start']=='2026-03-09'
         assert all(t['metadata']['asia_session_key']<'2026-03-09' for t in result['result']['trades'])
+        if isolated:
+            from app.research_agent.candidates import Candidates
+            from app.research_agent.author import archived_parent
+            from app.research_agent.quarantine import store as store_draft
+            from app.research_agent.sandbox_runs import SandboxRuns, ACK
+            from app.research_agent.workflow import start, observe
+            from tests.test_backtest_jobs import wait_for
+            # A separate explicitly authorized structural project uses the same
+            # development bounds. Never reopen a completed campaign or its holdout.
+            project=ResearchRepository(repo.database).create('Gold isolated smoke',KEY,
+                [{k:d[k] for k in ('symbols','timeframe','start','end','state')} for d in project['datasets'] if d['state']=='DEVELOPMENT'])
+            from app.api.strategy_lab import BacktestRequest
+            payload=BacktestRequest.model_validate({k:v for k,v in result['config'].items()
+                if k in BacktestRequest.model_fields and not k.startswith('research_')}).model_dump()
+            submitted=start(services,project['id'],payload)
+            wait_for(lambda:jobs.get(submitted['baseline_job_id'])['status'] in {'completed','failed'})
+            assert jobs.get(submitted['baseline_job_id'])['status']=='completed',str(jobs.get(submitted['baseline_job_id']))
+            project=observe(services,project['id'])
+            result=runs.get(project['baseline_run_id'])
+            reference=Candidates(repo.database).freeze_reference(project['id'])
+            archive=archived_parent(repo.database,reference['run_id'],reference['snapshot']['source'])
+            child_key='research_child_gold_smoke'
+            source=archive['source'].replace('key="'+KEY+'"','key="'+child_key+'"')+'\n# Deterministic neutral structural smoke candidate.\n'
+            draft=store_draft(repo.database,project['id'],reference['id'],dict(request_key='gold-smoke',registry_key=child_key,source=source,rationale='Neutral archived Gold control',acknowledgement='Store this source as an inert quarantined draft; no execution or activation'))
+            runner=SandboxRuns(repo.database,jobs.backtest)
+            try:
+                attempt=runner.approve(project['id'],reference['id'],draft['id'],dict(control_parameters={},candidate_parameters={},timeout_seconds=120,acknowledgement=ACK))
+                runner.thread.join(timeout=150)
+                assert not runner.thread.is_alive()
+                evidence=runner.get(attempt['id'])
+                assert evidence['status']=='COMPLETED',str(evidence)
+                assert evidence['control_parity'] and evidence['causality']['prefix_match']
+                assert evidence['summary']['n']==2
+                assert evidence['sandbox_events'][-1]['event']=='cleanup_completed'
+                assert runs.get(project['baseline_run_id'])==result
+            finally:
+                runner.close()
     finally:
         director.close();jobs.close()
