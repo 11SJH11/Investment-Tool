@@ -2,7 +2,11 @@ export default function CampaignProgress({progress}) {
  if(!progress)return null;
  return <article className="insight-panel" aria-label="Recorded research progress">
   <h4 className="font-semibold">Recorded execution: {progress.outcome.replaceAll('_',' ')}</h4>
-  <p className="text-xs muted">Baseline/reference jobs only. Coordinator availability is separate from simulation progress.</p>
+  <p className="text-xs muted">Baseline/reference jobs and current numeric attempts. Model and Docker work are not included in these counts. Coordinator availability is separate from simulation progress.</p>
+  {progress.numeric_trials?.map(trial=><div key={trial.id} className="mt-3 text-sm">
+   <p className="break-all">{trial.family_id} · Numeric trial {trial.id} · {trial.status}</p>
+   <p className="text-xs muted">{trial.cells.map(cell=>`${cell.role} ${cell.index}, attempt ${cell.attempt}: ${cell.status}`).join(' · ')}</p>
+  </div>)}
   <p className="text-sm mt-2">{Object.entries(progress.counts).map(([key,value])=>`${key}: ${value}`).join(' · ')}</p>
   {progress.family_failures.map(f=><p role="alert" key={f.family_id}>{f.family_id}: {f.reason}</p>)}
   {progress.jobs.map(job=><div key={job.id} className="mt-3">

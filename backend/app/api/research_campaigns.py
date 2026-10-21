@@ -1,6 +1,6 @@
 """Advanced campaign integration API. The minimal-prompt primary UI is still pending."""
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field
 
 from app.api.dependencies import get_services
@@ -98,6 +98,12 @@ def campaign(identifier: str, repo=Depends(repository), services=Depends(get_ser
 def prepare(identifier: str, payload: Prepare, repo=Depends(repository)):
     return operation(lambda: repo.prepare(identifier, [e.model_dump() for e in payload.entries],
                                           [c.model_dump(mode='json') for c in payload.coverages]))
+
+
+@router.get('/{identifier}/activity')
+def activity(identifier: str, before: int | None = Query(default=None, ge=1),
+             limit: int = Query(default=50, ge=1, le=100), repo=Depends(repository)):
+    return operation(lambda: repo.activity(identifier, before=before, limit=limit))
 
 
 @router.post('/{identifier}/projects')

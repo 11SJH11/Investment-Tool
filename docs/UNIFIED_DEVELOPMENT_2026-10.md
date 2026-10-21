@@ -731,3 +731,16 @@ The read-only MT5 clock CLI measures a current offset, never authorizes executio
 or asserts an unobserved DST transition rule. No schema migration or user backend
 restart was performed. Research audit/operation instrumentation and the broader
 MT5/screenshots/Algo dashboard roadmap remain incomplete.
+
+### 2026-10-22 activity paging and numeric queue evidence
+
+Campaign activity is now bounded to 50 events per report with cursor-based older
+pages and a campaign/event index; historical events remain intact. UI history
+failure/retry and latest/older navigation are verified. Numeric control/variant
+current-attempt progress is exposed from durable queue records, without payloads,
+results or unrelated project data. Model/Docker operations are not counted as
+simulations. Tests: **80 focused backend**, **144 frontend**, production build and
+fixture browser checks at 390/1024/1440/1920px passed. Full backend verification
+has not been repeated for this incremental change. The audit above records scope.
+Remaining: model/structural operation instrumentation and broader research audit;
+MT5 submission/protection/timing acceptance, screenshots and Algo dashboard.

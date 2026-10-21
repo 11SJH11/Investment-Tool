@@ -5,6 +5,7 @@ import {pollCampaign} from './campaignPolling.js';
 import ResearchSearchHistory from './ResearchSearchHistory.jsx';
 import SandboxTimeline from './SandboxTimeline.jsx';
 import CampaignProgress from './CampaignProgress.jsx';
+import CampaignActivity from './CampaignActivity.jsx';
 import FeatureAblation from './FeatureAblation.jsx';
 import {CampaignRegimeForm,CampaignRegimeReport} from './CampaignRegimes.jsx';
 
@@ -78,6 +79,7 @@ export default function AutonomousResearch({strategies}){
    {campaign.preparation&&<p className="text-sm mt-2">History preparation: {campaign.preparation.status} · Fixed deadline {campaign.preparation.deadline}</p>}
   </article>
   <CampaignProgress progress={report.progress}/>
+  <CampaignActivity key={selected} identifier={selected} page={report.activity}/>
   <article className="insight-panel"><h4 className="font-semibold">Research report</h4><div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Family','Progress','Baseline N','Baseline avg R','Child N','Finding'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{report.morning_report.families.map(f=><tr key={f.project_id}><td className="p-2">{f.family_id}</td><td className="p-2">{f.state}</td><td className="p-2">{f.baseline_summary?.n??'—'}</td><td className="p-2">{number(f.baseline_summary?.average_r)}</td><td className="p-2">{f.child_summary?.n??'—'}</td><td className="p-2">{f.verdict}{f.reason&&<p>{f.reason}</p>}{f.warnings.map(w=><p key={w} className="muted mt-1">{w}</p>)}</td></tr>)}</tbody></table></div>
    {report.morning_report.conclusions.map(t=><p className="text-xs muted mt-2" key={t}>{t}</p>)}
    {report.morning_report.families.filter(f=>f.sandbox_id).map(f=><details key={f.project_id} className="mt-3" open={f.sandbox_status==='RUNNING'}><summary>{f.family_id}: Docker execution / {f.sandbox_status}</summary><p className="text-xs muted">Recorded worker events; coordinator activity alone does not indicate execution progress. Durations are elapsed within each check.</p>{f.sandbox_error&&<p role="alert">{f.sandbox_error}</p>}<SandboxTimeline run={f}/></details>)}

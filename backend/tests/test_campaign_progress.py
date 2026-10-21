@@ -78,3 +78,28 @@ def test_reference_jobs_have_separate_identity(db):
     item=campaign();item['execution']['entries'][0]['reference_project_id']='reference'
     job(db,key='agent-baseline:reference')
     assert report(db,item)['jobs'][0]['role']=='reference'
+
+
+def test_numeric_current_attempts_are_scoped_and_payloads_not_exposed(db):
+    from app.research_agent.trials import request_key
+    trial=dict(id='trial',status='ACTIVE',cells=[dict(index=0,role='control',attempt=1,status='RUNNING',
+        job_id='job',payload={'secret_fixture':'not public'},result={'holdout_fixture':'not public'}),
+        dict(index=1,role='variant',attempt=0,status='PENDING')])
+    with db.connect() as c:
+        c.execute('CREATE TABLE agent_trials(project_id TEXT,document TEXT)')
+        c.execute('INSERT INTO agent_trials VALUES(?,?)',('p',json.dumps(trial)))
+        c.execute('INSERT INTO agent_trials VALUES(?,?)',('other',json.dumps(dict(trial,id='other'))))
+    job(db,key=request_key(trial,trial['cells'][0]))
+    job(db,key='agent-trial:trial:0:0',status='failed')
+    job(db,key='agent-trial:other:0:1')
+    result=report(db)
+    assert len(result['jobs'])==1
+    assert result['jobs'][0]['role']=='numeric_control'
+    assert result['counts']['running']==1 and result['counts']['failed']==0
+    assert len(result['numeric_trials'][0]['cells'])==2
+    assert 'secret_fixture' not in json.dumps(result) and 'holdout_fixture' not in json.dumps(result)
+    assert len(result['numeric_trials'])==1
+
+
+def test_numeric_schema_absence_remains_compatible(db):
+    assert report(db)['numeric_trials']==[]

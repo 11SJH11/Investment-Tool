@@ -63,6 +63,7 @@ class Campaigns:
             c.execute('CREATE TABLE IF NOT EXISTS agent_campaigns(id TEXT PRIMARY KEY, request_key TEXT UNIQUE NOT NULL, document TEXT NOT NULL)')
             c.execute('CREATE TABLE IF NOT EXISTS agent_campaign_actions(id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, request_key TEXT NOT NULL, document TEXT NOT NULL, UNIQUE(campaign_id,request_key))')
             c.execute('CREATE TABLE IF NOT EXISTS agent_campaign_events(id INTEGER PRIMARY KEY, campaign_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL)')
+            c.execute('CREATE INDEX IF NOT EXISTS agent_campaign_events_page ON agent_campaign_events(campaign_id,id)')
 
     def _event(self, c, identifier, action, detail):
         c.execute('INSERT INTO agent_campaign_events(campaign_id,action,detail,created_at) VALUES (?,?,?,?)',
@@ -248,20 +249,35 @@ class Campaigns:
             self._event(c, identifier, 'ACTION_RESERVED', {'id': record['id'], 'decision': decision})
         return record
 
+    def activity(self, identifier, *, before=None, limit=50):
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError('Activity page size must be between 1 and 100')
+        if before is not None and (type(before) is not int or before < 1):
+            raise ValueError('Invalid activity cursor')
+        with self.database.connect() as c:
+            self._get(c, identifier)
+            rows = [dict(r) for r in c.execute(
+                'SELECT * FROM agent_campaign_events WHERE campaign_id=?'
+                + (' AND id<?' if before is not None else '') + ' ORDER BY id DESC LIMIT ?',
+                (identifier, before, limit+1) if before is not None else (identifier, limit+1))]
+        more = len(rows) > limit
+        items = rows[:limit]
+        return dict(items=items, next_before=items[-1]['id'] if more else None)
+
     def report(self, identifier):
         from .campaign_report import evidence_report
         from .campaign_progress import baseline_progress
         with self.database.connect() as c:
             item = self._get(c, identifier)
             actions = [json.loads(r[0]) for r in c.execute('SELECT document FROM agent_campaign_actions WHERE campaign_id=? ORDER BY rowid', (identifier,))]
-            events = [dict(r) for r in c.execute('SELECT * FROM agent_campaign_events WHERE campaign_id=? ORDER BY id', (identifier,))]
             held = []
             if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_datasets'").fetchone():
                 held = [json.loads(r[0]) for r in c.execute('SELECT document FROM agent_datasets')
                         if json.loads(r[0]).get('campaign_id') == identifier and json.loads(r[0])['state'] == 'INSPECTED_VALIDATION']
         execution = item.get('execution') or {}
         entries = execution.get('entries', [])
-        return dict(campaign=item, actions=actions, events=events, morning_report=evidence_report(self.database,item),
+        activity = self.activity(identifier)
+        return dict(campaign=item, actions=actions, events=list(reversed(activity['items'])), activity=activity, morning_report=evidence_report(self.database,item),
                     progress=baseline_progress(self.database, item),
                     summary={'actions_reserved': len(actions),
                              'actions_completed': sum(a['status'] == 'COMPLETED' for a in actions),

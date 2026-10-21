@@ -118,6 +118,34 @@ runs; existing results/campaigns were neither rewritten nor rerun.
 
 ## Overall product work still outstanding
 
+### 2026-10-22 activity and numeric-progress continuation
+
+Campaign reports now return the latest 50 persisted events rather than the entire
+history on every poll. A read-only `/research-campaigns/{id}/activity` endpoint
+provides exclusive-ID cursor paging (maximum 100 events), supported by an
+idempotently created `(campaign_id,id)` index. No event is deleted. The UI shows
+one bounded page, supports older/latest navigation, preserves the displayed page
+on failure and offers retry. New concurrent events cannot shift an older cursor.
+The compatibility `events` field contains only that latest page in chronological
+order; complete history is available through the activity endpoint.
+
+Queue progress includes baseline/reference and current numeric control/variant
+attempts. Numeric trial/cell status is copied from persisted records, not inferred
+from reservations. Old attempts and unrelated projects are excluded; payloads and
+results are not returned by this progress query. Model calls and Docker execution
+remain outside these simulation counts. Their complete operation instrumentation
+is still outstanding, as is the full correctness/statistical audit.
+
+Verification: **80 focused backend tests passed** (including nine activity and two
+numeric-progress regressions), **144 frontend tests passed**, production build
+passed. Production fixture browser smoke passed at **390/1024/1440/1920px** with
+history-request failure/retry, older/latest navigation, reload, GET-only requests
+and no runtime errors. The final numeric build was also smoke tested. Existing
+chunk warning remains; an earlier build attempt hit the intermittent existing-file
+resolver failure and passed on retry. `git diff --check` passed. No full backend
+rerun in this incremental step; the previous 1,898 result predates these changes.
+No real database/service restart, campaign mutation, paid call or order submission.
+
 - MT5: automatic timestamp diagnostics can establish the current offset, but not
   an unobserved seasonal rule. Demo quote samples at 18:18 UTC showed advancing
   ticks about 10,801 seconds ahead of receipt. No conversion has been applied.

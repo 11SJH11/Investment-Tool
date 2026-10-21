@@ -76,6 +76,7 @@ export const api = {
   researchCampaigns: () => request('/strategy-lab/research-campaigns'),
   researchCampaignPolicy: () => request('/strategy-lab/research-campaigns/policy'),
   researchCampaign: id => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}`),
+  researchCampaignActivity: (id,before) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/activity?before=${encodeURIComponent(before)}`),
   launchResearchCampaign: payload => request('/strategy-lab/research-campaigns/launch',{method:'POST',body:JSON.stringify(payload)}),
   controlResearchCampaign: (id,action) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/${action}`,{method:'POST'}),
   marketConcepts: () => request('/strategy-lab/market-concepts'),
