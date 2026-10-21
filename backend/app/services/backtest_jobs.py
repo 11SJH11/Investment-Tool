@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
+from time import monotonic
+from contextlib import closing
 import json
 import uuid
-from app.core.safe_errors import safe_failure
+from app.core.safe_errors import safe_failure, is_database_busy
 from app.backtesting.strategies._refresh import execution_scope
 
 
@@ -150,10 +152,19 @@ class BacktestJobs:
                 self.executor.submit(self._work, job_id)
             return [self.get(job_id) for job_id in ids]
 
-    def _update(self, job_id, **values):
-        with self.database.connect() as db:
-            db.execute(f"UPDATE backtest_jobs SET {','.join(key+'=?' for key in values)},updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                       (*values.values(), job_id))
+    def _update(self, job_id, *, _progress=False, **values):
+        try:
+            with closing(self.database.connect(timeout=0 if _progress else 5)) as db:
+                with db:
+                    db.execute(f"UPDATE backtest_jobs SET {','.join(key+'=?' for key in values)},updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                               (*values.values(), job_id))
+            return True
+        except Exception as exc:
+            # UI progress is expendable; final saves, cancellation and terminal
+            # state transitions are not. Never swallow disk/corruption failures.
+            if _progress and is_database_busy(exc):
+                return False
+            raise
 
     def cancel(self, job_id):
         with self.lock:
@@ -228,10 +239,16 @@ class BacktestJobs:
                 if self.closed or self.get(job_id)['status'] != 'queued':
                     return
                 self._update(job_id, status='preparing data')
+            last_progress_status=None
+            last_progress_at=0.0
             def progress(status, done, total):
+                nonlocal last_progress_status,last_progress_at
                 with self.lock:
                     self._cancelled(job_id)
-                    self._update(job_id, status=status, processed=done, total=total)
+                    now=monotonic()
+                    if status!=last_progress_status or now-last_progress_at>=.5 or (total is not None and done==total):
+                        if self._update(job_id, _progress=True, status=status, processed=done, total=total):
+                            last_progress_status,last_progress_at=status,now
             def persist(save):
                 # Cancellation and commit are mutually exclusive. Once saved,
                 # cancellation cannot retroactively remove a successful result.

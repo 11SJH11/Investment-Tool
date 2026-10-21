@@ -167,3 +167,20 @@ The former page-local Jobs panel now lives in global Activity.
 
 Coordinated equity/drawdown charts, comparison semantics and manual checks are
 documented in [Performance charts](PERFORMANCE_CHARTS.md).
+
+## Database contention during execution
+
+Backtest progress is presentation data, not a prerequisite for simulating the next
+bar. Progress writes are limited to twice per second (plus phase/final progress
+changes) and do not wait for SQLite's writer lock. If another operation holds the
+lock, that update is skipped and a later callback tries again. Cancellation and
+research-authorization checks still run on every callback. Final result writes,
+completion/cancellation transitions and real filesystem errors are never ignored.
+
+Previously, every 64 bars triggered a synchronous database write. A writer lock
+lasting beyond SQLite's five-second timeout could abort an otherwise valid run
+with the misleading generic `[storage]` message. Real-lock regression tests now
+cover that case. Busy/locked failures in mandatory operations are classified as
+`[database_busy]`, separately from disk, access and cache corruption failures.
+Progress-update connections are explicitly closed. No schema/data migration or
+change to engine accounting, strategy rules or saved results is involved.

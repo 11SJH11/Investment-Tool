@@ -453,3 +453,48 @@ rule before quote normalization and safe submission acceptance. Continue the
 remaining gateway/deployment work under execution-disabled defaults, then CP3–6,
 screenshots and Algo Trading in the recorded order. The read-only clock evidence
 above is the resumed roadmap work; those larger features are not complete.
+
+### 21 October: backtest progress contention repair
+
+User reported frequent `[storage]` failures. Read-only inspection found the failed
+combined Gold job stopped at recorded progress 248,064/409,971 bars, while two
+other Gold variants subsequently completed. The previous error handler discarded
+the underlying exception, so the historical failure cannot be conclusively
+attributed from its saved message alone. No original jobs/results were changed.
+
+Reproduced a concrete matching failure path using a real SQLite WAL writer lock:
+an optional progress write exceeded the default five-second timeout and raised
+`OperationalError / SQLITE_BUSY`, aborting the simulation. This was misclassified
+as a disk/cache problem. No disk-space exhaustion was involved in the reproduction.
+
+Progress writes now use zero lock-wait and skip only SQLite BUSY/LOCKED errors.
+Successful progress writes are throttled to twice per second, plus phase/final
+updates. Every callback still checks cancellation/authorization. Result persistence,
+cancellation and completion writes remain mandatory; disk/corruption errors still
+fail. Progress connections close explicitly; failed connection setup also closes.
+Mandatory contention errors now use `[database_busy]` with an accurate explanation.
+No migrations, trading-rule changes, result rewrites, or provider calls.
+
+Verification:
+- Before fix, real-lock regression failed with `OperationalError / SQLITE_BUSY`.
+- Focused queue/contention tests: 19 passed, including cancellation, critical-write
+  failures, SQLite extended codes, error redaction and progress throttling.
+- Full backend: **1,780 passed, 41 skipped**, 545.52s; existing Starlette warning.
+- Actual cached OANDA midpoint data, combined Gold strategy, 9–15 September 2025:
+  completed 6,881 1m bars / 461 15m bars, four trades, 6.39s. Separate database.
+  This window includes the date at the original saved progress point.
+- Exact original date-range/configuration rerun used a separate database and no
+  provider calls. Cancelled at its 900-second verification cap, 147,968/409,971
+  bars, error null, no saved run. This is NOT full-range completion or a speed fix.
+- Diff check passed. Frontend unchanged; no new frontend build/browser run.
+
+Local evidence: `.ledger-test-artifacts/logs/backtest-contention-full.log`,
+`backtest-contention-real-cache.json`, `backtest-contention-full-range.json`.
+Changed: `backend/app/core/safe_errors.py`, `backend/app/services/backtest_jobs.py`,
+`backend/app/storage/database.py`, `docs/BACKTEST_WORKFLOW.md`, this handoff.
+New: `backend/tests/test_backtest_progress_contention.py`.
+
+Activate by restarting the backend normally when no user run/campaign is active,
+then retry the failed job. Do not delete the database/cache or historical results.
+The running user backend was not restarted by this repair. Broader roadmap remains
+paused until this focused fix is handed back, as requested.

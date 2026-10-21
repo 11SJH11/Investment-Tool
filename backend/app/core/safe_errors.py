@@ -18,6 +18,7 @@ class ProviderUnavailableError(RuntimeError):
     pass
 
 _MESSAGES = {
+    'database_busy': 'Another operation is writing to the database. Wait for it to finish before retrying; this does not indicate insufficient disk space.',
     'authentication': 'Provider authentication/configuration failed. Check credentials in Settings.',
     'entitlement': 'Provider denied access (HTTP 403). Check account permissions and history entitlement.',
     'missing_history': 'No usable history or dated contracts were returned for this range. Check symbol, dates and provider coverage.',
@@ -29,6 +30,11 @@ _MESSAGES = {
     'provider': 'Provider request failed. Check provider availability; retry when service is restored.',
     'unknown': 'Operation failed for an unclassified reason. Check configuration and service availability before retrying.',
 }
+
+def is_database_busy(exc):
+    code=getattr(exc,'sqlite_errorcode',None)
+    return isinstance(exc,sqlite3.Error) and isinstance(code,int) and (code & 255) in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED)
+
 
 def safe_failure(exc, *, default='unknown', now=None):
     from app.storage.market_store import MarketCacheCorruption
@@ -47,6 +53,7 @@ def safe_failure(exc, *, default='unknown', now=None):
     elif isinstance(exc,(MissingHistoryError,MissingHistoryParameterError)): category='missing_history'
     elif isinstance(exc,BrokenProcessPool): category='worker_termination'
     elif isinstance(exc,(ConnectionError,TimeoutError,ProviderHttpError)): category='provider'
+    elif is_database_busy(exc): category='database_busy'
     elif isinstance(exc,(OSError,sqlite3.Error,MarketCacheCorruption)): category='storage'
     elif isinstance(exc,(ValueError,TypeError)) and default!='strategy_execution': category='invalid_parameters'
     return category,_MESSAGES[category],None
