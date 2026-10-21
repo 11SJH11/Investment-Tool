@@ -537,3 +537,40 @@ then demo-terminal dry run and explicit authorization. The server-specific DST
 transition rule remains unverified; no fixed UTC+3 conversion was introduced.
 CP2 is not complete. T01 deployment, screenshots and Algo Trading follow in the
 previously recorded order. No orders, account switches or terminal changes made.
+
+### 21 October: write-ahead MT5 attempt lifecycle
+
+Continued from `cff3a02`. Added internal durable attempt/receipt primitives for
+the future submission coordinator. `begin_attempt` requires a demo draft and its
+current account guard. In one transaction it creates a unique attempt, marks the
+intent SUBMISSION_UNCERTAIN and retains the account for reconciliation. Normal
+context-manager completion must not release this retained guard. Process death
+before any receipt therefore cannot make the draft available for another send.
+
+Receipts retain only the numeric broker return code and optional canonical order
+ticket. They are immutable and idempotent; an order ticket cannot be attached to
+two attempts on the same account. Different accounts may reuse ticket numbers.
+Neither success nor rejection codes establish a fill, protection or retry right.
+Emergency stop prevents new attempts but allows the original owner to retain a
+late receipt; restart fences that owner and leaves recovery blocked. Research
+callers cannot create attempts or record receipts.
+
+Additive table: `mt5_execution_attempts` (id, unique intent_id, account_key,
+broker_order_id, document), with account/order uniqueness. No destructive
+migration, Journal rewrite, running-backend restart or terminal operation.
+
+Changed: `backend/app/brokers/mt5_execution_ledger.py` and this document.
+New: `backend/tests/test_mt5_execution_attempts.py`.
+
+Verification: all `tests/test_mt5*.py`: **301 passed**, 29.54s, including 17 new
+attempt tests (one actual subprocess-death case). Existing Starlette warning only.
+`git diff --check` passed. Frontend unchanged; no new frontend build or full-backend
+run for this bounded internal change. No provider calls or orders were submitted.
+
+These are **internal persistence primitives, not a working submission gateway**.
+There is no native send call, public submission endpoint or arming path.
+`authorize_submission` remains unconditionally disabled. Still required: compose
+authorization, fresh native preparation, reconciled account risk, attempt marker
+and broker transport; validate exact request provenance; implement account-wide
+recovery and protection management; then mocked end-to-end and demo acceptance.
+The previously recorded server DST/timestamp blocker and later roadmap remain.

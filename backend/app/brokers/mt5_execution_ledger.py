@@ -58,6 +58,10 @@ class MT5ExecutionLedger:
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_reconciliations(
                 id TEXT PRIMARY KEY, intent_id TEXT NOT NULL REFERENCES mt5_execution_intents(id),
                 document TEXT NOT NULL)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_attempts(
+                id TEXT PRIMARY KEY, intent_id TEXT NOT NULL UNIQUE REFERENCES mt5_execution_intents(id),
+                account_key TEXT NOT NULL, broker_order_id TEXT, document TEXT NOT NULL,
+                UNIQUE(account_key, broker_order_id))''')
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_account_guards(
                 account_key TEXT PRIMARY KEY, owner TEXT NOT NULL, token TEXT NOT NULL,
                 state TEXT NOT NULL, created_at TEXT NOT NULL)''')
@@ -180,6 +184,84 @@ class MT5ExecutionLedger:
                 'SELECT document FROM mt5_execution_reconciliations WHERE intent_id=? ORDER BY rowid DESC LIMIT ?',
                 (intent_id, limit))]
 
+    def begin_attempt(self, intent_id, *, guard_token):
+        """Write-ahead uncertainty marker; grants NO permission to call MT5.
+
+        Internal future gateway primitive. Authorization, fresh risk checks and
+        terminal locks remain separate mandatory gates. Never resend an existing
+        attempt, including one with no receipt after process death.
+        """
+        self._manual_only()
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_intents WHERE id=?', (intent_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution intent')
+            intent = json.loads(row[0])
+            if intent['environment'] != 'demo' or intent['state'] != 'DRAFT':
+                raise ValueError('Attempt requires an unused demo draft')
+            guard = c.execute('''SELECT 1 FROM mt5_execution_account_guards
+                WHERE account_key=? AND owner=? AND token=? AND state='HELD' ''',
+                (intent['account_key'], self.owner, guard_token)).fetchone()
+            if not guard:
+                raise ValueError('Attempt requires the current account guard')
+            policy = json.loads(c.execute('SELECT document FROM mt5_execution_policies WHERE id=?',
+                                         (intent['policy_id'],)).fetchone()[0])
+            if policy['status'] == 'EMERGENCY_STOP':
+                raise ValueError('MT5 emergency stop is active')
+            attempt = dict(id=str(uuid4()), intent_id=intent_id, account_key=intent['account_key'],
+                           state='SUBMISSION_UNCERTAIN', receipt=None, execution_enabled=False,
+                           created_at=datetime.now(timezone.utc).isoformat())
+            c.execute('INSERT INTO mt5_execution_attempts VALUES(?,?,?,?,?)',
+                      (attempt['id'], intent_id, intent['account_key'], None, encoded(attempt)))
+            intent['state'] = 'SUBMISSION_UNCERTAIN'
+            c.execute('UPDATE mt5_execution_intents SET document=? WHERE id=?', (encoded(intent), intent_id))
+            c.execute("UPDATE mt5_execution_account_guards SET state='RECONCILIATION_REQUIRED' WHERE account_key=?",
+                      (intent['account_key'],))
+            return attempt
+
+    def record_attempt_receipt(self, attempt_id, *, guard_token, retcode, broker_order_id=None):
+        """Store native numeric evidence only, never infer fill/retry from codes."""
+        self._manual_only()
+        if type(retcode) is not int or not 0 <= retcode <= 2147483647:
+            raise ValueError('Invalid broker return code')
+        if broker_order_id is not None and (not isinstance(broker_order_id, str)
+                or not broker_order_id.isascii() or not broker_order_id.isdigit()
+                or not 1 <= len(broker_order_id) <= 20 or int(broker_order_id) <= 0):
+            raise ValueError('Invalid broker order ticket')
+        # Canonical numeric tickets cannot bypass account-wide uniqueness with zeros.
+        broker_order_id = str(int(broker_order_id)) if broker_order_id else None
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_attempts WHERE id=?', (attempt_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution attempt')
+            attempt = json.loads(row[0])
+            if not c.execute('''SELECT 1 FROM mt5_execution_account_guards WHERE
+                    account_key=? AND owner=? AND token=? AND state='RECONCILIATION_REQUIRED' ''',
+                    (attempt['account_key'], self.owner, guard_token)).fetchone():
+                raise ValueError('Receipt requires the original account guard')
+            receipt = dict(retcode=retcode, broker_order_id=broker_order_id)
+            if attempt['receipt'] is not None:
+                if attempt['receipt'] != receipt:
+                    raise ValueError('Broker receipt is immutable; reconciliation required')
+                return attempt
+            if broker_order_id and c.execute('''SELECT 1 FROM mt5_execution_attempts
+                    WHERE account_key=? AND broker_order_id=? AND id<>?''',
+                    (attempt['account_key'], broker_order_id, attempt_id)).fetchone():
+                raise ValueError('Broker order is already linked to another attempt')
+            attempt['receipt'] = receipt
+            c.execute('UPDATE mt5_execution_attempts SET broker_order_id=?,document=? WHERE id=?',
+                      (broker_order_id, encoded(attempt), attempt_id))
+            return attempt
+
+    def attempt(self, intent_id):
+        with self.database.connect() as c:
+            row = c.execute('SELECT document FROM mt5_execution_attempts WHERE intent_id=?', (intent_id,)).fetchone()
+            return json.loads(row[0]) if row else None
+
     def assess_risk(self, policy_id, facts, proposed, *, now_ms, session_key, max_session_trades=1):
         """Persist diagnostic acceptance/rejection, without arming or reserving.
 
@@ -257,7 +339,11 @@ class MT5ExecutionLedger:
                     WHERE account_key=? AND owner=? AND token=? AND state='HELD'""",
                     (account, self.owner, token)).rowcount
                 if deleted != 1:
-                    raise ValueError('MT5 account authority changed; broker reconciliation required')
+                    retained = c.execute('''SELECT 1 FROM mt5_execution_account_guards
+                        WHERE account_key=? AND owner=? AND token=? AND state='RECONCILIATION_REQUIRED' ''',
+                        (account, self.owner, token)).fetchone()
+                    if not retained:
+                        raise ValueError('MT5 account authority changed; broker reconciliation required')
 
     def account_guard_status(self, policy_id):
         with self.database.connect() as c:
