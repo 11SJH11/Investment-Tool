@@ -98,7 +98,9 @@ No pre-existing parent folders have been deleted.
    model Critic/Manager and secure structural research. Do not weaken holdouts.
 5. Live Backtest Preview, existing Replay and causal per-trade evidence improvements.
 6. Measured performance, concurrent storage diagnostics, unified notifications and
-   safe artifact cleanup. The existing `[storage]` failures are not yet diagnosed.
+   safe artifact cleanup. SQLite progress contention is repaired (see 21 October
+   closeout below); the original historical exception was not retained, and
+   full-range performance remains a separate investigation.
 7. Later live-money/MQL5/distributed/hosting roadmap remains deferred behind demo.
 
 Use the existing Windows launcher for ordinary local use. Do not use the isolated
@@ -496,5 +498,42 @@ New: `backend/tests/test_backtest_progress_contention.py`.
 
 Activate by restarting the backend normally when no user run/campaign is active,
 then retry the failed job. Do not delete the database/cache or historical results.
-The running user backend was not restarted by this repair. Broader roadmap remains
-paused until this focused fix is handed back, as requested.
+The running user backend was not restarted by this repair. The user subsequently
+requested resumption of the broader roadmap after this focused repair.
+
+### 21 October: durable MT5 reconciliation observations
+
+Resumed CP2 after storage repair `d2ad68b`. The existing positive-evidence
+classifier now has an internal durable recording interface on MT5ExecutionLedger.
+Observations are attached to a known intent, deduplicated by their allowlisted
+content, and retained across restart. Partial/closed, conflicting and incomplete
+observations remain inspectable with bounded history reads. Old process writers
+are fenced; Research Agent callers cannot write observations. Native provider
+metadata/comments are not copied into this log.
+
+Additive initialization creates `mt5_execution_reconciliations` (id, intent_id,
+document). No existing rows are rewritten, no Journal records are touched, and
+the running user's database has not been initialized or migrated during testing.
+
+This is diagnostic evidence, **not verified attribution or submission authority**.
+A draft matching a broker order is not proof that Ledger submitted it. Thus a
+positive result never changes a draft's state, enables a policy, clears an
+account guard, or permits retries. No public API accepts broker facts. The future
+gateway must supply a durably established order identity and complete snapshot.
+
+Changed: `backend/app/brokers/mt5_execution_ledger.py` and this handoff.
+New: `backend/tests/test_mt5_durable_reconciliation.py`.
+
+Verification: all `tests/test_mt5*.py` on this final tree: **284 passed**, 32.53s,
+including 15 new durable-observation cases. Existing Starlette deprecation warning
+only. `git diff --check` passed. Frontend unchanged; no new build/browser run.
+The prior full-backend result (1,780 passed, 41 skipped) predates this addition;
+it is not presented as full-suite verification of this tree.
+
+Remaining: serialized submission/uncertainty state machine, authoritative broker
+identity linkage and account-wide recovery, integration of native preparation and
+risk observations, protection management, mocked end-to-end gateway acceptance,
+then demo-terminal dry run and explicit authorization. The server-specific DST
+transition rule remains unverified; no fixed UTC+3 conversion was introduced.
+CP2 is not complete. T01 deployment, screenshots and Algo Trading follow in the
+previously recorded order. No orders, account switches or terminal changes made.

@@ -55,6 +55,9 @@ class MT5ExecutionLedger:
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_risk_assessments(
                 id TEXT PRIMARY KEY, policy_id TEXT NOT NULL REFERENCES mt5_execution_policies(id),
                 document TEXT NOT NULL)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_reconciliations(
+                id TEXT PRIMARY KEY, intent_id TEXT NOT NULL REFERENCES mt5_execution_intents(id),
+                document TEXT NOT NULL)''')
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_account_guards(
                 account_key TEXT PRIMARY KEY, owner TEXT NOT NULL, token TEXT NOT NULL,
                 state TEXT NOT NULL, created_at TEXT NOT NULL)''')
@@ -126,6 +129,56 @@ class MT5ExecutionLedger:
     def intents(self,policy_id):
         with self.database.connect() as c:
             return [json.loads(r[0]) for r in c.execute('SELECT document FROM mt5_execution_intents WHERE policy_id=? ORDER BY rowid',(policy_id,))]
+
+    def record_reconciliation(self, intent_id, executions, open_positions, *,
+                              broker_order_id, account_key, environment, complete,
+                              observed_at_ms):
+        """Persist backend broker evidence, not submission/attribution authority.
+
+        The caller owns terminal locks and establishes snapshot completeness.
+        A matching order alone does not prove this draft submitted it. Therefore
+        observations never promote intent state, clear guards, or arm policies.
+        There is deliberately no public endpoint accepting these facts.
+        """
+        from app.brokers.mt5_execution_reconciliation import reconcile_order
+
+        self._manual_only()
+        if type(observed_at_ms) is not int or observed_at_ms <= 0:
+            raise ValueError('Invalid reconciliation observation timestamp')
+        if broker_order_id is not None and (not isinstance(broker_order_id, str)
+                or not broker_order_id.isascii() or not broker_order_id.isdigit()
+                or not 1 <= len(broker_order_id) <= 20 or int(broker_order_id) <= 0):
+            raise ValueError('Invalid broker order ticket')
+        executions = list(executions)
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_intents WHERE id=?', (intent_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution intent')
+            intent = json.loads(row[0])
+            decision = reconcile_order(intent, executions, open_positions,
+                broker_order_id=broker_order_id, account_key=account_key,
+                environment=environment, complete=complete)
+            # Persist only allowlisted classifier output. Native metadata,
+            # comments, account logins and provider errors never enter this log.
+            record = dict(intent_id=intent_id, broker_order_id=broker_order_id,
+                          observed_at_ms=observed_at_ms, decision=decision,
+                          execution_count=len(executions), complete=complete is True,
+                          execution_enabled=False, attribution_verified=False)
+            identifier = sha256(encoded(record).encode()).hexdigest()
+            record['id'] = identifier
+            c.execute('INSERT OR IGNORE INTO mt5_execution_reconciliations VALUES(?,?,?)',
+                      (identifier, intent_id, encoded(record)))
+            return record
+
+    def reconciliations(self, intent_id, *, limit=100):
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError('Reconciliation limit must be between 1 and 1000')
+        with self.database.connect() as c:
+            return [json.loads(r[0]) for r in c.execute(
+                'SELECT document FROM mt5_execution_reconciliations WHERE intent_id=? ORDER BY rowid DESC LIMIT ?',
+                (intent_id, limit))]
 
     def assess_risk(self, policy_id, facts, proposed, *, now_ms, session_key, max_session_trades=1):
         """Persist diagnostic acceptance/rejection, without arming or reserving.
