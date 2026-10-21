@@ -574,3 +574,41 @@ authorization, fresh native preparation, reconciled account risk, attempt marker
 and broker transport; validate exact request provenance; implement account-wide
 recovery and protection management; then mocked end-to-end and demo acceptance.
 The previously recorded server DST/timestamp blocker and later roadmap remain.
+
+### 21 October: guarded read-only coordinator
+
+Continued from `8abad42`. New internal `mt5_execution_coordinator.inspect_intent`
+composes existing native preparation, immutable draft checks, account-wide risk
+observation and persisted risk assessment under the durable account guard.
+It accepts no frontend-supplied exposure, loss totals or reconciliation flag.
+The caller must already own the terminal/profile lifecycle locks; this helper
+does not initialize or switch terminals and is not a public endpoint.
+
+Fresh price/quantity must match the stored draft exactly. Rejected broker checks
+produce a diagnostic rejection without inventing an assessment. Missing history,
+account mismatch, quote expiry and changed sizing fail closed. Manual positions
+consume the same account risk budget. Uncertain attempts from other strategies
+on the same account are counted from durable storage. Until proper session
+attribution exists, all historical attempts for that strategy are conservatively
+counted; this basis is explicitly returned, not represented as session accuracy.
+
+Successful diagnostics retain `reconciled=False` and `execution_enabled=False`.
+They do not create submission attempts, alter drafts, clear recovery guards or
+call order_send. No arming controls were added. As with existing guard operations,
+a failed diagnostic retains the account for recovery; an ordinary completed
+diagnostic releases its guard. This conservative behavior needs the forthcoming
+explicit recovery path before exposing the helper to normal users.
+
+New files: `backend/app/brokers/mt5_execution_coordinator.py`,
+`backend/tests/test_mt5_execution_coordinator.py`. Updated this handoff.
+No database migration, frontend change, terminal operation or real order.
+
+Verification: all `tests/test_mt5*.py`: **313 passed**, 45.40s, including 12 new
+coordinator tests. Existing Starlette warning only; `git diff --check` passed.
+Full backend/frontend suites and frontend build were not rerun for this internal
+addition. Previous full-suite results must not be treated as results for this tree.
+
+Still remaining: verified timestamp/session interpretation, complete account
+reconciliation/recovery, authorized broker submission orchestration and protection
+management, then end-to-end demo acceptance. CP2 remains incomplete; no claim
+that T01 is running. Later deployment, screenshot and Algo Trading work is unchanged.
