@@ -14,7 +14,7 @@ def inspect_intent(adapter, ledger, policy_id, intent_id, *, risk_percent,
     ledger._manual_only()
     if not isinstance(session_key, str) or not 1 <= len(session_key) <= 128:
         raise ValueError('Invalid execution session identity')
-    with ledger.account_guard(policy_id):
+    with ledger.account_guard(policy_id, read_only=True):
         policies = ledger.policies()
         policy = next(p['policy'] for p in policies if p['id'] == policy_id)
         intent = next((i for i in ledger.intents(policy_id) if i['id'] == intent_id), None)

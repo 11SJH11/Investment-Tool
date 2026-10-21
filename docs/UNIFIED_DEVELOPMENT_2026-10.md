@@ -612,3 +612,36 @@ Still remaining: verified timestamp/session interpretation, complete account
 reconciliation/recovery, authorized broker submission orchestration and protection
 management, then end-to-end demo acceptance. CP2 remains incomplete; no claim
 that T01 is running. Later deployment, screenshot and Algo Trading work is unchanged.
+
+### 21 October: recover finished read-only diagnostic failures
+
+Continued from `1169895`. The coordinator now explicitly acquires a read-only
+account guard. `begin_attempt` rejects such guards at the durable ledger boundary.
+Finished failed checks retain typed evidence, so the internal
+`recover_failed_diagnostic` method can release their guard without pretending to
+reconcile a submitted order. Recovery is explicit, transactional, owner-fenced
+and audited; it does not arm policies or undo emergency stop.
+
+Recovery refuses active checks, interrupted checks without finished-failure
+evidence, legacy/untyped guards, live policies, Research callers and accounts
+with any durable attempt (including another strategy's). No elapsed-time expiry
+or generic force-unlock was introduced. A normally completed diagnostic removes
+its temporary marker; failed/recovered markers remain available for audit.
+
+Additive initialization table: `mt5_execution_readonly_guards` with token,
+account_key, state, created_at and recovered_at. Existing guards are not backfilled
+as safe. Running user data/terminal were not changed or restarted. No API endpoint,
+frontend change, broker order or account switch.
+
+Changed: `backend/app/brokers/mt5_execution_ledger.py`,
+`backend/app/brokers/mt5_execution_coordinator.py`, this handoff.
+New: `backend/tests/test_mt5_diagnostic_recovery.py`.
+
+Verification: all `tests/test_mt5*.py`: **322 passed**, 34.03s, including nine new
+recovery tests. Existing Starlette warning only. `git diff --check` passed.
+Frontend unchanged; no new production build or full-backend run for this step.
+
+Remaining: recovery for potentially submitted orders still requires authoritative
+broker reconciliation; this diagnostic recovery is not that acceptance. Actual
+submission, protection management, verified server timing and T01 deployment
+remain disabled/incomplete, followed by screenshots and Algo Trading as before.

@@ -65,6 +65,9 @@ class MT5ExecutionLedger:
             c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_account_guards(
                 account_key TEXT PRIMARY KEY, owner TEXT NOT NULL, token TEXT NOT NULL,
                 state TEXT NOT NULL, created_at TEXT NOT NULL)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS mt5_execution_readonly_guards(
+                token TEXT PRIMARY KEY, account_key TEXT NOT NULL, state TEXT NOT NULL,
+                created_at TEXT NOT NULL, recovered_at TEXT)''')
             c.execute('BEGIN IMMEDIATE')
             # A crash can occur after a broker accepted a request but before its
             # response was saved. Never expire or silently steal that authority.
@@ -206,6 +209,8 @@ class MT5ExecutionLedger:
                 (intent['account_key'], self.owner, guard_token)).fetchone()
             if not guard:
                 raise ValueError('Attempt requires the current account guard')
+            if c.execute('SELECT 1 FROM mt5_execution_readonly_guards WHERE token=?', (guard_token,)).fetchone():
+                raise ValueError('Read-only diagnostics cannot begin submission attempts')
             policy = json.loads(c.execute('SELECT document FROM mt5_execution_policies WHERE id=?',
                                          (intent['policy_id'],)).fetchone()[0])
             if policy['status'] == 'EMERGENCY_STOP':
@@ -298,7 +303,7 @@ class MT5ExecutionLedger:
                 (policy_id, limit))]
 
     @contextmanager
-    def account_guard(self, policy_id):
+    def account_guard(self, policy_id, *, read_only=False):
         """Serialize future gateway operations across strategies and processes.
 
         This grants no trading permission. An interrupted/failed operation keeps
@@ -306,6 +311,8 @@ class MT5ExecutionLedger:
         takeover. No database transaction is held during broker IO.
         """
         self._manual_only()
+        if type(read_only) is not bool:
+            raise ValueError('Invalid account guard mode')
         token = str(uuid4())
         with self.database.connect() as c:
             c.execute('BEGIN IMMEDIATE')
@@ -321,6 +328,9 @@ class MT5ExecutionLedger:
                 raise ValueError('MT5 account busy or awaiting broker reconciliation')
             c.execute('INSERT INTO mt5_execution_account_guards VALUES(?,?,?,?,?)',
                       (account, self.owner, token, 'HELD', datetime.now(timezone.utc).isoformat()))
+            if read_only:
+                c.execute('INSERT INTO mt5_execution_readonly_guards VALUES(?,?,?,?,NULL)',
+                          (token, account, 'ACTIVE', datetime.now(timezone.utc).isoformat()))
         try:
             yield token
         except BaseException:
@@ -330,6 +340,8 @@ class MT5ExecutionLedger:
                 c.execute('BEGIN IMMEDIATE')
                 c.execute("""UPDATE mt5_execution_account_guards SET state='RECONCILIATION_REQUIRED'
                              WHERE account_key=? AND owner=? AND token=?""", (account, self.owner, token))
+                if read_only:
+                    c.execute("UPDATE mt5_execution_readonly_guards SET state='FAILED' WHERE token=? AND state='ACTIVE'", (token,))
             raise
         else:
             with self.database.connect() as c:
@@ -344,6 +356,39 @@ class MT5ExecutionLedger:
                         (account, self.owner, token)).fetchone()
                     if not retained:
                         raise ValueError('MT5 account authority changed; broker reconciliation required')
+                elif read_only:
+                    c.execute('DELETE FROM mt5_execution_readonly_guards WHERE token=?', (token,))
+
+    def recover_failed_diagnostic(self, policy_id):
+        """Release only a finished read-only failure, never broker uncertainty.
+
+        Legacy/untyped guards, active or killed diagnostics, and any account with
+        attempts remain blocked. This grants no execution permission and performs
+        no broker operations. Recovery evidence is retained for audit.
+        """
+        self._manual_only()
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            self._owns(c)
+            row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution policy')
+            policy = json.loads(row[0])['policy']
+            if policy['environment'] != 'demo':
+                raise ValueError('Diagnostic recovery requires a demo policy')
+            account = policy['account_key']
+            guard = c.execute('SELECT token,state FROM mt5_execution_account_guards WHERE account_key=?', (account,)).fetchone()
+            if not guard:
+                return dict(status='already_idle', execution_enabled=False)
+            evidence = c.execute('SELECT state FROM mt5_execution_readonly_guards WHERE token=? AND account_key=?',
+                                 (guard['token'], account)).fetchone()
+            if (guard['state'] != 'RECONCILIATION_REQUIRED' or not evidence or evidence['state'] != 'FAILED'
+                    or c.execute('SELECT 1 FROM mt5_execution_attempts WHERE account_key=?', (account,)).fetchone()):
+                raise ValueError('Broker reconciliation required; no recoverable read-only failure')
+            c.execute("UPDATE mt5_execution_readonly_guards SET state='RECOVERED',recovered_at=? WHERE token=?",
+                      (datetime.now(timezone.utc).isoformat(), guard['token']))
+            c.execute('DELETE FROM mt5_execution_account_guards WHERE account_key=? AND token=?', (account, guard['token']))
+            return dict(status='diagnostic_recovered', execution_enabled=False)
 
     def account_guard_status(self, policy_id):
         with self.database.connect() as c:
