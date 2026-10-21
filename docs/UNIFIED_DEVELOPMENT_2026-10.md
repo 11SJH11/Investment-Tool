@@ -672,6 +672,31 @@ No full-backend/frontend rerun or build for this internal change.
 Remaining: broker snapshot/recovery orchestration, submission/protection workflow,
 verified server-time transition rule, then T01 acceptance and later roadmap.
 
+### 21 October: broker recovery snapshot verification
+
+Added `backend/app/brokers/mt5_recovery_snapshot.py` and 19 tests in
+`backend/tests/test_mt5_recovery_snapshot.py`. Uses canonical MT5 execution
+history with two matching observations of executions, positions and pending
+orders; bounded counts/time and account/UTC timestamp checks fail closed.
+Receipt-bound observations can now be collected for all attempts on the selected
+account. No account release, submission, terminal switching or Journal writes.
+
+Final full verification: **1,861 backend passed, 41 skipped**, 564.79s;
+**139 frontend passed**; isolated production build **passed**, 168 modules,
+exit 0. The first build encountered intermittent resolution of an existing
+watchlist.js; retries passed without source changes. Existing chunk-size and
+Starlette warnings remain. Logs: `.ledger-test-artifacts/logs/mt5-recovery-*`.
+No new browser/Docker acceptance was performed in this step.
+
+The user has added a Research Agent audit/progress brief. Read-only inspection at
+18:14 UTC found campaign `15b7318e-94d7-4585-bbc6-1f1f4336dee8` already terminal:
+DEVELOPMENT_COMPLETE, but its sole family FAILED with baseline_compute_deadline.
+Job `49b0af9a-df72-48dd-ad1b-f6a059f46c72` was cancelled at 209,408/790,767 bars,
+no saved run. The coordinator recorded failure at 17:52:10 UTC and completion at
+17:52:15 UTC. No user campaign was cancelled/restarted/edited by this inspection.
+New work must distinguish failed closeout from success and expose actual job
+progress without touching campaign assumptions or holdout.
+
 Remaining: recovery for potentially submitted orders still requires authoritative
 broker reconciliation; this diagnostic recovery is not that acceptance. Actual
 submission, protection management, verified server timing and T01 deployment
