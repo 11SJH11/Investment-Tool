@@ -1,8 +1,10 @@
 import {useEffect,useRef,useState} from 'react';
 import {api} from '../../api/client';
-import {campaignActions,campaignIsRunning,campaignValidationPending,campaignPayload} from './campaignView.js';
+import {campaignActions,campaignPayload,campaignDisplayStatus} from './campaignView.js';
+import {pollCampaign} from './campaignPolling.js';
 import ResearchSearchHistory from './ResearchSearchHistory.jsx';
 import SandboxTimeline from './SandboxTimeline.jsx';
+import CampaignProgress from './CampaignProgress.jsx';
 import FeatureAblation from './FeatureAblation.jsx';
 import {CampaignRegimeForm,CampaignRegimeReport} from './CampaignRegimes.jsx';
 
@@ -15,16 +17,15 @@ export default function AutonomousResearch({strategies}){
  const [form,setForm]=useState(defaults),[intensity,setIntensity]=useState('STANDARD'),[policies,setPolicies]=useState(null);
  const [items,setItems]=useState([]),[selected,setSelected]=useState(''),[report,setReport]=useState(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[consent,setConsent]=useState(false);
+ const [connection,setConnection]=useState(null);
  const key=useRef(null),pending=useRef(null);
  const field=(name,value)=>{setForm(current=>({...current,[name]:value}));setConsent(false);};
  useEffect(()=>{let alive=true;Promise.all([api.researchCampaignPolicy(),api.researchCampaigns()]).then(([p,r])=>{
   if(alive){setPolicies(p);setItems(r.items);setSelected(r.items[0]?.id||'');}
  }).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[]);
- useEffect(()=>{if(!selected)return;let alive=true,timer;
-  const poll=async()=>{try{const result=await api.researchCampaign(selected);if(!alive)return;setReport(result);
-   if(campaignIsRunning(result.campaign.status)||campaignValidationPending(result.campaign))timer=setTimeout(poll,2500);
-  }catch(e){if(alive)setError(e.message);}};
-  setReport(null);poll();return()=>{alive=false;clearTimeout(timer);};
+ useEffect(()=>{if(!selected)return;
+  setReport(null);setConnection(null);
+  return pollCampaign({fetchReport:()=>api.researchCampaign(selected),onReport:setReport,onConnection:setConnection});
  },[selected,busy]);
  const launch=async()=>{setBusy(true);setError('');try{
   key.current ||= crypto.randomUUID();
@@ -38,6 +39,10 @@ export default function AutonomousResearch({strategies}){
  return <section className="mt-5 space-y-4 min-w-0" aria-label="Autonomous research campaigns">
   <header><h3 className="text-xl font-semibold">Research campaigns</h3><p className="text-sm muted mt-2">Prepare chronological data, run registered strategy families and inspect development evidence. The backend continues after you close this page. Nothing is deployed or traded.</p></header>
   {error&&<p role="alert">{error}</p>}
+  {connection&&<p role={connection.error?'status':undefined} className="text-sm muted">
+   {connection.lastSuccess?`Last refreshed ${new Date(connection.lastSuccess).toISOString()}`:'No report received yet'}
+   {connection.error&&` · Displayed data may be stale. ${connection.error}. Retrying in ${connection.retryMs/1000}s.`}
+  </p>}
   <details className="insight-panel" open={!selected}><summary>Start a bounded campaign</summary>
    <fieldset disabled={busy||Boolean(pending.current)} className="mt-3 space-y-3">
     {form.model&&form.structural&&policy?.structural_simplification==='single_feature_ablation_v1'&&<p className="text-xs muted">Single-feature simplification is required: if the added feature improves expectancy in none of the paired development checks, retain the simpler parent. Existing Docker controls supply the evidence; no additional simulations or holdout use.</p>}
@@ -63,7 +68,7 @@ export default function AutonomousResearch({strategies}){
    {pending.current&&<p className="text-xs muted mt-2">The pending request is frozen to prevent duplicate paid work. Retry preserves its identity.</p>}
   </details>
   <label className="block">Campaign<select className="input" value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Select campaign</option>{items.map(c=><option key={c.id} value={c.id}>{c.request.prompt||c.request.mode} · {c.created_at}</option>)}</select></label>
-  {campaign&&<><article className="insight-panel"><h4 className="font-semibold">{campaign.status.replaceAll('_',' ')}</h4>
+  {campaign&&<><article className="insight-panel"><h4 className="font-semibold">{campaignDisplayStatus(report).replaceAll('_',' ')}</h4>
    <p className="text-sm muted mt-2">{report.worker.running?'Backend coordinator running':'Backend coordinator is not running'}{report.worker.error?' · '+report.worker.error:''}</p>
    {campaign.last_error&&<p role="alert">{campaign.last_error_detail?.message||`${campaign.last_error}. Check history coverage, model configuration and budget allowances before creating a new campaign.`}</p>}
    <div className="ui-toolbar mt-3">{campaignActions(campaign.status).map(action=><button className="mini-btn" disabled={busy} key={action} onClick={()=>control(action)}>{action.replaceAll('_',' ')}</button>)}</div>
@@ -72,6 +77,7 @@ export default function AutonomousResearch({strategies}){
    {campaign.execution?.validation_contract&&<div className="mt-3"><p className="text-sm">Policy-authorized validation: {campaign.validation?.status||'Pending selection'} {campaign.validation?.validation_status||''} {campaign.validation?.verdict||''}</p>{campaign.validation?.reason&&<p className="text-xs muted">{campaign.validation.reason.replaceAll('_',' ')}</p>}<p className="text-xs muted">One frozen candidate only. A validation pass does not accept or deploy a strategy.</p>{campaign.validation?.status==='ACTIVE'&&campaign.validation?.validation_id&&<button className="mini-btn" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await api.researchProjectAction(campaign.validation.project_id,`validations/${campaign.validation.validation_id}/cancel-isolated`,{});}catch(e){setError(e.message);}finally{setBusy(false);}}}>Cancel candidate validation</button>}</div>}
    {campaign.preparation&&<p className="text-sm mt-2">History preparation: {campaign.preparation.status} · Fixed deadline {campaign.preparation.deadline}</p>}
   </article>
+  <CampaignProgress progress={report.progress}/>
   <article className="insight-panel"><h4 className="font-semibold">Research report</h4><div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Family','Progress','Baseline N','Baseline avg R','Child N','Finding'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{report.morning_report.families.map(f=><tr key={f.project_id}><td className="p-2">{f.family_id}</td><td className="p-2">{f.state}</td><td className="p-2">{f.baseline_summary?.n??'—'}</td><td className="p-2">{number(f.baseline_summary?.average_r)}</td><td className="p-2">{f.child_summary?.n??'—'}</td><td className="p-2">{f.verdict}{f.reason&&<p>{f.reason}</p>}{f.warnings.map(w=><p key={w} className="muted mt-1">{w}</p>)}</td></tr>)}</tbody></table></div>
    {report.morning_report.conclusions.map(t=><p className="text-xs muted mt-2" key={t}>{t}</p>)}
    {report.morning_report.families.filter(f=>f.sandbox_id).map(f=><details key={f.project_id} className="mt-3" open={f.sandbox_status==='RUNNING'}><summary>{f.family_id}: Docker execution / {f.sandbox_status}</summary><p className="text-xs muted">Recorded worker events; coordinator activity alone does not indicate execution progress. Durations are elapsed within each check.</p>{f.sandbox_error&&<p role="alert">{f.sandbox_error}</p>}<SandboxTimeline run={f}/></details>)}

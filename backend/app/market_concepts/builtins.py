@@ -42,8 +42,7 @@ def structure(frame,params,dependencies):
 
 def gaps(frame,params,dependencies):
     output=[]
-    for i in range(2,len(frame)):
-        a,c=frame.iloc[i-2],frame.iloc[i]
+    for a,c in zip(frame.itertuples(index=False),frame.iloc[2:].itertuples(index=False)):
         if c.low>a.high:lower,upper,label=float(a.high),float(c.low),'bullish_fvg'
         elif c.high<a.low:lower,upper,label=float(c.high),float(a.low),'bearish_fvg'
         else:continue

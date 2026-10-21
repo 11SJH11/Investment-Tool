@@ -1,6 +1,7 @@
 export const LAUNCH_CONSENT='Authorize this bounded campaign, provider preparation and the selected model/code permissions';
 export const campaignActions=status=>status==='PAUSED'?['resume','cancel']:status==='ACTIVE'?['pause','stop_after_current','cancel']:['PREPARING','STOPPING'].includes(status)?['pause','cancel']:['DRAFT','PREPARED'].includes(status)?['cancel']:[];
 export const campaignIsRunning=status=>['DRAFT','PREPARING','PREPARED','ACTIVE','STOPPING'].includes(status);
+export const campaignDisplayStatus=report=>report?.progress?.outcome??report?.campaign?.status??'Unavailable';
 export const campaignValidationPending=campaign=>campaign?.status==='DEVELOPMENT_COMPLETE'&&!!campaign.execution?.validation_contract&&(!campaign.validation||['RESERVED','ACTIVE'].includes(campaign.validation.status));
 
 export function campaignPayload(form,policy,requestKey){

@@ -697,7 +697,37 @@ no saved run. The coordinator recorded failure at 17:52:10 UTC and completion at
 New work must distinguish failed closeout from success and expose actual job
 progress without touching campaign assumptions or holdout.
 
+### Current continuation: Research Agent audit and progress
+
+See [the current audit/evidence and remaining-work list](RESEARCH_AGENT_AUDIT_2026-10-21.md).
+First monitoring slice implemented: real baseline/reference queue progress,
+terminal family failure outcome, conservative suspected-stall indication, no fake
+ETA. 75 focused backend tests, 141 frontend tests and production build passed.
+The full technical audit, operation/activity monitoring and performance diagnosis
+are still in progress. User campaigns and running services were not restarted.
+The separate MT5 clock probe confirmed advancing ticks around +3 hours, but did
+not verify a DST schedule or grant execution permission.
+
 Remaining: recovery for potentially submitted orders still requires authoritative
 broker reconciliation; this diagnostic recovery is not that acceptance. Actual
 submission, protection management, verified server timing and T01 deployment
 remain disabled/incomplete, followed by screenshots and Algo Trading as before.
+
+### 2026-10-22 verification and reconnect checkpoint
+
+Full backend verification completed: **1,898 passed, 41 skipped** (585.20s).
+The nine newer clock-diagnostic tests passed separately. Current frontend:
+**144 passed**, production build passed on retry; existing chunk warning and
+intermittent Windows resolver issue remain. Four real Docker smoke tests passed;
+no Ledger containers remained, and unrelated stopped containers were untouched.
+Production fixture browser checks passed at 390/1024/1440/1920px before the
+subsequent reconnect repair. See the audit document above for evidence scope.
+
+The FVG detector now avoids per-row pandas Series creation, with 26 parity tests;
+the measured speedup applies only to the isolated detector, not an entire campaign.
+Campaign report polling now survives transient failures with bounded serial
+backoff, last-refresh time and a stale-data warning. No campaign mutation retries.
+The read-only MT5 clock CLI measures a current offset, never authorizes execution
+or asserts an unobserved DST transition rule. No schema migration or user backend
+restart was performed. Research audit/operation instrumentation and the broader
+MT5/screenshots/Algo dashboard roadmap remain incomplete.

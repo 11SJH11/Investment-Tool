@@ -250,6 +250,7 @@ class Campaigns:
 
     def report(self, identifier):
         from .campaign_report import evidence_report
+        from .campaign_progress import baseline_progress
         with self.database.connect() as c:
             item = self._get(c, identifier)
             actions = [json.loads(r[0]) for r in c.execute('SELECT document FROM agent_campaign_actions WHERE campaign_id=? ORDER BY rowid', (identifier,))]
@@ -261,6 +262,7 @@ class Campaigns:
         execution = item.get('execution') or {}
         entries = execution.get('entries', [])
         return dict(campaign=item, actions=actions, events=events, morning_report=evidence_report(self.database,item),
+                    progress=baseline_progress(self.database, item),
                     summary={'actions_reserved': len(actions),
                              'actions_completed': sum(a['status'] == 'COMPLETED' for a in actions),
                              'budget_reserved': item['reserved'],
