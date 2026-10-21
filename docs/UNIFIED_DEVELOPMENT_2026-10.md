@@ -641,6 +641,37 @@ Verification: all `tests/test_mt5*.py`: **322 passed**, 34.03s, including nine n
 recovery tests. Existing Starlette warning only. `git diff --check` passed.
 Frontend unchanged; no new production build or full-backend run for this step.
 
+### 21 October: demo permissions and receipt-bound recovery evidence
+
+Read-only native verification against the exact separate terminal
+`C:\Program Files\Trade Quo MT5 Terminal\terminal64.exe` confirmed demo mode,
+connected=true, terminal trade_allowed=true, tradeapi_disabled=false, account
+trade_allowed=true and trade_expert=true. No login/account changes, orders or
+settings changes. Native shutdown closed the Python connection, not the terminal.
+**MT5 Algo Trading permission is enabled; Ledger automated submission is not.**
+T01 is not running merely because these native permission flags are enabled.
+
+Added internal `reconcile_attempt`: order identity comes only from the immutable
+stored attempt receipt. No caller-supplied replacement ticket is accepted. Missing
+receipts/order IDs remain unresolved even when other matching-looking fills exist.
+The canonical classifier still checks account/environment, fills and protection.
+Observation history and the attempt's latest observation pointer are saved in one
+transaction. Older snapshots remain in history without replacing the newer pointer.
+Restart preserves this evidence and fences the previous writer.
+
+This does not release account guards, change uncertain attempts into authorized
+retries, or claim verified attribution. Complete/fresh broker snapshot collection
+and account-wide recovery remain required; a closed/protected observation alone
+does not prove those broader conditions. No new schema or frontend changes.
+
+Changed: `backend/app/brokers/mt5_execution_ledger.py`, this handoff.
+New: `backend/tests/test_mt5_attempt_reconciliation.py`.
+Verification: all `tests/test_mt5*.py`: **331 passed**, 37.16s, including nine new
+receipt-bound cases; existing Starlette warning only. `git diff --check` passed.
+No full-backend/frontend rerun or build for this internal change.
+Remaining: broker snapshot/recovery orchestration, submission/protection workflow,
+verified server-time transition rule, then T01 acceptance and later roadmap.
+
 Remaining: recovery for potentially submitted orders still requires authoritative
 broker reconciliation; this diagnostic recovery is not that acceptance. Actual
 submission, protection management, verified server timing and T01 deployment

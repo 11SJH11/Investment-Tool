@@ -139,7 +139,7 @@ class MT5ExecutionLedger:
 
     def record_reconciliation(self, intent_id, executions, open_positions, *,
                               broker_order_id, account_key, environment, complete,
-                              observed_at_ms):
+                              observed_at_ms, use_attempt_receipt=False):
         """Persist backend broker evidence, not submission/attribution authority.
 
         The caller owns terminal locks and establishes snapshot completeness.
@@ -150,6 +150,8 @@ class MT5ExecutionLedger:
         from app.brokers.mt5_execution_reconciliation import reconcile_order
 
         self._manual_only()
+        if type(use_attempt_receipt) is not bool or (use_attempt_receipt and broker_order_id is not None):
+            raise ValueError('Receipt-bound reconciliation cannot accept an alternate order ticket')
         if type(observed_at_ms) is not int or observed_at_ms <= 0:
             raise ValueError('Invalid reconciliation observation timestamp')
         if broker_order_id is not None and (not isinstance(broker_order_id, str)
@@ -164,6 +166,15 @@ class MT5ExecutionLedger:
             if not row:
                 raise ValueError('Unknown MT5 execution intent')
             intent = json.loads(row[0])
+            attempt = None
+            if use_attempt_receipt:
+                attempt_row = c.execute('SELECT document FROM mt5_execution_attempts WHERE intent_id=?',
+                                        (intent_id,)).fetchone()
+                if not attempt_row:
+                    raise ValueError('No durable submission attempt for this intent')
+                attempt = json.loads(attempt_row[0])
+                receipt = attempt['receipt']
+                broker_order_id = receipt['broker_order_id'] if receipt else None
             decision = reconcile_order(intent, executions, open_positions,
                 broker_order_id=broker_order_id, account_key=account_key,
                 environment=environment, complete=complete)
@@ -173,11 +184,33 @@ class MT5ExecutionLedger:
                           observed_at_ms=observed_at_ms, decision=decision,
                           execution_count=len(executions), complete=complete is True,
                           execution_enabled=False, attribution_verified=False)
+            if attempt is not None:
+                record.update(attempt_id=attempt['id'], identity_basis='durable_attempt_receipt')
             identifier = sha256(encoded(record).encode()).hexdigest()
             record['id'] = identifier
             c.execute('INSERT OR IGNORE INTO mt5_execution_reconciliations VALUES(?,?,?)',
                       (identifier, intent_id, encoded(record)))
+            if attempt is not None:
+                previous = attempt.get('latest_reconciliation')
+                # Retain late-arriving evidence in history without replacing a
+                # newer recovery observation with an older snapshot.
+                if previous is None or observed_at_ms > previous['observed_at_ms']:
+                    attempt['latest_reconciliation'] = dict(id=identifier, observed_at_ms=observed_at_ms,
+                                                             state=decision['state'])
+                    c.execute('UPDATE mt5_execution_attempts SET document=? WHERE id=?',
+                              (encoded(attempt), attempt['id']))
             return record
+
+    def reconcile_attempt(self, intent_id, executions, open_positions, *,
+                          account_key, environment, complete, observed_at_ms):
+        """Use only the saved receipt's order identity; never infer a missing ID.
+
+        Does not release an account guard or authorize resubmission. Broker
+        snapshot collection/freshness and account-wide recovery remain required.
+        """
+        return self.record_reconciliation(intent_id, executions, open_positions,
+            broker_order_id=None, account_key=account_key, environment=environment,
+            complete=complete, observed_at_ms=observed_at_ms, use_attempt_receipt=True)
 
     def reconciliations(self, intent_id, *, limit=100):
         if type(limit) is not int or not 1 <= limit <= 1000:
