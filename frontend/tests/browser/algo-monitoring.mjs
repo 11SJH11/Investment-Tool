@@ -7,6 +7,7 @@ function fixtures(){
  localStorage.clear();localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Algo Trading'));
  window.monitorRequests=[];window.failMonitor=false;
  const report={observed_at:'2026-10-22T12:00:00Z',accounts:[],warnings:[],limitation:'Fixture observations only',items:[{id:'fixture',name:'T01 preparation fixture',mode:'MT5_PREPARATION',environment:'demo',symbol:'XAUUSD',status:'NOT_DEPLOYED',persisted_status:'DISABLED',source_hash:'fixture-hash',metrics:null,trades:[],risk:{},limitation:'Saved policy only'}]};
+ report.recovery_observations=[{id:'recovery',policy_id:'fixture',intent_id:'intent',observed_at_ms:1000000,state:'PROTECTION_UNVERIFIED',identity_basis:'durable_attempt_receipt',complete:true,filled_lots:'0.1',remaining_lots:'0.1'}];
  window.fetch=async(url,options={})=>{
   const path=new URL(String(url),location.href).pathname;window.monitorRequests.push({path,method:options.method||'GET'});
   if(path.endsWith('/algo-trading')&&window.failMonitor)return new Response(JSON.stringify({detail:'Fixture outage'}),{status:503,headers:{'Content-Type':'application/json'}});
@@ -17,6 +18,7 @@ function fixtures(){
 await send('Page.addScriptToEvaluateOnNewDocument',{source:`(${fixtures.toString()})()`});
 await send('Page.navigate',{url:base+'/?algo-monitoring-smoke'});
 await waitFor(`document.body.innerText.includes('NOT_DEPLOYED')`);
+assert(await evaluate(`document.body.innerText.includes('PROTECTION_UNVERIFIED')&&document.body.innerText.includes('Protection evidence may be stale')`));
 await click('Inspect');
 await waitFor(`document.querySelector('[aria-label="Strategy monitoring detail"]')`);
 assert(await evaluate(`document.body.innerText.includes('MT5 automated execution disabled')`));

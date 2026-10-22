@@ -8,7 +8,7 @@ import json
 
 
 def report(services):
-    accounts=[];items=[];warnings=[]
+    accounts=[];items=[];warnings=[];recovery=[]
     connections=getattr(services,'broker_connections',None)
     if connections:
         for row in connections.statuses()['items']:
@@ -31,6 +31,18 @@ def report(services):
                     source_hash=policy['strategy_source_hash'],created_at=saved.get('created_at'),
                     last_evaluation_at=None,metrics=None,position=None,trades=[],risk=policy,intent_counts=counts,
                     limitation='Saved risk policy only. No MT5 strategy worker or trading permission is established.'))
+        if {'mt5_execution_reconciliations','mt5_execution_intents'}<=tables:
+            # Read observations without constructing the execution ledger (which
+            # fences owner/guards on startup). Never promote them to authority.
+            for raw in c.execute('''SELECT r.document,i.policy_id FROM mt5_execution_reconciliations r
+                    JOIN mt5_execution_intents i ON i.id=r.intent_id ORDER BY r.rowid DESC LIMIT 100'''):
+                saved=json.loads(raw[0]);decision=saved.get('decision') or {}
+                recovery.append(dict(id=saved['id'],policy_id=raw[1],intent_id=saved['intent_id'],
+                    observed_at_ms=saved.get('observed_at_ms'),state=decision.get('state','UNRESOLVED'),
+                    complete=saved.get('complete') is True,identity_basis=saved.get('identity_basis','unverified'),
+                    filled_lots=decision.get('filled_lots'),remaining_lots=decision.get('remaining_lots'),
+                    execution_count=saved.get('execution_count'),execution_enabled=False,
+                    attribution_verified=False))
     forward=getattr(services,'forward',None)
     if forward:
         thread=getattr(forward,'thread',None)
@@ -46,6 +58,6 @@ def report(services):
                     metrics=row.get('metrics'),position=state.get('position'),trades=state.get('trade_history',[])[-100:],
                     equity=state.get('equity'),risk=definition['engine'],intent_counts={},
                     limitation='Independent simulated account. Active configuration alone does not prove fresh evaluation.'))
-    return dict(observed_at=datetime.now(timezone.utc).isoformat(),items=items,accounts=accounts,warnings=warnings,
+    return dict(observed_at=datetime.now(timezone.utc).isoformat(),items=items,accounts=accounts,warnings=warnings,recovery_observations=recovery,
         mt5_execution_enabled=False,broker_totals=None,
         limitation='Monitoring foundation: broker connectivity is last sync evidence, not a current terminal probe. No account balances are inferred or pooled. Paper controls remain in Forward validation; T01 deployment/execution integration is not complete.')

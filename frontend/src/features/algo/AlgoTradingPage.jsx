@@ -4,6 +4,14 @@ import DataTable from '../../components/table/DataTable';
 
 const columns=[['name','Strategy','text'],['mode','Mode','category'],['environment','Environment','category'],['symbol','Symbol','text'],['status','Observed status','category'],['last_evaluation_at','Last evaluation','date']].map(([key,label,kind])=>({key,label,kind,render:row=>row[key]??'Unavailable'}));
 const money=(value,currency)=>value==null?'Unavailable':`${Number(value).toFixed(2)} ${currency}`;
+const recoveryColumns=[
+ {key:'observed_at_ms',label:'Observed at',kind:'date',render:row=>row.observed_at_ms?new Date(row.observed_at_ms).toLocaleString():'Unavailable'},
+ {key:'state',label:'Recorded recovery state',kind:'category'},
+ {key:'identity_basis',label:'Identity evidence',kind:'category'},
+ {key:'complete',label:'Complete observation',kind:'category',render:row=>row.complete?'Yes':'No'},
+ {key:'filled_lots',label:'Filled lots',kind:'number'},
+ {key:'remaining_lots',label:'Remaining lots',kind:'number'},
+ {key:'intent_id',label:'Intent',kind:'text'}];
 export default function AlgoTradingPage(){
  const [report,setReport]=useState(null),[error,setError]=useState(''),[selected,setSelected]=useState(null),[refresh,setRefresh]=useState(0);
  useEffect(()=>{let alive=true,timer;
@@ -26,6 +34,10 @@ export default function AlgoTradingPage(){
    </article>
    <DataTable id="algo.deployments" label="Strategy monitoring" columns={columns} rows={report.items} primaryAction={{label:'Inspect',onClick:row=>setSelected(row.id)}} summary={rows=><p className="p-3 text-xs muted">N = {rows.length} matching preparations/deployments. Simulated accounts are not pooled with broker balances.</p>}/>
    {!report.items.length&&<p className="text-sm muted">No recorded deployment or MT5 preparation. No sample performance is displayed.</p>}
+   <article className="insight-panel" aria-label="MT5 recovery observations"><h2 className="font-semibold">MT5 recovery observations</h2>
+    <p className="text-xs muted">Latest 100 persisted observations, not a live position snapshot. Protection evidence may be stale. These observations do not release account guards, verify strategy attribution or authorize trading.</p>
+    <DataTable id="algo.recovery" label="MT5 recovery evidence" columns={recoveryColumns} rows={(report.recovery_observations||[]).filter(row=>!selected||row.policy_id===selected)}/>
+   </article>
    {detail&&<article className="insight-panel" aria-label="Strategy monitoring detail"><div className="ui-toolbar"><h2 className="font-semibold">{detail.name}</h2><button className="mini-btn" onClick={()=>setSelected(null)}>Close details</button></div>
     <p>{detail.mode} · {detail.environment} · {detail.status}</p><p className="text-xs muted">{detail.limitation}</p>
     <p className="text-xs muted break-all">Identity {detail.id} · Source/definition {detail.source_hash}</p>

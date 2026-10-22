@@ -55,3 +55,24 @@ def test_monitor_endpoint_has_no_execution_actions(services):
         assert client.get('/algo-trading').status_code==200
         assert client.post('/algo-trading').status_code==405
         assert client.post('/algo-trading/start').status_code==404
+
+
+def test_recovery_projection_is_bounded_readonly_and_not_trading_authority(services):
+    with services.database.connect() as c:
+        c.execute('CREATE TABLE mt5_execution_intents(id TEXT,policy_id TEXT)')
+        c.execute('CREATE TABLE mt5_execution_reconciliations(id TEXT,intent_id TEXT,document TEXT)')
+        c.execute('INSERT INTO mt5_execution_intents VALUES(?,?)',('intent','policy'))
+        for i in range(105):
+            record=dict(id=str(i),intent_id='intent',observed_at_ms=1000+i,complete=True,
+                identity_basis='durable_attempt_receipt',execution_enabled=True,attribution_verified=True,
+                secret='DO_NOT_EXPOSE',decision=dict(state='FILLED_PROTECTED',filled_lots='0.1',remaining_lots='0.1'))
+            c.execute('INSERT INTO mt5_execution_reconciliations VALUES(?,?,?)',(str(i),'intent',json.dumps(record)))
+    result=report(services)
+    assert len(result['recovery_observations'])==100
+    row=result['recovery_observations'][0]
+    assert row['id']=='104' and row['policy_id']=='policy' and row['state']=='FILLED_PROTECTED'
+    assert not row['execution_enabled'] and not row['attribution_verified']
+    assert 'DO_NOT_EXPOSE' not in json.dumps(result)
+    assert result['items']==[] and result['broker_totals'] is None
+    with services.database.connect() as c:
+        assert c.execute('SELECT COUNT(*) FROM mt5_execution_reconciliations').fetchone()[0]==105

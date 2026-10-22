@@ -840,3 +840,19 @@ backend/Docker counts above predate the bridge changes. The next roadmap work
 remains execution/protection/recovery integration, complete Algo monitoring and
 screenshots/annotations, with automated execution disabled pending authorization
 and verified timing. The R01–R05 research idea remains a future task.
+
+### Monitoring continuation after bridge checkpoint
+
+Algo Trading now exposes the latest 100 persisted, allowlisted MT5 recovery
+observations. Selecting a preparation filters these observations to its policy.
+Filled/remaining lots, observation completeness and receipt identity are shown;
+historical protection evidence is explicitly not a current position snapshot,
+strategy attribution, account release or trading authority. No execution ledger
+is initialized by monitoring, and no terminal/native API is called.
+
+Verification: **34 focused monitoring/recovery tests passed**, **144 frontend
+tests passed**, production build and diff check passed. Fixture browser checks at
+390/1024/1440/1920px passed, including stale/retry/reload, recovery evidence,
+GET-only requests and no runtime errors/page overflow. No schema change. Full
+T01 worker/protection runtime, complete analytics/dashboard and screenshots remain
+unfinished; the bridge's real Fedora acceptance remains pending the user's run.
