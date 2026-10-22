@@ -856,3 +856,22 @@ tests passed**, production build and diff check passed. Fixture browser checks a
 GET-only requests and no runtime errors/page overflow. No schema change. Full
 T01 worker/protection runtime, complete analytics/dashboard and screenshots remain
 unfinished; the bridge's real Fedora acceptance remains pending the user's run.
+
+### Recovery history paging (23 October)
+
+Replaced client-side filtering of the global latest 100 observations with a
+read-only `/algo-trading/recovery` endpoint. Policy filtering precedes the page
+limit, so a busy account cannot hide an older preparation's observations.
+Exclusive row cursors preserve older pages when new observations arrive. Pages
+are bounded to 100; the UI uses 50 and keeps one page in memory. Failed loads
+retain the previous page and support retry; changing selection discards stale
+responses. The existing overview projection remains compatible.
+
+No new execution authority, broker calls, schema migrations or data deletion.
+Verification: 36 focused backend tests, 144 frontend tests, production build,
+diff check and fixture browser smoke at 390/1024/1440/1920px passed. Browser checks
+include policy selection, older/latest, failure/retry, reload and GET-only access.
+Full backend suite was not repeated for this bounded monitoring increment.
+Outstanding work remains the Fedora acceptance/timestamp investigation, T01
+runtime/protection/recovery orchestration, complete monitoring analytics and
+screenshot annotations; trading is still disabled.

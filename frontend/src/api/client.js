@@ -75,6 +75,7 @@ export const api = {
   forwardHalt: id => request(`/forward/${encodeURIComponent(id)}/halt`,{method:'POST'}),
   researchCampaigns: () => request('/strategy-lab/research-campaigns'),
   algoMonitoring: () => request('/algo-trading'),
+  algoRecovery: (policyId,before) => request('/algo-trading/recovery?'+new URLSearchParams({...(policyId?{policy_id:policyId}:{}),...(before!=null?{before}: {})})),
   researchCampaignPolicy: () => request('/strategy-lab/research-campaigns/policy'),
   researchCampaign: id => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}`),
   researchCampaignActivity: (id,before) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/activity?before=${encodeURIComponent(before)}`),

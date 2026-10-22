@@ -7,6 +7,29 @@ from datetime import datetime,timezone
 import json
 
 
+def recovery_page(database,*,policy_id=None,before=None,limit=50):
+    if type(limit) is not int or not 1<=limit<=100:raise ValueError('Invalid page size')
+    if before is not None and (type(before) is not int or before<=0):raise ValueError('Invalid recovery cursor')
+    if policy_id is not None and (not isinstance(policy_id,str) or not 1<=len(policy_id)<=128):raise ValueError('Invalid policy identity')
+    with database.connect() as c:
+        tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'mt5_execution_reconciliations','mt5_execution_intents'}<=tables:return dict(items=[],next_before=None)
+        conditions=[];params=[]
+        if policy_id is not None:conditions.append('i.policy_id=?');params.append(policy_id)
+        if before is not None:conditions.append('r.rowid<?');params.append(before)
+        where=' WHERE '+' AND '.join(conditions) if conditions else ''
+        rows=c.execute('SELECT r.rowid,r.document,i.policy_id FROM mt5_execution_reconciliations r JOIN mt5_execution_intents i ON i.id=r.intent_id'+where+' ORDER BY r.rowid DESC LIMIT ?',(*params,limit+1)).fetchall()
+        items=[]
+        for raw in rows[:limit]:
+            saved=json.loads(raw[1]);decision=saved.get('decision') or {}
+            items.append(dict(id=saved['id'],policy_id=raw[2],intent_id=saved['intent_id'],
+                observed_at_ms=saved.get('observed_at_ms'),state=decision.get('state','UNRESOLVED'),
+                complete=saved.get('complete') is True,identity_basis=saved.get('identity_basis','unverified'),
+                filled_lots=decision.get('filled_lots'),remaining_lots=decision.get('remaining_lots'),
+                execution_count=saved.get('execution_count'),execution_enabled=False,attribution_verified=False))
+        return dict(items=items,next_before=rows[limit-1][0] if len(rows)>limit else None)
+
+
 def report(services):
     accounts=[];items=[];warnings=[];recovery=[]
     connections=getattr(services,'broker_connections',None)
@@ -31,18 +54,7 @@ def report(services):
                     source_hash=policy['strategy_source_hash'],created_at=saved.get('created_at'),
                     last_evaluation_at=None,metrics=None,position=None,trades=[],risk=policy,intent_counts=counts,
                     limitation='Saved risk policy only. No MT5 strategy worker or trading permission is established.'))
-        if {'mt5_execution_reconciliations','mt5_execution_intents'}<=tables:
-            # Read observations without constructing the execution ledger (which
-            # fences owner/guards on startup). Never promote them to authority.
-            for raw in c.execute('''SELECT r.document,i.policy_id FROM mt5_execution_reconciliations r
-                    JOIN mt5_execution_intents i ON i.id=r.intent_id ORDER BY r.rowid DESC LIMIT 100'''):
-                saved=json.loads(raw[0]);decision=saved.get('decision') or {}
-                recovery.append(dict(id=saved['id'],policy_id=raw[1],intent_id=saved['intent_id'],
-                    observed_at_ms=saved.get('observed_at_ms'),state=decision.get('state','UNRESOLVED'),
-                    complete=saved.get('complete') is True,identity_basis=saved.get('identity_basis','unverified'),
-                    filled_lots=decision.get('filled_lots'),remaining_lots=decision.get('remaining_lots'),
-                    execution_count=saved.get('execution_count'),execution_enabled=False,
-                    attribution_verified=False))
+    recovery=recovery_page(services.database,limit=100)['items']
     forward=getattr(services,'forward',None)
     if forward:
         thread=getattr(forward,'thread',None)

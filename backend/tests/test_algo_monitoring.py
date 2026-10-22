@@ -76,3 +76,31 @@ def test_recovery_projection_is_bounded_readonly_and_not_trading_authority(servi
     assert result['items']==[] and result['broker_totals'] is None
     with services.database.connect() as c:
         assert c.execute('SELECT COUNT(*) FROM mt5_execution_reconciliations').fetchone()[0]==105
+
+
+def test_recovery_filter_precedes_page_limit_and_cursor_survives_new_events(services):
+    from app.services.algo_monitoring import recovery_page
+    test_recovery_projection_is_bounded_readonly_and_not_trading_authority(services)
+    with services.database.connect() as c:
+        c.execute('INSERT INTO mt5_execution_intents VALUES(?,?)',('quiet-intent','quiet-policy'))
+        c.execute("UPDATE mt5_execution_reconciliations SET intent_id='quiet-intent' WHERE id='0'")
+    quiet=recovery_page(services.database,policy_id='quiet-policy')
+    assert [r['id'] for r in quiet['items']]==['0'] and quiet['next_before'] is None
+    first=recovery_page(services.database,policy_id='policy',limit=3)
+    assert [r['id'] for r in first['items']]==['104','103','102']
+    with services.database.connect() as c:
+        record=dict(id='new',intent_id='intent',decision={'state':'UNRESOLVED'})
+        c.execute('INSERT INTO mt5_execution_reconciliations VALUES(?,?,?)',('new','intent',json.dumps(record)))
+    second=recovery_page(services.database,policy_id='policy',before=first['next_before'],limit=3)
+    assert [r['id'] for r in second['items']]==['101','100','99']
+    assert recovery_page(services.database,policy_id='unknown')['items']==[]
+
+
+def test_recovery_endpoint_validates_cursor_and_bounds(services):
+    from app.api.algo_trading import router
+    app=FastAPI();app.include_router(router);app.state.services=services
+    with TestClient(app) as client:
+        assert client.get('/algo-trading/recovery').json()=={'items':[],'next_before':None}
+        for query in ('limit=0','limit=101','before=0','before=-1','policy_id='):
+            assert client.get('/algo-trading/recovery?'+query).status_code==422
+        assert client.post('/algo-trading/recovery').status_code==405
