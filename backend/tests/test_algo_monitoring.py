@@ -1,0 +1,57 @@
+import json
+from types import SimpleNamespace
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+import pytest
+from app.storage.database import Database
+from app.services.algo_monitoring import report
+
+
+@pytest.fixture
+def services(tmp_path):
+    db=Database(tmp_path/'monitor.db');db.initialize()
+    return SimpleNamespace(database=db)
+
+
+def test_empty_monitor_does_not_create_execution_state(services):
+    with services.database.connect() as c:
+        before=c.execute("SELECT name FROM sqlite_master ORDER BY name").fetchall()
+    result=report(services)
+    assert result['items']==[] and result['broker_totals'] is None
+    assert not result['mt5_execution_enabled']
+    with services.database.connect() as c:
+        assert c.execute("SELECT name FROM sqlite_master ORDER BY name").fetchall()==before
+
+
+def test_policy_never_becomes_running_or_attributes_manual_trades(services):
+    policy=dict(account_key='a'*64,environment='demo',currency='USD',strategy_key='t01',strategy_source_hash='b'*64,symbols=['XAUUSD'])
+    document=dict(id='policy',policy=policy,status='DISABLED',enabled=True)
+    with services.database.connect() as c:
+        c.execute('CREATE TABLE mt5_execution_policies(document TEXT)')
+        c.execute('INSERT INTO mt5_execution_policies VALUES(?)',(json.dumps(document),))
+    services.broker_connections=SimpleNamespace(statuses=lambda:dict(items=[dict(provider='mt5',profile_id='demo',environment='demo',status='synced',account_key='a'*64,credentials='DO_NOT_EXPOSE')]))
+    result=report(services);row=result['items'][0]
+    assert row['status']=='NOT_DEPLOYED' and row['trades']==[] and row['metrics'] is None
+    assert not row['execution_enabled'] and 'DO_NOT_EXPOSE' not in json.dumps(result)
+    with services.database.connect() as c:
+        assert json.loads(c.execute('SELECT document FROM mt5_execution_policies').fetchone()[0])==document
+
+
+@pytest.mark.parametrize('alive,status',[(False,'WORKER_UNAVAILABLE'),(True,'AWAITING_FRESH_EVALUATION')])
+def test_shadow_state_is_not_broker_performance_or_proof_of_worker_health(services,alive,status):
+    deployment=dict(id='shadow',name='Shadow',definition_sha256='hash',definition=dict(strategy_key='vwap',symbol='QQQ',engine={}),
+        state=dict(status='ACTIVE',equity=10001,trade_history=[{'net_pnl':1}]*110),metrics={'n':110})
+    services.forward=SimpleNamespace(thread=SimpleNamespace(is_alive=lambda:alive),report=lambda:dict(items=[dict(deployments=[deployment])]))
+    result=report(services);row=result['items'][0]
+    assert row['status']==status and row['mode']=='SHADOW' and row['environment']=='simulation'
+    assert len(row['trades'])==100 and len(deployment['state']['trade_history'])==110
+    assert result['broker_totals'] is None and row['account_key'] is None
+
+
+def test_monitor_endpoint_has_no_execution_actions(services):
+    from app.api.algo_trading import router
+    app=FastAPI();app.include_router(router);app.state.services=services
+    with TestClient(app) as client:
+        assert client.get('/algo-trading').status_code==200
+        assert client.post('/algo-trading').status_code==405
+        assert client.post('/algo-trading/start').status_code==404

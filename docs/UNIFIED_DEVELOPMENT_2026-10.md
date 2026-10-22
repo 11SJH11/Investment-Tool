@@ -773,3 +773,24 @@ campaign preserved; no holdout/provider/model/order calls. Details, data-boundar
 qualification and artifact digest are in the current Research Agent audit.
 Added opt-in `backend/tools/verify_gold_campaign_baseline.py`; three safety tests
 passed. This proves baseline completion, not complete paid research-loop acceptance.
+
+### Algo Trading monitoring foundation
+
+The main navigation now opens a read-only Algo Trading page backed by
+`GET /algo-trading`. It projects MT5 connection sync evidence and saved execution
+policies without opening a terminal or initializing an execution ledger. Policies
+are explicitly NOT_DEPLOYED, never Running. Existing shadow deployments retain
+their simulated identity, metrics and bounded recent trade history; account equity
+is not pooled or inferred. Worker existence does not prove fresh evaluation.
+
+This is a foundation, not completed T01 monitoring: no T01 worker, broker balance
+snapshot history, attributed execution analytics, performance charts, notifications
+or execution controls were added. T01 remains disabled. Protection/recovery and
+verified session timing are still gates; no orders or account changes occurred.
+
+Verification: 35 focused backend tests (including five monitoring cases), 144
+frontend tests, production build, and fixture browser checks at
+390/1024/1440/1920px passed. Browser checks cover read-only requests, stale state,
+retry, reload and no overflow/runtime errors. An initial build hit the existing
+intermittent Windows import-resolution failure; an unchanged retry passed.
+No schema changes. The previous full backend count above predates this foundation.

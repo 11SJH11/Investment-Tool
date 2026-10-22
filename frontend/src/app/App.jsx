@@ -12,6 +12,7 @@ import PortfolioPage from "../features/portfolio/PortfolioPage";
 import JournalPage from "../features/journal/JournalPage";
 import StrategyLabPage from "../features/strategy-lab/StrategyLabPage";
 import SettingsPage from "../features/settings/SettingsPage";
+import AlgoTradingPage from "../features/algo/AlgoTradingPage";
 import { sections } from "./navigation";
 import { applyPreferences, loadPreferences, savePreferences } from "./preferences";
 
@@ -40,5 +41,6 @@ function AppContent(){
   {active==="Backtest"&&<StrategyLabPage initialTab="Backtest" standaloneTab="Backtest"/>}
   {active==="Investment Portfolio"&&<PortfolioPage onOpenTicker={openCharts} onWorkflow={openWorkflow}/>}
   {active==="Settings"&&<SettingsPage preferences={prefs} onChange={updatePrefs}/>}
+  {active==="Algo Trading"&&<AlgoTradingPage/>}
  </main></div></WorkflowContext.Provider>
 }

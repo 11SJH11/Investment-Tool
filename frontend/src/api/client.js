@@ -74,6 +74,7 @@ export const api = {
   forwardPrepare: body => request('/forward/prepare',{method:'POST',body:JSON.stringify(body)}),
   forwardHalt: id => request(`/forward/${encodeURIComponent(id)}/halt`,{method:'POST'}),
   researchCampaigns: () => request('/strategy-lab/research-campaigns'),
+  algoMonitoring: () => request('/algo-trading'),
   researchCampaignPolicy: () => request('/strategy-lab/research-campaigns/policy'),
   researchCampaign: id => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}`),
   researchCampaignActivity: (id,before) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/activity?before=${encodeURIComponent(before)}`),

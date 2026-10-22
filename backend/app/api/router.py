@@ -29,3 +29,5 @@ from app.api.research_campaigns import router as research_campaigns_router
 api_router.include_router(research_campaigns_router)
 from app.api.forward import router as forward_router
 api_router.include_router(forward_router)
+from app.api.algo_trading import router as algo_router
+api_router.include_router(algo_router)
