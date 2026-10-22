@@ -90,6 +90,8 @@ def campaign(identifier: str, repo=Depends(repository), services=Depends(get_ser
         result['worker'] = dict(available=bool(worker),
                                 running=bool(worker and worker.thread and worker.thread.is_alive()),
                                 error=worker.last_error if worker else None)
+        result['worker'].update(last_cycle_started_at=getattr(worker,'last_cycle_started_at',None),
+                                last_cycle_finished_at=getattr(worker,'last_cycle_finished_at',None))
         return result
     return operation(read)
 

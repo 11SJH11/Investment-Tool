@@ -63,6 +63,14 @@ The running backend was not restarted; these edits are not claimed deployed.
 
 ## Verification
 
+Latest complete run including model monitoring: **1,922 passed, 41 skipped,
+1 warning in 622.59s**, log `research-operations-full.log`. Frontend **144 passed**;
+production build passed, 172 modules. Real Docker security/lifecycle **22 passed**
+plus sandbox research-loop **9 passed** (31 total, 183.79s); no orphan Ledger
+containers, unrelated stopped containers untouched. Production fixture browser
+smoke passed at 390/1024/1440/1920px, including model operation presentation.
+All logs are under `.ledger-test-artifacts/logs/research-operations-*`.
+
 - MT5 recovery snapshot closeout, preceding monitoring edits: full backend
   **1,861 passed, 41 skipped**, 564.79 seconds; frontend **139 passed**; isolated
   production build passed, 168 modules.
@@ -104,9 +112,10 @@ runs; existing results/campaigns were neither rewritten nor rerun.
 2. Complete the requested end-to-end correctness/statistical audit: archived
    source/parameters, reset independence, warmup/alignment, causality, cost/leverage
    consistency, validation boundaries, attribution, budgets and model recovery.
-3. Extend operation/event instrumentation to numeric trials, model requests,
-   structural execution and result persistence; distinguish heartbeat, useful
-   progress and operation age. Add paginated activity history. Read-only report
+3. Finish per-bar structural execution instrumentation and result-persistence
+   timing; existing Docker phase events are not a per-bar heartbeat. Numeric
+   queue progress, model role/metering, coordinator cycle timestamps and paginated
+   campaign activity are implemented. Read-only report
    polling now retries serially with 2.5–30 second backoff, retains the last
    successful report with a stale warning, and clears that warning on recovery.
    Campaign mutations are never automatically retried by this polling mechanism.
@@ -117,6 +126,67 @@ runs; existing results/campaigns were neither rewritten nor rerun.
    Do not claim the Research Agent is fully working based on this partial audit.
 
 ## Overall product work still outstanding
+
+### Technical audit evidence matrix (22 October)
+
+This matrix records inspected mechanisms and regression coverage. It does not
+claim exhaustive formal verification or completion of real-provider acceptance.
+
+| Area | Inspected implementation / regression coverage | Conclusion and limit |
+| --- | --- | --- |
+| Source identity | `source_dependencies.py`; `test_research_dependencies.py` | Archived dependency hashes must match the frozen parent; missing archives fail instead of using current files. |
+| Parameter/control integrity | `trials.py`; `test_research_trials.py` | Control precedes variants; data/source mismatch blocks subsequent runs; explicit retry spends another attempt. |
+| Reset independence | `robustness.py`; `test_research_robustness.py`, `test_research_infrastructure.py` | Each window/cost run uses independent engine state. No sum of independent returns is presented as a portfolio. |
+| Time alignment / warmup | `sandbox_runs.py`, `sandbox_wire.py`; `test_research_sandbox.py` | Completed-bar views and delayed higher-timeframe availability are tested; warmup is checked against permitted dates. |
+| Causality | `sandbox_runs.py`; real Docker prefix/control tests | Full/prefix signals must agree. Finite replay is evidence, not proof against arbitrary malicious code. |
+| Costs | `robustness.py`; `test_research_costs.py`, `test_research_robustness.py` | Original and doubled execution costs rerun the engine. Zero doubled remains zero and is explicitly flagged. User campaign's zero-cost/300x assumptions were not altered. |
+| Holdout firewall | `access.py`, `dataset_planner.py`, `validation.py`; foundation/validation/campaign-validation suites | Chronological boundaries do not move to obtain convenient unseen data; candidate-bound grants permanently consume exposure even after failure. Unknown external/manual exposure cannot be detected. |
+| Research debt | `research_ledger.py`, candidate/retention modules; ledger/retention/simplification tests | Failed attempts and removed winners remain visible. Counts are descriptive; no multiplicity correction or proof of an edge is claimed. |
+| Model budget/recovery | `committee.py`, `author.py`, `spending.py`; spending/committee/author/loop tests | Reservations survive failed/unknown calls; idempotent request keys prevent replay. Returned numeric usage is now retained even when authorization is revoked before validation. |
+| Model operation visibility | `campaign_operations.py` | Allowlisted IDs, role, timestamps and metering only; no prompts, generated source, credentials or evidence in this projection. Legacy timing/cost remains unknown. |
+| Isolation | `sandbox.py`, `sandbox_guardian.py`; sandbox/Docker tests | Generated code uses non-root, network-none, read-only containers with no host mounts/socket, 512MiB/1 CPU/64 PIDs and scratch-only writes. No host execution fallback. |
+| Crash cleanup | independent guardian + owner-scoped restart cleanup | Guardian watches EOF and a wall deadline for its exact container. If Docker itself is unavailable, removal must be verified on recovery; no unconditional cleanup guarantee. |
+| Queue/storage failures | backtest progress repair; director/trial/loop suites | Optional progress contention does not discard a run; mandatory persistence still fails. Coordinator stops after bounded storage failures. |
+| UI recovery | `campaignPolling.js`, `CampaignActivity.jsx`; unit + production browser smoke | Serial bounded retries, stale report retention, cursor history paging, no mutation retries; backend must be restarted normally to load edited code. |
+
+Additional confirmed **medium** finding fixed in this continuation: a committee
+call could return usage and then lose that metering if the project was paused
+before result validation. Reservations were already preserved, so this was not a
+budget bypass. Usage is now captured before the authorization/validation gates.
+The role is durably recorded before dispatch; failures do not automatically retry.
+Coordinator cycle start/success timestamps are process-local and reset on restart;
+they are supervision evidence, not a fabricated worker or simulation heartbeat.
+
+### Manual acceptance for the monitoring changes
+
+1. When existing work is idle, restart Ledger normally and refresh the browser.
+   Development did not restart the user's backend or claim to deploy these edits.
+2. Open Research Agent and select the failed Gold campaign. Its derived outcome
+   should be FAILED with `baseline_compute_deadline`, the cancelled baseline job
+   and its recorded 209,408/790,767 bars. Do not interpret 40 reserved simulations
+   as 40 executed jobs or $1.89336 reserved as a reconciled provider invoice.
+3. Inspect Persisted activity. Load older events and return to latest. A temporary
+   request failure should leave the displayed page intact and allow retry.
+4. During a separately authorized bounded campaign, inspect numeric control and
+   variant states and model role/call metadata. Missing legacy timestamps/costs
+   must remain unavailable. A returned model response is not a validated proposal.
+5. Temporarily take only the browser offline: the last report should remain with
+   a stale warning; restoring connectivity should recover without relaunching
+   or retrying a mutation. Backend jobs do not depend on this browser.
+6. For an explicitly authorized structural run, inspect the existing Docker
+   timeline and control/prefix evidence. A long `backtest_running` phase is not
+   a per-bar progress estimate. Failed checks must not release a candidate.
+7. Do not enable or infer T01 execution from this page. Research never deploys a
+   strategy, places orders, or grants MT5 account execution authority.
+
+Remaining audit limits: no completed rerun of the original 790,767-bar Gold
+campaign; the measured FVG improvement is not end-to-end throughput evidence.
+No live paid-model acceptance was triggered. The adapter has per-request network
+timeouts and input/output bounds; this audit has not established a hard total
+wall-time kill for a provider that trickles response bytes indefinitely. The
+Docker strategy wall-time watchdog is a separate, tested mechanism. No overall
+ETA is supplied for dynamic model-driven work. Large-history report latency
+outside the now-paged campaign events still needs measured profiling.
 
 ### 2026-10-22 activity and numeric-progress continuation
 

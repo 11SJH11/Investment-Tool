@@ -744,3 +744,22 @@ fixture browser checks at 390/1024/1440/1920px passed. Full backend verification
 has not been repeated for this incremental change. The audit above records scope.
 Remaining: model/structural operation instrumentation and broader research audit;
 MT5 submission/protection/timing acceptance, screenshots and Algo dashboard.
+
+### 2026-10-22 model operation monitoring verified
+
+Model roles now persist before dispatch. Returned numeric committee metering
+survives authorization revocation during a call. The operation panel distinguishes
+reservations, returned usage, estimated known cost and unknown cost. Process-local
+coordinator cycle timestamps are separate from simulation progress. The audit
+document contains inspected mechanisms, evidence and remaining limitations.
+
+Final full backend run: **1,922 passed, 41 skipped**, 622.59s. Frontend: **144
+passed**; production build passed (172 modules, existing chunk warning). Real
+Docker security/lifecycle suite **22 passed**, sandbox research-loop suite **9
+passed** (31 total, 183.79s). No orphan Ledger containers; six unrelated stopped
+containers untouched. Fixture browser smoke passed at 390/1024/1440/1920px.
+No account changes, orders, paid model calls or user backend restart.
+
+Future research backlog (user request): Gold post-impulse range-rejection strategy,
+R01–R05 variants. Define causal numerical rules and preregister one-variable
+experiments later; no implementation or tuning during the current priority work.

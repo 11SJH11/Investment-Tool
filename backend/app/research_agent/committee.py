@@ -157,7 +157,15 @@ class Committee:
                     if current['state']!='BASELINE_ANALYSIS' or not permitted():raise ModelFailure('project_not_active')
                     if datetime.now(timezone.utc)>datetime.fromisoformat(document['deadline']):raise ModelFailure('review_deadline')
                     if self.model.status()!=document['provider']:raise ModelFailure('model_or_pricing_changed')
+                    document['operation'] = dict(kind='MODEL_CALL', role=role, status='RUNNING', started_at=datetime.now(timezone.utc).isoformat())
+                    self._save(document)
                     result, usage = self.model.generate(role, INSTRUCTIONS.format(role=role), {**snapshot,'prior_roles':deepcopy(document['roles'])}, schema)
+                    document['usage'][role]=usage
+                    document['operation'].update(status='RETURNED',finished_at=datetime.now(timezone.utc).isoformat())
+                    if pricing:
+                        usage['estimated_cost_microusd']=usage_cost(usage,pricing)
+                        if usage.get('input_tokens',0)>pricing['input_token_reservation'] or usage.get('output_tokens',0)>pricing['output_token_reservation']:
+                            raise ModelFailure('usage_exceeded_cost_reservation')
                     if ResearchRepository(self.database).get(project_id)['state']!='BASELINE_ANALYSIS' or not permitted():raise ModelFailure('project_not_active')
                     result = schema.model_validate(result).model_dump()
                     if any(ref not in snapshot['evidence'] for ref in result['evidence_refs']):raise ModelFailure('unknown_evidence_reference')
@@ -167,22 +175,22 @@ class Committee:
                             if plan['job_count']>Budget.model_validate(project.get('research_budget',{})).max_variants_per_hypothesis:raise ModelFailure('proposal_variant_budget')
                         elif result['axes']:raise ModelFailure('abstention_has_experiment')
                     if role=='Manager' and result['decision']=='RECOMMEND_EXPERIMENT' and document['roles']['Researcher']['decision']!='PROPOSE':raise ModelFailure('manager_has_no_proposal')
-                    document['roles'][role]=result;document['usage'][role]=usage
-                    if pricing:
-                        document['usage'][role]['estimated_cost_microusd']=usage_cost(usage,pricing)
-                        if usage.get('input_tokens',0)>pricing['input_token_reservation'] or usage.get('output_tokens',0)>pricing['output_token_reservation']:
-                            raise ModelFailure('usage_exceeded_cost_reservation')
+                    document['roles'][role]=result
                     self._save(document)
                 document['status']='COMPLETED'
             except Exception as exc:
                 document['status']='FAILED'
                 document['error']=str(exc) if isinstance(exc,ModelFailure) else 'invalid_committee_output'
+            document['finished_at']=datetime.now(timezone.utc).isoformat()
+            if document.get('operation',{}).get('status')=='RUNNING':
+                document['operation'].update(status='FAILED',finished_at=document['finished_at'])
             self._save(document)
             return document
         finally:
             _SLOTS.release()
 
     def _save(self, document):
+        document['updated_at']=datetime.now(timezone.utc).isoformat()
         with self.database.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             previous=json.loads(c.execute('SELECT document FROM agent_reviews WHERE id=?',(document['id'],)).fetchone()[0])

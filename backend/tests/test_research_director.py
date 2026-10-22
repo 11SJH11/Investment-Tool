@@ -311,6 +311,8 @@ def test_campaign_api_defaults_scope_and_explicit_development_authority(executio
         assert response.status_code == 200, response.text
         assert response.json()['status'] == 'ACTIVE'
         assert client.get(base+'/'+campaign['id']).json()['summary']['execution_available']
+        worker=client.get(base+'/'+campaign['id']).json()['worker']
+        assert worker['last_cycle_started_at'] is None and worker['last_cycle_finished_at'] is None
         assert client.post(base+'/'+campaign['id']+'/deploy').status_code == 422
         assert client.post(base+'/'+campaign['id']+'/pause').json()['status'] == 'PAUSED'
 

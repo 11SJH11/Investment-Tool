@@ -80,6 +80,8 @@ def test_author_roles_shared_reservations_lineage_and_no_host_execution(author, 
     assert 'Devil' in model.calls[2][1]['prior_roles']
     assert result['reserved_calls'] == 4 and result['reserved_cost_microusd'] == 1008000
     assert result['execution_enabled'] is False
+    assert result['operation']['role']=='CodeAuthor' and result['operation']['status']=='RETURNED'
+    assert result['updated_at'] and result['finished_at']
     draft = export_draft(service.database, pid, result['candidate_id'], result['draft_id'])
     assert draft['source'] == model.source.strip() and not sentinel.exists()
     assert draft['draft']['parent_hash'] == result['parent_hash']

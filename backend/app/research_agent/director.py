@@ -47,6 +47,8 @@ class ResearchDirector:
         self.wake = Event()
         self.thread = None
         self.last_error = None
+        self.last_cycle_started_at = None
+        self.last_cycle_finished_at = None
         if start_thread:
             self.thread = Thread(target=self._run, name='research-director', daemon=True)
             self.thread.start()
@@ -351,8 +353,10 @@ class ResearchDirector:
             self.wake.wait(min(60, 5 * 2**failures))
             self.wake.clear()
             if self.stop.is_set(): return
+            self.last_cycle_started_at = self.clock().isoformat()
             try:
                 self.tick()
+                self.last_cycle_finished_at = self.clock().isoformat()
                 failures = 0
                 self.last_error = None
             except Exception:

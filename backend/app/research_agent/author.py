@@ -211,10 +211,13 @@ class CodeAuthor:
                 if role == 'CodeAuthor' and (item['roles']['Manager']['decision'] != 'AUTHOR_CHILD' or item['roles']['Researcher']['decision'] != 'PROPOSE'):
                     item['status'] = 'REJECTED'
                     break
+                item['operation'] = dict(kind='MODEL_CALL', role=role, status='RUNNING', started_at=datetime.now(timezone.utc).isoformat())
+                self.committee._save(item)
                 output, usage = self.model.generate(role, INSTRUCTIONS.format(role=role),
                     {**item['evidence'], 'prior_roles': deepcopy(item['roles'])}, schema)
                 # Persist metering even if authority was revoked during the call.
                 item['usage'][role] = usage
+                item['operation'].update(status='RETURNED',finished_at=datetime.now(timezone.utc).isoformat())
                 pricing = item['provider']['pricing']
                 usage['estimated_cost_microusd'] = usage_cost(usage, pricing)
                 if any(type(usage.get(k)) is not int or usage[k] < 0 or usage[k] > pricing[limit]
@@ -248,6 +251,8 @@ class CodeAuthor:
         except Exception as exc:
             item.update(status='FAILED', error=str(exc) if isinstance(exc, ModelFailure) else 'author_validation_failed')
         item['finished_at'] = datetime.now(timezone.utc).isoformat()
+        if item.get('operation',{}).get('status')=='RUNNING':
+            item['operation'].update(status='FAILED',finished_at=item['finished_at'])
         self.committee._save(item)
 
     def close(self):

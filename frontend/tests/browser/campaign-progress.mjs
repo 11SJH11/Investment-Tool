@@ -8,6 +8,7 @@ function fixtures(){
  const campaign={id:'fixture',status:'DEVELOPMENT_COMPLETE',created_at:'2026-10-21',request:{prompt:'Fixture failed baseline'},reserved:{llm_usd:1.89,simulations:40},execution:{entries:[]}};
  const report={campaign,worker:{running:true},summary:{baseline_runs_completed:0,numeric_cycles_completed:0,structural_checks_completed:0,holdout_consumed_by_campaign:false},morning_report:{families:[],conclusions:[]},events:[],progress:{outcome:'FAILED',counts:{queued:0,running:0,completed:0,failed:0,cancelled:1},family_failures:[{family_id:'selected_strategy',reason:'baseline_compute_deadline'}],jobs:[{id:'fixture-job',family_id:'selected_strategy',role:'baseline',status:'cancelled',processed:209408,total:790767,bar_progress_percent:26.4816,updated_at:'2026-10-21 17:52:15',suspected_stall:false}],eta_reason:'Dynamic work; reservations are not completed tasks.'}};
  window.progressRequests=[];
+ report.operations={limitation:'Fixture metering only',model_operations:[{id:'model-fixture',family_id:'family',kind:'COMMITTEE',status:'FAILED',operation:{role:'Researcher',status:'RETURNED'},elapsed_seconds:12,reserved_calls:3,returned_usage_calls:1,reserved_cost_microusd:500000,estimated_reported_cost_microusd:100000,unpriced_returned_calls:0}]};
  report.activity={items:[{id:3,action:'FIXTURE_LATEST',created_at:'2026-10-21T17:52:15Z',detail:'Latest fixture'}],next_before:3};
  window.failOlder=true;
  window.fetch=async(url,options={})=>{
@@ -34,6 +35,7 @@ await click('Research Agent');
 await waitFor(`document.body.innerText.includes('Recorded execution: FAILED')`);
 assert(await evaluate(`document.body.innerText.includes('26.5%')&&document.body.innerText.includes('baseline_compute_deadline')&&document.body.innerText.includes('ETA unavailable')`));
 assert(await evaluate(`!progressRequests.some(r=>r.method!=='GET')`));
+assert(await evaluate(`document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Calls reserved: 3')&&document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Returned usage: 1')`));
 await click('Load older activity');
 await waitFor(`document.querySelector('[aria-label="Campaign activity"] [role="alert"]')`);
 assert(await evaluate(`document.body.innerText.includes('FIXTURE LATEST')`));

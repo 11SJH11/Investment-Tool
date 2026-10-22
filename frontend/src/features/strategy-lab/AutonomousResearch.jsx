@@ -6,6 +6,7 @@ import ResearchSearchHistory from './ResearchSearchHistory.jsx';
 import SandboxTimeline from './SandboxTimeline.jsx';
 import CampaignProgress from './CampaignProgress.jsx';
 import CampaignActivity from './CampaignActivity.jsx';
+import CampaignOperations from './CampaignOperations.jsx';
 import FeatureAblation from './FeatureAblation.jsx';
 import {CampaignRegimeForm,CampaignRegimeReport} from './CampaignRegimes.jsx';
 
@@ -71,6 +72,7 @@ export default function AutonomousResearch({strategies}){
   <label className="block">Campaign<select className="input" value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Select campaign</option>{items.map(c=><option key={c.id} value={c.id}>{c.request.prompt||c.request.mode} · {c.created_at}</option>)}</select></label>
   {campaign&&<><article className="insight-panel"><h4 className="font-semibold">{campaignDisplayStatus(report).replaceAll('_',' ')}</h4>
    <p className="text-sm muted mt-2">{report.worker.running?'Backend coordinator running':'Backend coordinator is not running'}{report.worker.error?' · '+report.worker.error:''}</p>
+   <p className="text-xs muted">Coordinator cycle started: {report.worker.last_cycle_started_at??'Not observed in this process'} · Last successful cycle: {report.worker.last_cycle_finished_at??'Not observed in this process'}. These are supervision timestamps, not simulation progress.</p>
    {campaign.last_error&&<p role="alert">{campaign.last_error_detail?.message||`${campaign.last_error}. Check history coverage, model configuration and budget allowances before creating a new campaign.`}</p>}
    <div className="ui-toolbar mt-3">{campaignActions(campaign.status).map(action=><button className="mini-btn" disabled={busy} key={action} onClick={()=>control(action)}>{action.replaceAll('_',' ')}</button>)}</div>
    <p className="text-sm mt-3">Baselines: {report.summary.baseline_runs_completed} · Numeric cycles: {report.summary.numeric_cycles_completed} · Structural checks: {report.summary.structural_checks_completed}</p>
@@ -79,6 +81,7 @@ export default function AutonomousResearch({strategies}){
    {campaign.preparation&&<p className="text-sm mt-2">History preparation: {campaign.preparation.status} · Fixed deadline {campaign.preparation.deadline}</p>}
   </article>
   <CampaignProgress progress={report.progress}/>
+  <CampaignOperations data={report.operations}/>
   <CampaignActivity key={selected} identifier={selected} page={report.activity}/>
   <article className="insight-panel"><h4 className="font-semibold">Research report</h4><div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Family','Progress','Baseline N','Baseline avg R','Child N','Finding'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{report.morning_report.families.map(f=><tr key={f.project_id}><td className="p-2">{f.family_id}</td><td className="p-2">{f.state}</td><td className="p-2">{f.baseline_summary?.n??'—'}</td><td className="p-2">{number(f.baseline_summary?.average_r)}</td><td className="p-2">{f.child_summary?.n??'—'}</td><td className="p-2">{f.verdict}{f.reason&&<p>{f.reason}</p>}{f.warnings.map(w=><p key={w} className="muted mt-1">{w}</p>)}</td></tr>)}</tbody></table></div>
    {report.morning_report.conclusions.map(t=><p className="text-xs muted mt-2" key={t}>{t}</p>)}

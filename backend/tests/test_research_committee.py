@@ -64,6 +64,26 @@ def test_pause_during_call_stops_remaining_roles(registered):
             result=super().generate(*args);repo.transition(project['id'],'PAUSED');return result
     model=Pausing(proposal);result=Committee(db,model).review(project['id'],'pause')
     assert result['status']=='FAILED' and result['error']=='project_not_active' and len(model.calls)==1
+    assert result['usage']['Researcher']['input_tokens']==100
+    assert result['operation']['status']=='RETURNED'
+    assert result['finished_at'] and result['updated_at']
+
+
+def test_model_role_is_durable_before_dispatch_and_timeout_not_retried(registered):
+    db,_,project,proposal=registered
+    class Inspecting(FakeModel):
+        def generate(self,*args):
+            with db.connect() as c:
+                record=json.loads(c.execute('SELECT document FROM agent_reviews WHERE project_id=?',(project['id'],)).fetchone()[0])
+            assert record['operation']['role']=='Researcher'
+            assert record['operation']['status']=='RUNNING'
+            self.calls.append(args)
+            raise ModelFailure('model_timeout')
+    model=Inspecting(proposal);service=Committee(db,model)
+    result=service.review(project['id'],'timeout')
+    assert result['status']=='FAILED' and result['operation']['status']=='FAILED'
+    assert result['usage']=={} and result['reserved_calls']==3
+    assert service.review(project['id'],'timeout')==result and len(model.calls)==1
 
 
 def settings():

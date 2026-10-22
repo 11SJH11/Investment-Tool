@@ -1635,3 +1635,38 @@ New tests: `backend/tests/test_sandbox_readiness.py`; extended campaign launch,
 structural campaign, Gold preparation, real-Docker security, sandbox-loop and
 frontend sandbox tests. Current handoff and unified roadmap were updated. No
 tracked files deleted, no user strategy files or research exports modified.
+
+## 22 October: reliability audit and persisted operation monitoring
+
+Current audit and detailed remaining work:
+[Research Agent audit](RESEARCH_AGENT_AUDIT_2026-10-21.md).
+
+The investigated Gold campaign had already failed its baseline deadline; no
+baseline result existed. The UI now distinguishes failed terminal families from
+the old DEVELOPMENT_COMPLETE coordinator label. This is a derived display, not a
+rewrite of historical records. Queue counters come from persisted baseline,
+reference and current numeric-attempt jobs, never from budget reservations.
+
+Campaign event history is cursor-paged with a `(campaign_id,id)` index. Transient
+report failures preserve the last successful report and retry serially with
+bounded backoff. Model roles are persisted before dispatch; returned usage is
+retained even if authorization is revoked before result validation. The new
+operation panel distinguishes reservations, returned usage, estimated known cost,
+unknown cost and operation time. Prompts, credentials, source and result evidence
+are not included in that projection. Coordinator start/success timestamps reset
+on process restart and are explicitly separate from simulation progress.
+
+Canonical FVG iteration avoids pandas row-Series creation with oracle/prefix
+parity tests. The isolated detector profile improved from 6.697s to 0.137s on
+20,000 bars; no whole-campaign speed claim follows from that measurement.
+Frozen rules, user cost/leverage assumptions, model permissions and holdout
+policy were not changed. No user backend restart or live paid campaign was run.
+
+This is not a declaration that the broader MT5, screenshots and Algo Trading
+roadmap is complete. T01 execution remains disabled. The audit records remaining
+performance, structural per-bar monitoring and live-provider acceptance limits.
+
+Verification for this checkpoint: 1,922 backend passed / 41 opt-in skipped;
+144 frontend passed; production build passed (172 modules); 22 real Docker
+security/lifecycle tests and nine sandbox-loop tests passed. Fixture browser
+smoke passed at 390/1024/1440/1920px. No orphan Ledger research containers remained.
