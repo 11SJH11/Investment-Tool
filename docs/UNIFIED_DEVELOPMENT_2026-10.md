@@ -763,3 +763,13 @@ No account changes, orders, paid model calls or user backend restart.
 Future research backlog (user request): Gold post-impulse range-rejection strategy,
 R01–R05 variants. Define causal numerical rules and preregister one-variable
 experiments later; no implementation or tuning during the current priority work.
+
+### Genuine Gold baseline acceptance completed
+
+The explicitly authorized corrected-FVG baseline completed on cached real OANDA
+development history in **6,408.813s**, within its original **6,900s** allocation.
+410 trades; original zero-cost / 300x assumptions unchanged. Existing failed
+campaign preserved; no holdout/provider/model/order calls. Details, data-boundary
+qualification and artifact digest are in the current Research Agent audit.
+Added opt-in `backend/tools/verify_gold_campaign_baseline.py`; three safety tests
+passed. This proves baseline completion, not complete paid research-loop acceptance.

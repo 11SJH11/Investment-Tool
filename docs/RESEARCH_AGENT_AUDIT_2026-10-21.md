@@ -179,14 +179,44 @@ they are supervision evidence, not a fabricated worker or simulation heartbeat.
 7. Do not enable or infer T01 execution from this page. Research never deploys a
    strategy, places orders, or grants MT5 account execution authority.
 
-Remaining audit limits: no completed rerun of the original 790,767-bar Gold
-campaign; the measured FVG improvement is not end-to-end throughput evidence.
+The subsequent controlled baseline below supersedes the earlier absence of a
+completed genuine development run. It is not a rerun of the campaign state machine
+or a complete numeric/structural/model campaign acceptance.
 No live paid-model acceptance was triggered. The adapter has per-request network
 timeouts and input/output bounds; this audit has not established a hard total
 wall-time kill for a provider that trickles response bytes indefinitely. The
 Docker strategy wall-time watchdog is a separate, tested mechanism. No overall
 ETA is supplied for dynamic model-driven work. Large-history report latency
 outside the now-paged campaign events still needs measured profiling.
+
+### Genuine cached Gold baseline completed (22 October)
+
+Explicitly authorized isolated verification used the failed campaign's original
+development dates (2023-08-14 through 2025-11-05), warmup from 2022-10-23, unchanged
+strategy parameters, $10,000 balance, 1% risk, zero costs and 300x leverage. The
+current corrected strategy/concept implementation and current cached OANDA-mid
+data were fingerprinted; historical failure provenance was not overwritten.
+
+- **Completed in 6,408.813 seconds (106m49s)**, below the original **6,900-second
+  (115-minute)** allocation, with approximately 8m11s remaining.
+- 1,074,537 cached 1m rows and 71,892 cached 15m rows including warmup; 790,766
+  evaluated primary bars reported during execution. Bounded reads use exclusive
+  end time; the earlier failed queue reported 790,767, so this is not a claim of
+  bit-for-bit identity with the old incomplete run's inputs.
+- 410 trades; total R 30.006435; average R 0.073186; R PF 1.192349. These describe
+  frictionless development assumptions, not realistic execution or an edge.
+- Result SHA256: `c34d33da67e692998e30154e8a767d3173f25fe3590b0e9c0dd258b7bb93be5a`.
+- Artifacts: `backend/data/research_verification/gold-20261022T082249630831Z/`
+  (`manifest.json`, `progress.json`, `result.json`). Digest rechecked after completion.
+- User DB opened read-only; existing failed campaign still FAILED at family level
+  with `baseline_compute_deadline`. No provider calls, credentials, holdout reads,
+  model requests, deployment, order placement or user service restart.
+
+The opt-in verifier refuses window changes and protected/validation overlap,
+restricts cached data to XAUUSD 1m/15m and records a separate output. Three verifier
+tests passed, including unchanged source DB bytes and refusal before execution.
+The preceding 1,922-test full run predates these three tool-only tests. Completion
+margin is modest; performance remains a priority and no settings were tuned.
 
 ### 2026-10-22 activity and numeric-progress continuation
 
