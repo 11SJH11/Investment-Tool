@@ -262,3 +262,28 @@ No real database/service restart, campaign mutation, paid call or order submissi
   Replay/evidence, performance, notifications and safe artifact cleanup work.
 - Live-money execution and distributed hosting remain deferred. No claim of
   live trading, strategy profitability or automatic deployment is made.
+
+### Docker operation visibility continuation
+
+Sandbox runs now persist host engine progress at most once every two seconds.
+Cancellation/deadline/project-authority checks still run on every callback.
+Parent control has its own phase; generated control/candidate/prefix runs retain
+their existing distinct phases. Each save records an update timestamp. The
+campaign operations projection returns only allowlisted progress and the last ten
+lifecycle events for linked projects, with no source, results or raw errors.
+Progress from an earlier phase is suppressed. More than ten minutes without a
+persisted update is labelled a possible stall, not worker death or retry authority.
+Legacy records with no update timestamp remain explicitly unknown.
+
+This is not a per-tick container heartbeat. A blocking remote callback cannot
+report host bar progress. Preparation and robustness phases may remain coarse;
+no fabricated global ETA or automatic recovery was added. Generated code still
+executes only inside the existing restricted Docker worker.
+
+Verification: five operation tests passed; structural/operation focused suite
+16 passed, six opt-in cases skipped. A stale structural fixture lacked the real
+sandbox table's project_id column; its schema was corrected without weakening
+assertions. All 31 opt-in real Docker tests passed in 192.89s. Frontend 144 passed;
+production build passed; fixture browser smoke at 390/1024/1440/1920px passed with
+Docker counts/stall indication, model metering, activity paging/retry and reload.
+Full-suite closeout is recorded in the current handoff after completion.

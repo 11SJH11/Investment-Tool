@@ -1,0 +1,125 @@
+{
+  "run_id": 210,
+  "name": "T03",
+  "test_role": "development",
+  "start_date": "2026-03-01",
+  "end_date": "2026-10-17",
+  "strategy": {
+    "key": "gold_ifvg_v2_be_050",
+    "name": "Gold IFVG V2 \u00b7 BE at +0.50R",
+    "params": {
+      "direction": "both"
+    },
+    "implementation": {
+      "key": "gold_ifvg_v2_be_050",
+      "module": "app.backtesting.strategies.gold_asia_15m_ifvg_loss_tests_v2",
+      "class_name": "GoldIfvgBE050V2",
+      "source_sha256": "6a4460e572af5034cf0fdfaf8b7005f2c91be10f9a6b3ab4877e422e7c537f91",
+      "registry_sha256": "f8c780e30464c81d67df422f89b214fe7d184fd88f2b9a7f13d63ae66436020f"
+    },
+    "review_config": {},
+    "concepts": {
+      "fvg15": {
+        "key": "fvg.three_candle.v1",
+        "timeframe": "15m",
+        "params": {
+          "minimum_bps": 0.0
+        },
+        "source_sha": "5ebd00f8b1ee1f04d021b987d0f7843155c3a18988827ea263875ecccec2c946",
+        "scope": "canonical",
+        "dependencies": []
+      }
+    },
+    "source_archive": {
+      "status": "archived",
+      "sha256": "f8c780e30464c81d67df422f89b214fe7d184fd88f2b9a7f13d63ae66436020f",
+      "module": "gold_asia_15m_ifvg_loss_tests_v2.py",
+      "module_sha256": "6a4460e572af5034cf0fdfaf8b7005f2c91be10f9a6b3ab4877e422e7c537f91",
+      "module_count": 34,
+      "scope": "Loaded strategy modules only; excludes engine, base classes, external dependencies and market data. Not a complete executable environment."
+    }
+  },
+  "config": {
+    "start_date": "2026-03-01",
+    "end_date": "2026-10-17",
+    "warmup_start_date": null,
+    "primary_timeframe": "1m",
+    "additional_timeframes": [],
+    "session": "auto",
+    "strategy_params": {
+      "direction": "both"
+    },
+    "starting_balance": 10000.0,
+    "sizing_mode": "risk_pct",
+    "risk_value": 1.0,
+    "commission_per_order": 0.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0,
+    "max_leverage": 20.0,
+    "max_open_positions": 5,
+    "same_bar_policy": "stop_first",
+    "entry_windows": [],
+    "trading_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "allow_overnight": true,
+    "force_close_time": null,
+    "max_trades_per_day": null,
+    "max_daily_loss_r": null,
+    "max_consecutive_losses": null,
+    "cooldown_minutes": 0,
+    "queue_job_id": "85ae107a-2515-41e3-a32d-af9c987ba50f",
+    "research_experiment": null,
+    "market_data_fingerprint": "674a295aa21e4d460d66edf0e2bcb310f854c2d1a2bd085616d3347c54aa4d43",
+    "strategy_provenance": {
+      "key": "gold_ifvg_v2_be_050",
+      "module": "app.backtesting.strategies.gold_asia_15m_ifvg_loss_tests_v2",
+      "class_name": "GoldIfvgBE050V2",
+      "source_sha256": "6a4460e572af5034cf0fdfaf8b7005f2c91be10f9a6b3ab4877e422e7c537f91",
+      "registry_sha256": "f8c780e30464c81d67df422f89b214fe7d184fd88f2b9a7f13d63ae66436020f"
+    },
+    "strategy_key": "gold_ifvg_v2_be_050",
+    "symbols": [
+      "XAUUSD"
+    ]
+  },
+  "metrics": {
+    "trades": 83,
+    "wins": 35,
+    "losses": 18,
+    "breakeven": 30,
+    "win_rate_pct": 42.168674698795186,
+    "average_r": 0.20481927710843373,
+    "expectancy_r": 0.20481927710843373,
+    "median_r": 0.0,
+    "total_r": 17.0,
+    "average_planned_rr": 1.0,
+    "average_winner_r": 1.0,
+    "average_loser_r": -1.0,
+    "largest_winner_r": 1.0,
+    "largest_loser_r": -1.0,
+    "profit_factor_r": 1.9444444444444444,
+    "profit_factor_cash": 1.8970880128345047,
+    "gross_profit": 3852.476509068491,
+    "gross_loss": 2030.7315649063496,
+    "net_pnl": 1821.744944162141,
+    "starting_balance": 10000.0,
+    "ending_balance": 11821.744944162141,
+    "return_pct": 18.217449441621405,
+    "max_drawdown_cash": -476.17263320126585,
+    "max_drawdown_pct": -4.158982263275285,
+    "max_drawdown_r": -3.0,
+    "longest_losing_streak": 2,
+    "average_hold_minutes": 98.86746987951807
+  },
+  "symbols": [
+    "XAUUSD"
+  ],
+  "primary_timeframe": "1m",
+  "session": "24h",
+  "trade_count_saved": 83
+}

@@ -17,7 +17,7 @@ def operations(database,campaign,*,now=None):
     stamp=(now or datetime.now(timezone.utc)).isoformat()
     projects={e[k]:e['family_id'] for e in campaign.get('execution',{}).get('entries',[])
               for k in ('project_id','reference_project_id') if e.get(k)}
-    rows=[]
+    rows=[];sandbox=[]
     with database.connect() as c:
         tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if 'agent_reviews' in tables:
@@ -37,5 +37,17 @@ def operations(database,campaign,*,now=None):
                         returned_usage_calls=len(usage),estimated_reported_cost_microusd=sum(costs) if costs else None,
                         unpriced_returned_calls=len(usage)-len(costs),
                         deadline_elapsed=record['status']=='RUNNING' and _seconds(record.get('deadline'),stamp) not in (None,0.)))
-    return dict(model_operations=rows,observed_at=stamp,
+        if 'agent_sandbox_runs' in tables:
+            for pid,family in projects.items():
+                for raw in c.execute('SELECT document FROM agent_sandbox_runs WHERE project_id=? ORDER BY rowid',(pid,)):
+                    record=json.loads(raw[0]);progress=record.get('progress') or {}
+                    if progress.get('phase')!=record.get('phase'):progress={}
+                    age=_seconds(record.get('updated_at'),stamp)
+                    sandbox.append(dict(id=record['id'],family_id=family,status=record['status'],phase=record.get('phase'),
+                        updated_at=record.get('updated_at'),update_age_seconds=age,
+                        suspected_stall=record['status']=='RUNNING' and age is not None and age>600,
+                        progress={k:progress.get(k) for k in ('phase','processed','total','observed_at')},
+                        lifecycle=[{k:e.get(k) for k in ('event','phase','at','elapsed_seconds')}
+                                   for e in record.get('sandbox_events',[])[-10:]]))
+    return dict(model_operations=rows,sandbox_operations=sandbox,observed_at=stamp,
         limitation='Recorded calls only. Returned usage is not an invoice; unknown/failed calls remain reserved. Operation timestamps are not a live worker heartbeat. No automatic retry or cancellation.')

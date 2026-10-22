@@ -1670,3 +1670,24 @@ Verification for this checkpoint: 1,922 backend passed / 41 opt-in skipped;
 144 frontend passed; production build passed (172 modules); 22 real Docker
 security/lifecycle tests and nine sandbox-loop tests passed. Fixture browser
 smoke passed at 390/1024/1440/1920px. No orphan Ledger research containers remained.
+
+### Follow-on baseline and monitoring checkpoints (22 October)
+
+The genuine corrected-FVG Gold baseline completed in 6,408.813 seconds against
+its original 6,900-second allocation, using cached real OANDA development data.
+It produced 410 trades under unchanged frictionless/300x assumptions. The
+original failed campaign and protected datasets were preserved. The verifier,
+artifact digest and input-boundary qualification are documented in
+`RESEARCH_AGENT_AUDIT_2026-10-21.md`; this is not a full paid-model campaign result.
+
+Algo Trading now has a read-only monitoring foundation: saved MT5 preparations
+remain NOT_DEPLOYED, last broker sync is distinguished from a live connection,
+and shadow metrics remain simulated. No terminal initialization, orders, account
+switching, automatic attribution or account balance pooling occurs. Execution,
+protection/recovery orchestration and the complete dashboard remain unfinished.
+
+Docker trials now persist throttled host bar progress and expose phase-specific
+observations/lifecycle events through the campaign operation panel. Stale updates
+are possible-stall indications, not proof of failure or permission to retry.
+Current final verification counts and remaining work are in
+`UNIFIED_DEVELOPMENT_2026-10.md`.

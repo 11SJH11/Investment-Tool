@@ -187,8 +187,30 @@ class SandboxRuns:
             return item
 
     def _save(self,item):
+        item['updated_at']=datetime.now(timezone.utc).isoformat()
         with self.database.connect() as c:
             c.execute('UPDATE agent_sandbox_runs SET document=? WHERE id=?',(json.dumps(item,allow_nan=False,default=str),item['id']))
+
+    def _progress(self,item,deadline):
+        """Host engine observations, bounded to one write per two seconds.
+
+        A blocked generated callback cannot emit these updates. Old timestamps
+        are diagnostic evidence only, never authority to retry a submission.
+        """
+        last=None
+        def update(*args):
+            nonlocal last
+            self._guard(item,deadline)
+            done,total=args[-2:]
+            now=time.monotonic()
+            if last is not None and now-last<2:return
+            last=now
+            item['progress']=dict(phase=item['phase'],
+                processed=done if type(done) is int and done>=0 else None,
+                total=total if type(total) is int and total>0 else None,
+                observed_at=datetime.now(timezone.utc).isoformat())
+            self._save(item)
+        return update
 
     def _guard(self,item,deadline):
         if self.cancel_event.is_set():raise SandboxError('CANCELLED')
@@ -214,7 +236,7 @@ class SandboxRuns:
                 if name.startswith('research_') or name in {'queue_job_id','market_data_fingerprint','strategy_provenance'}:config.pop(name)
             config['save_run']=False
             with scope(self.database,item['project_id']):
-                inputs=self.backtest.prepare(config,progress=lambda *args:self._guard(item,deadline))
+                inputs=self.backtest.prepare(config,progress=self._progress(item,deadline))
                 for symbol,frames in inputs['frames_by_symbol'].items():
                     for tf,frame in frames.items():
                         from app.backtesting.context import timeframe_delta
@@ -223,7 +245,8 @@ class SandboxRuns:
                 from .trials import check_source
                 check_source(candidate['snapshot']['hypothesis'])
                 check_input_limits(inputs,full_period=item['request'].get('full_period',False))
-                parent=self.backtest.run(config,prepared=inputs,progress=lambda *args:self._guard(item,deadline))
+                item['phase']='PARENT_CONTROL';self._save(item)
+                parent=self.backtest.run(config,prepared=inputs,progress=self._progress(item,deadline))
             if digest(core(parent))!=candidate['snapshot']['result_digest']:raise SandboxError('PARENT_CONTROL_MISMATCH')
             engine=engine_config(config,inputs['session']); symbol=inputs['symbols'][0]
             def simulate(parameters,phase,prefix=False,*,prepared=None,payload=None):
@@ -257,7 +280,7 @@ class SandboxRuns:
                         frames[symbol][data['primary']]=primary.iloc[:end].copy()
                     active_payload=payload if payload is not None else config
                     lifecycle('backtest_running')
-                    result=BacktestEngine(selected_engine).run(symbol_frames=frames,strategies={symbol:strategy},primary_timeframe=data['primary'],progress=lambda *a:self._guard(item,deadline),
+                    result=BacktestEngine(selected_engine).run(symbol_frames=frames,strategies={symbol:strategy},primary_timeframe=data['primary'],progress=self._progress(item,deadline),
                         evaluation_start=data['start'] if active_payload.get('warmup_start_date') else None)
                     lifecycle('results_received')
                     return result,strategy.trace,session.provenance
