@@ -37,7 +37,7 @@ def profiles(settings):
         settings.tradelocker_enabled, {k: getattr(settings, 'tradelocker_' + k) for k in
         ('email', 'password', 'server', 'account_id', 'developer_api_key')}))
     result.append(BrokerProfile('mt5-default', 'mt5', settings.mt5_environment.strip().lower(),
-        settings.mt5_enabled, {k: getattr(settings, 'mt5_' + k) for k in ('login', 'password', 'server', 'terminal_path')}))
+        settings.mt5_enabled, {k: getattr(settings, 'mt5_' + k) for k in ('login', 'password', 'server', 'terminal_path','bridge_url','bridge_token_file')}))
     result.append(BrokerProfile('robinhood-default','robinhood','live',
         settings.robinhood_enabled and settings.robinhood_portfolio_sync,
         {'access_token':settings.robinhood_access_token,'account_id':settings.robinhood_account_id}))

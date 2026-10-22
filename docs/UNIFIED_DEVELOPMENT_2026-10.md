@@ -815,3 +815,28 @@ the native adapter and requiring DEMO identity. Real Fedora discovery and sync
 acceptance cannot be inferred from Windows/mock tests. Then continue execution/
 protection/recovery, full Algo monitoring and screenshot annotations. Automated
 execution remains disabled and no test orders are authorized.
+
+### Fedora/Wine read-only bridge implementation checkpoint
+
+Implemented the explicitly configured, disabled-by-default MT5 transport, an
+authenticated IPv4-loopback service, strict read method/schema/size limits,
+exclusive session leases, pinned DEMO identity before/after reads and a native-call
+watchdog. Windows-native adapter behaviour remains the default. No database
+migration, native account switch or order call was added. Journal uses the existing
+reconciler/cursor model; partial/repeated imports and failure preservation were
+tested through real local HTTP with a fixture terminal.
+
+See [MT5 Linux bridge](MT5_LINUX_BRIDGE.md) for exact Fedora commands, user systemd
+template, timestamp limitations and the temporary-database real acceptance checker.
+The user will run Fedora acceptance; no SSH access was supplied. Therefore **real
+Ledger DEMO discovery and Journal sync on Fedora are still pending**. Existing
+direct Wine/MT5 connectivity evidence is not substituted for that acceptance.
+Raw timestamps are preserved, not shifted by a guessed seasonal offset. Bridge
+market-history research reads reject until UTC semantics are explicitly verified.
+
+Verification: **412 MT5/broker tests passed**, **144 frontend tests passed**,
+production build passed on unchanged retry, diff check passed. The preceding full
+backend/Docker counts above predate the bridge changes. The next roadmap work
+remains execution/protection/recovery integration, complete Algo monitoring and
+screenshots/annotations, with automated execution disabled pending authorization
+and verified timing. The R01–R05 research idea remains a future task.

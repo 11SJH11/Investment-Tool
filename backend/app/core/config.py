@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     mt5_market_data_enabled: bool = Field(default=False, validation_alias="MT5_MARKET_DATA_ENABLED")
     mt5_futures_mappings_json: str = Field(default='{}', validation_alias="MT5_FUTURES_MAPPINGS_JSON")
     mt5_enabled: bool = Field(default=False, validation_alias="MT5_ENABLED")
+    mt5_bridge_url: str = Field(default="", validation_alias="MT5_BRIDGE_URL")
+    mt5_bridge_token_file: str = Field(default="", validation_alias="MT5_BRIDGE_TOKEN_FILE", repr=False)
     mt5_environment: str = Field(default="demo", validation_alias="MT5_ENVIRONMENT")
     mt5_login: str = Field(default="", validation_alias="MT5_LOGIN", repr=False)
     mt5_password: str = Field(default="", validation_alias="MT5_PASSWORD", repr=False)

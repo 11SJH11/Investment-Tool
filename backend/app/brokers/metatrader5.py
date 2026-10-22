@@ -55,10 +55,14 @@ class MetaTrader5History:
         self._locked = True
         try:
             if self._module is None:
-                try:
-                    self._module = importlib.import_module('MetaTrader5')
-                except ImportError:
-                    raise BrokerHistoryError('Install the optional official MetaTrader5 package on the backend machine', category='configuration') from None
+                if self._credentials.get('bridge_url'):
+                    from .mt5_bridge_client import BridgeClient
+                    self._module=BridgeClient(self._credentials['bridge_url'],self._credentials.get('bridge_token_file',''),self.environment)
+                else:
+                    try:
+                        self._module = importlib.import_module('MetaTrader5')
+                    except ImportError:
+                        raise BrokerHistoryError('Install the optional official MetaTrader5 package on the backend machine', category='configuration') from None
             options = {'timeout': 30000}
             if self._credentials.get('login'):
                 options['login'] = int(self._credentials['login'])

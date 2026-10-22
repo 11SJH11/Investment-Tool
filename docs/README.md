@@ -6,6 +6,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 ## Operating and verifying Ledger
 
 - [Running Ledger](RUNNING_LEDGER.md): local startup, backups and deployment limits.
+- [Read-only MT5 Linux bridge](MT5_LINUX_BRIDGE.md): Fedora/Wine installation, DEMO identity, timestamp limitations and real acceptance commands.
 - [Verification](VERIFICATION.md): isolated full-suite/build command and manual checks.
 - [Architecture](ARCHITECTURE.md): ownership, persistence and application boundaries.
 - [Data sources](DATA_SOURCES.md): provider configuration and data limitations.

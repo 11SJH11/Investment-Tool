@@ -1,0 +1,28 @@
+[Unit]
+Description=Ledger read-only MT5 Wine bridge (DEMO)
+After=graphical-session.target network.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+Environment=WINEPREFIX=%h/.mt5
+Environment=WINEDEBUG=-all
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=%h/.config/ledger-mt5-bridge/service.env
+WorkingDirectory=%h/Investment-Tool/backend
+ExecStart=/usr/bin/wine ${WINE_PYTHON} -B -m app.brokers.mt5_bridge_server --config ${BRIDGE_CONFIG_WINDOWS}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillMode=control-group
+NoNewPrivileges=true
+UMask=0077
+MemoryMax=1G
+TasksMax=256
+LimitNOFILE=1024
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
