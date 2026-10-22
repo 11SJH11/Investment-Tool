@@ -794,3 +794,24 @@ frontend tests, production build, and fixture browser checks at
 retry, reload and no overflow/runtime errors. An initial build hit the existing
 intermittent Windows import-resolution failure; an unchanged retry passed.
 No schema changes. The previous full backend count above predates this foundation.
+
+### Docker progress and final verification
+
+Persisted host bar counts now accompany Docker phase/lifecycle observations;
+possible stalls are explicit and never trigger automatic retries. See the audit
+for projection boundaries and remaining coarse phases.
+
+Final complete backend run: **1,932 passed, 41 skipped, one deprecation warning**
+in 630.55s. Frontend **144 passed**; production build passed (existing chunk-size
+warning). Real Docker security/lifecycle and research-loop tests **31 passed**
+in 192.89s. Browser fixture acceptance passed at 390/1024/1440/1920px for both
+monitoring and campaign operations. No orphan Ledger containers remained; six
+unrelated stopped containers were unchanged. No schema migration or real-service
+restart. Initial full run found only a stale test schema, corrected before the
+final run. User-generated strategy/export files remain untracked and untouched.
+
+Next user-prioritized work: a read-only loopback Fedora/Wine MT5 bridge, preserving
+the native adapter and requiring DEMO identity. Real Fedora discovery and sync
+acceptance cannot be inferred from Windows/mock tests. Then continue execution/
+protection/recovery, full Algo monitoring and screenshot annotations. Automated
+execution remains disabled and no test orders are authorized.
