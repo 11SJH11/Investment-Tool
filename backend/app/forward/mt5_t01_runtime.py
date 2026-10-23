@@ -28,7 +28,8 @@ MAX_BARS = 2880
 def implementation_identity():
     root = Path(__file__).resolve().parents[1]
     files = [Path(__file__), root/'backtesting/strategies/base.py',
-             root/'forward/bars.py', root/'forward/deployments.py', root/'forward/runtime.py']
+             root/'forward/bars.py', root/'forward/deployments.py', root/'forward/runtime.py',
+             root/'forward/mt5_t01_feed.py', root/'forward/mt5_t01_poll.py']
     files += sorted((root/'market_concepts').rglob('*.py'))
     return dict(runtime=runtime_identity(), dependencies={
         str(p.relative_to(root)): sha256(p.read_bytes()).hexdigest() for p in files})
@@ -122,7 +123,7 @@ class T01DecisionRuntime:
                 or definition['runtime_identity'] != implementation_identity()):
             raise ValueError('Frozen T01 implementation changed; diagnostic stream cannot upgrade')
 
-    def step(self, identifier, bar, *, observed_at, equity, position=None, attribution_verified=False):
+    def step(self, identifier, bar, *, observed_at, equity, position=None, attribution_verified=False, feed_evidence=None):
         """One completed minute, no orders. Failed validation leaves frontier intact.
 
         Positions must be supplied by future receipt-bound broker orchestration.
@@ -134,6 +135,15 @@ class T01DecisionRuntime:
         if type(equity) not in (float, int) or not 0 < equity < float('inf'):
             raise ValueError('Finite positive observed equity required')
         observation = dict(equity=float(equity), position=serial(asdict(position)) if position else None)
+        if feed_evidence is not None:
+            fixed = dict(provider='mt5', volume_basis='mt5_tick_volume', timestamp_policy='verified_utc',
+                         observation_basis='flat_account_before_and_after')
+            if (not isinstance(feed_evidence, dict) or set(feed_evidence) != {*fixed, 'profile_id'}
+                    or any(feed_evidence[k] != v for k,v in fixed.items())
+                    or not isinstance(feed_evidence['profile_id'],str) or not 1 <= len(feed_evidence['profile_id']) <= 64
+                    or position is not None):
+                raise ValueError('Invalid MT5 diagnostic feed evidence')
+            observation['feed_evidence'] = dict(feed_evidence)
         encoded(observation)
         with self.lock, self.registry.executing():
             try:

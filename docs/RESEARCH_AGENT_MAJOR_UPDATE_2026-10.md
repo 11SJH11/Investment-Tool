@@ -1736,3 +1736,25 @@ passed**; production build passed first attempt (175 modules, existing chunk
 warning). Final focused T01/monitoring selection: **24 passed**. Fixture browser
 checks passed at **390/1024/1440/1920px**. No live broker or opt-in Docker rerun is
 implied. Execution remains disabled and no orders were sent.
+
+### Follow-up: MT5 observation-to-decision integration (24 October)
+
+Added a bounded read-only MT5 collector and serialized T01 polling cycle. It
+reuses profile/terminal lifecycle locks, requires explicit selected demo identity
+and verified UTC quotes/bars, validates the previous recorded minute and persists
+tick-volume/profile provenance. Forming bars are excluded; missing/revised or
+shifted history, non-flat accounts and cancellation cannot advance the diagnostic
+frontier. Research contexts cannot invoke this feed. No native login credentials,
+orders, cached fallback, worker startup or trading permission were introduced.
+
+The persistent polling worker and receipt-bound position/protection integration
+remain unfinished. The native observation budget is post-call validation, not a
+native-call interruption guarantee. Updated operational boundaries are in
+[the T01 runtime contract](MT5_T01_DECISION_RUNTIME.md) and the current handoff.
+
+Final current-tree verification for the observation-cycle checkpoint:
+**2,025 backend passed / 41 skipped**, one existing deprecation warning (585.61s);
+**96 focused feed/runtime/MT5 checks passed**; **144 frontend tests passed**;
+production build passed first attempt with the existing chunk-size warning.
+Diff check passed. No frontend code changes or new browser acceptance; no live
+broker or real-Docker acceptance is implied by these counts.

@@ -75,6 +75,52 @@ No credentials, terminal or orders are involved.
 Full checkpoint counts and build/browser results are in
 [the current handoff](UNIFIED_DEVELOPMENT_2026-10.md).
 
+## Read-only MT5 observation cycle
+
+`mt5_t01_feed.py` and `mt5_t01_poll.py` now connect one explicit diagnostic cycle
+to the existing broker profile locks and native/bridge adapter. There is still no
+automatic polling thread, startup activation or new public endpoint.
+
+The cycle requires an enabled DEMO profile, its selected opaque account identity,
+an explicit terminal path or bridge, and matching currency. The collector passes
+only terminal/bridge connection settings; it never passes login/password/server
+options that could switch a native terminal account. Adapter shutdown releases
+Python IPC, not the MT5 terminal. Existing profile and process-global adapter
+locks protect the read lifecycle.
+
+Only the latest fully completed minute is eligible. A fresh UTC quote, exact
+broker symbol, connected terminal and unchanged demo identity are required. The
+immediately preceding persisted minute is re-read and compared before advancing.
+Missing/revised/duplicate/future rows fail; a native range's forming right-edge
+bar is excluded. Volume is explicitly MT5 tick volume, not shares/contracts.
+The profile, timestamp policy, volume basis and observation basis are recorded
+with the decision. Source fingerprints include the feed/poll implementation.
+
+The account must have no open positions or pending orders both before and after
+collection. This deliberately conservative diagnostic boundary does not attribute
+manual trades or substitute a flat position for unknown broker state. It is not
+an atomic broker snapshot or permission to trade; broker state can change between
+reads. A separate receipt-bound position mapper is still required.
+
+Repeated polling within an already committed minute does not contact MT5.
+Missed minutes/clock rollback require explicit recovery; no historical orders or
+automatic backfill are generated. Cancellation before collection or after the
+read leaves the frontier intact. Provider failures retain existing decisions and
+release locks. The five-second observation budget is checked after native reads;
+it does not forcibly interrupt a blocked native call. Bridge watchdog/transport
+timeouts retain their existing behavior.
+
+This path cannot infer the TradeQuo seasonal rule. `verified_utc` remains an
+independently established input contract, and +2/+3-hour quotes are rejected
+rather than shifted. An unverified bridge timestamp policy also blocks reads.
+Research Agent contexts cannot invoke this diagnostic feed.
+
+Focused isolated verification:
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q tests/test_mt5_t01_feed.py tests/test_mt5_t01_poll.py tests/test_mt5_t01_runtime.py
+```
+
 ## Still required before a real T01 deployment
 
 1. Independently validate MT5 timestamp representation and feed continuity. The

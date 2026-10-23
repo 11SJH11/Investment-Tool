@@ -977,3 +977,53 @@ large-chunk warning. Fixture browser smoke: **390/1024/1440/1920px passed**, inc
 diagnostic labels, stale/retry, paging, reload, GET-only and no runtime errors or
 page overflow. Diff check passed. No real Docker suite or live broker/order
 acceptance was rerun; opt-in skips are not claimed as passes.
+
+### Read-only MT5-to-T01 observation cycle (24 October)
+
+Connected the T01 diagnostic runtime to a bounded broker observation cycle using
+existing profile locks and the native/bridge adapter. Only an explicitly selected
+DEMO profile/account/currency and explicit terminal/bridge path are accepted.
+The connection passes no login/password/server options that could switch native
+accounts. Current connection, identity and flat-account facts are checked before
+and after the read; no order, login or account-setting API was added.
+
+The collector requires independently verified UTC semantics and a fresh raw UTC
+quote. It retrieves only the latest completed minute plus the immediately prior
+saved minute for overlap/revision validation. Missing, revised, duplicate,
+shifted/future or malformed history fails closed. The forming right-edge bar is
+excluded. MT5 tick-volume provenance and the selected profile are persisted with
+the decision. No inferred broker offset, cached fallback or synthetic data exists.
+
+The serialized cycle avoids another broker request for an already-recorded
+minute. Missed minutes/clock rollback require explicit recovery, not historical
+catch-up. Cancellation before/after collection and failed reads preserve the
+frontier and release the profile/adapter lifecycle. A test found and fixed an
+empty corrupted checkpoint bypassing the initial integrity guard; no native read
+now occurs for that record. Quote freshness uses post-read receipt time so a quote
+advancing during the call is not falsely classified as future.
+
+This completes the internal observation-cycle connection, not the persistent
+worker or automated execution. Open positions or pending orders currently block
+this diagnostic collector until receipt-bound position attribution is integrated.
+The five-second snapshot budget is validated after calls; it does not interrupt a
+blocked native API. Existing bridge watchdog/timeouts remain unchanged. No real
+broker calls, user DB initialization, orders or account changes were performed.
+No new schema in this increment; existing diagnostic JSON gains allowlisted feed
+evidence. Source fingerprints now include feed/poll code, so old diagnostic streams
+must not silently upgrade. See MT5_T01_DECISION_RUNTIME.md for the current contract.
+
+Remaining: independently verified broker timestamp semantics, persistent worker
+lifecycle/heartbeat, broker position attribution, submission/protection/recovery
+integration and separately authorized demo acceptance. Full monitoring analytics,
+genuine model-driven campaign acceptance and screenshot annotations remain later
+work. T01 remains NOT_DEPLOYED and automated execution disabled.
+
+Final verification against this exact increment: **2,025 backend passed,
+41 skipped**, one existing Starlette/httpx deprecation warning, in 585.61s.
+Focused T01 feed/poll/runtime plus MT5 market-data/bridge checks: **96 passed**.
+The new collector/poll tests add 46 deterministic cases to the preceding full
+suite. Frontend: **144 passed**. Production build: passed first attempt with the
+existing large-chunk warning. Diff check passed. No frontend code changed, so
+browser smoke was not repeated in this increment; the prior fixture viewport
+results remain historical evidence. No real broker or opt-in Docker acceptance
+was rerun. Orders and automated execution remain disabled.
