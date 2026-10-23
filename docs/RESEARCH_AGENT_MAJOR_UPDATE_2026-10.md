@@ -1699,3 +1699,17 @@ recovery persistence. Full backend verification passed **1,963 tests, 41 skipped
 handoff for exact scope and [MT5 Linux bridge](MT5_LINUX_BRIDGE.md) for installation
 and pending real Fedora acceptance. T01 automated execution remains disabled;
 these changes are not a completed automated trading system.
+
+### Follow-up: persisted account safeguard monitoring (23 October)
+
+Algo Trading now exposes allowlisted account guards, all-history shared-account
+attempt counts and latest recorded risk diagnostics, with explicit historical/
+non-authorizing semantics and separate currencies. The projection adds no schema,
+broker call or execution authority. User reports the Fedora bridge works well;
+that does not establish timestamp/DST or automated-execution acceptance.
+
+This increment: 76 focused backend tests, 144 frontend tests and production build
+passed (unchanged build retry for existing Windows resolver instability). Fixture
+browser acceptance passed at 390/1024/1440/1920px. The earlier full backend count
+is historical, not a full rerun of this increment. Current remaining work is
+tracked in UNIFIED_DEVELOPMENT_2026-10.md.

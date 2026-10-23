@@ -904,3 +904,34 @@ Final verification against this accumulated bridge/monitoring/recovery tree:
 production build passed on unchanged retry after the known intermittent Windows
 resolver error (174 modules; existing large-chunk warning). Diff check passed.
 No real broker acceptance or Docker opt-in rerun is implied by these counts.
+
+### Account safeguard monitoring and user bridge feedback (23 October)
+
+The user reports that the MT5 bridge works well. Record this as user-reported
+operational success, not independent evidence of verified tick/bar UTC semantics,
+seasonal transitions or order-execution acceptance. No additional broker probe,
+account switch or order was performed in this checkpoint.
+
+Algo Trading preparation details now show persisted account guard state, the
+all-history account attempt count and the latest recorded risk assessment:
+pass/rejection reasons, observation time, UTC risk day and projected loss budget/
+exposure in the policy currency. Shared-account counts are explicitly not additive;
+missing evidence stays unknown. Historical passing diagnostics do not authorize
+execution or imply current account risk/protection. Owner/guard tokens and raw
+account facts are excluded. The projection uses three bulk queries independent of
+preparation count and the existing overview reads a consistent SQLite snapshot.
+
+Verification: **76 focused backend tests passed**, **144 frontend tests passed**,
+production build passed on unchanged retry after the existing Windows resolver
+failure. Fixture browser checks passed at **390/1024/1440/1920px**, covering the
+new safeguard details plus stale/retry, history paging, reload and GET-only
+requests, with no runtime errors or page overflow. `git diff --check` passed.
+No migrations. The previous full-suite result (1,963 passed / 41 skipped) predates
+this increment and has not been repeated here.
+
+Still unfinished: persistent T01 runtime; verified market-data/session timing;
+submission/protection/recovery orchestration and separately authorized demo order
+acceptance; attributed broker performance/snapshots/charts/alerts and supported
+controls; genuine model-driven campaign acceptance; screenshot annotations.
+Automated trading remains disabled. No external input is required to continue
+implementation and mocked verification of those components.

@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {api} from '../../api/client';
 import DataTable from '../../components/table/DataTable';
 import RecoveryActivity from './RecoveryActivity';
+import AccountSafeguards from './AccountSafeguards';
 
 const columns=[['name','Strategy','text'],['mode','Mode','category'],['environment','Environment','category'],['symbol','Symbol','text'],['status','Observed status','category'],['last_evaluation_at','Last evaluation','date']].map(([key,label,kind])=>({key,label,kind,render:row=>row[key]??'Unavailable'}));
 const money=(value,currency)=>value==null?'Unavailable':`${Number(value).toFixed(2)} ${currency}`;
@@ -33,6 +34,7 @@ export default function AlgoTradingPage(){
     <p className="text-xs muted break-all">Identity {detail.id} · Source/definition {detail.source_hash}</p>
     <p>Last evaluation: {detail.last_evaluation_at??'Not observed'} · Saved state: {detail.persisted_status}</p>
     {detail.metrics&&<div className="grid gap-3 mt-3 sm:grid-cols-3"><p>Trades N={detail.metrics.n}{detail.metrics.low_sample?' · Low sample':''}</p><p>Average R: {detail.metrics.average_r?.toFixed(3)??'Unavailable'}</p><p>Win rate: {detail.metrics.win_rate_pct?.toFixed(1)??'Unavailable'}%</p><p>Simulated equity: {money(detail.equity,detail.currency)}</p><p>Max simulated drawdown: {money(detail.metrics.max_drawdown_cash,detail.currency)}</p><p>Profit factor: {detail.metrics.profit_factor?.toFixed(2)??'Unavailable'}</p></div>}
+    <AccountSafeguards evidence={detail.safeguards} currency={detail.currency}/>
     <details className="mt-3"><summary>Recorded position and risk settings</summary><pre className="text-xs whitespace-pre-wrap break-all max-h-80 overflow-auto">{JSON.stringify({position:detail.position,risk:detail.risk,intent_counts:detail.intent_counts},null,2)}</pre></details>
     <details className="mt-3"><summary>Latest recorded trades (up to 100)</summary><pre className="text-xs whitespace-pre-wrap break-all max-h-80 overflow-auto">{JSON.stringify(detail.trades,null,2)}</pre></details>
     <p className="text-xs muted mt-3">Start, resume, stop and close-position controls are unavailable here until execution/protection/recovery integration is verified.</p>

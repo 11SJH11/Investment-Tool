@@ -5,6 +5,7 @@ to them. Shadow equity is simulation evidence, never a broker account balance.
 """
 from datetime import datetime,timezone
 import json
+from app.services.algo_safeguards import safeguards
 
 
 def recovery_page(database,*,policy_id=None,before=None,limit=50):
@@ -38,12 +39,15 @@ def report(services):
             if row.get('provider')!='mt5':continue
             accounts.append({k:row.get(k) for k in ('profile_id','provider','environment','configured','status','account_key','last_success_at','error_category')})
     with services.database.connect() as c:
+        c.execute('BEGIN')
         tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if 'mt5_execution_policies' in tables:
             rows=c.execute('SELECT document FROM mt5_execution_policies ORDER BY rowid DESC LIMIT 501').fetchall()
             if len(rows)>500:warnings.append('Only the latest 500 MT5 preparations are shown.')
-            for raw in rows[:500]:
-                saved=json.loads(raw[0]);policy=saved['policy']
+            policies=[json.loads(raw[0]) for raw in rows[:500]]
+            evidence=safeguards(c,tables,policies)
+            for saved in policies:
+                policy=saved['policy']
                 counts={}
                 if 'mt5_execution_intents' in tables:
                     counts={r[0]:r[1] for r in c.execute("SELECT json_extract(document,'$.state'),COUNT(*) FROM mt5_execution_intents WHERE policy_id=? GROUP BY json_extract(document,'$.state')",(saved['id'],))}
@@ -52,7 +56,7 @@ def report(services):
                     account_key=policy['account_key'],currency=policy['currency'],
                     status='NOT_DEPLOYED',persisted_status=saved['status'],execution_enabled=False,
                     source_hash=policy['strategy_source_hash'],created_at=saved.get('created_at'),
-                    last_evaluation_at=None,metrics=None,position=None,trades=[],risk=policy,intent_counts=counts,
+                    last_evaluation_at=None,metrics=None,position=None,trades=[],risk=policy,intent_counts=counts,safeguards=evidence[saved['id']],
                     limitation='Saved risk policy only. No MT5 strategy worker or trading permission is established.'))
     recovery=recovery_page(services.database,limit=100)['items']
     forward=getattr(services,'forward',None)
