@@ -1713,3 +1713,26 @@ passed (unchanged build retry for existing Windows resolver instability). Fixtur
 browser acceptance passed at 390/1024/1440/1920px. The earlier full backend count
 is historical, not a full rerun of this increment. Current remaining work is
 tracked in UNIFIED_DEVELOPMENT_2026-10.md.
+
+### Follow-up: durable T01 decision runtime (23 October)
+
+A source-pinned, execution-disabled T01 diagnostic runtime now persists completed
+bar decisions with atomic revisions, restart replay and idempotency. It reuses the
+unchanged registered Gold T01 strategy and canonical context/concepts. Algo
+Trading displays recorded diagnostic progress without claiming a running worker
+or executed trades. Two additive internal diagnostic tables are initialized only
+when this internal runtime is explicitly used; the user's running DB was not
+initialized. No broker order or native terminal call was made.
+
+The verified-UTC input contract still requires independent feed verification;
+there is no inferred TradeQuo offset. The polling worker and receipt-bound
+submission/protection/recovery integration remain incomplete. See
+[the runtime contract](MT5_T01_DECISION_RUNTIME.md) and
+[current handoff](UNIFIED_DEVELOPMENT_2026-10.md).
+
+Final accumulated checkpoint verification: **1,979 backend tests passed,
+41 skipped**, one existing deprecation warning (566.22s); **144 frontend tests
+passed**; production build passed first attempt (175 modules, existing chunk
+warning). Final focused T01/monitoring selection: **24 passed**. Fixture browser
+checks passed at **390/1024/1440/1920px**. No live broker or opt-in Docker rerun is
+implied. Execution remains disabled and no orders were sent.

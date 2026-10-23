@@ -38,6 +38,8 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Broker connections](BROKER_CONNECTIONS.md): supported read-only connections.
 - [Broker import acceptance](BROKER_IMPORT_ACCEPTANCE.md): fixtures, verification, cleanup and limitations.
 - [Broker extension contract](BROKER_EXTENSION_CONTRACT.md): future adapter boundaries.
+- [T01 decision diagnostics](MT5_T01_DECISION_RUNTIME.md): completed-bar replay,
+  persistence and the remaining gates before demo execution.
 
 ## Frozen strategy and instrument contracts
 

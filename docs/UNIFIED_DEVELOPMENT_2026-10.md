@@ -935,3 +935,45 @@ acceptance; attributed broker performance/snapshots/charts/alerts and supported
 controls; genuine model-driven campaign acceptance; screenshot annotations.
 Automated trading remains disabled. No external input is required to continue
 implementation and mocked verification of those components.
+
+### Durable T01 completed-bar diagnostics (23 October)
+
+Added an internal execution-disabled decision runtime for the unchanged
+`gold_ifvg_v2_skip_23et` strategy. Existing registry/source archives,
+StrategyContext and Market Concepts are reused; no broker execution behavior or
+frozen Gold rules changed. Preparation pins a matching demo risk policy and
+implementation identity. One-minute evidence and decisions commit atomically;
+restarts replay persisted observations and reject divergence. Failed writes,
+changed bars, gaps, source drift and concurrent frontiers fail closed.
+
+The runtime requires an explicit verified-UTC input contract, starts at 20:00
+America/New_York, constructs 15m bars only from all 15 completed minutes and caps
+streams at 2,880 bars. It preserves Sunday/DST session interpretation, the 23:00
+exclusion, next-minute eligibility and +0.68R management instructions. There are
+no inferred fills, broker calls, order submissions or automatic continuation over
+market closures. Attribution of supplied positions remains an internal caller
+contract to be fulfilled by the future receipt-bound coordinator.
+
+Two additive, internal tables (`mt5_t01_diagnostics`, `mt5_t01_decisions`) are
+created only on explicit runtime construction. No user database initialization or
+migration was performed. Algo Trading shows the latest prepared diagnostic
+stream's saved frontier and signal separately from worker health/trades; policies
+remain NOT_DEPLOYED and execution-disabled.
+
+See [T01 diagnostic runtime](MT5_T01_DECISION_RUNTIME.md) for architecture,
+verification instructions and limits. This is not the persistent polling worker
+or a complete MT5 deployment. Outstanding work remains verified feed timing,
+worker lifecycle/heartbeat, receipt-bound positions, submission/protection and
+recovery integration, authorized demo acceptance, complete monitoring analytics,
+genuine model-driven campaign acceptance and screenshot annotations.
+
+Final verification on this checkpoint: **1,979 backend passed, 41 skipped**, one
+existing Starlette/httpx deprecation warning, in 566.22s. Focused final T01/runtime
+and monitoring checks: **24 passed** (including 13 new T01 cases). Earlier
+runtime/Gold/recovery/coordinator regression selection: **69 passed**, before the
+last monitoring case was added; the final full suite includes it. Frontend:
+**144 passed**. Production build: passed first attempt, 175 modules, existing
+large-chunk warning. Fixture browser smoke: **390/1024/1440/1920px passed**, including
+diagnostic labels, stale/retry, paging, reload, GET-only and no runtime errors or
+page overflow. Diff check passed. No real Docker suite or live broker/order
+acceptance was rerun; opt-in skips are not claimed as passes.
