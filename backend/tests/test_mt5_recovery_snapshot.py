@@ -117,3 +117,73 @@ def test_research_cannot_collect(adapter, ledger):
     from app.research_agent.access import preparation_scope
     with preparation_scope(ledger.database, 'fixture'):
         with pytest.raises(BrokerHistoryError, match='Research'): collect(adapter[0])
+
+
+def two_saved_attempts(ledger):
+    """Historical crash fixture; no native submissions or guard bypass in app code."""
+    import json
+    p,first=attempt(ledger)
+    second=ledger.draft(p['id'],{**order(),'request_key':'signal-2'})
+    saved={**ledger.attempt(first['id']),'id':'fixture-second','intent_id':second['id'],'receipt':None}
+    with ledger.database.connect() as c:
+        c.execute('INSERT INTO mt5_execution_attempts VALUES(?,?,?,?,?)',
+                  (saved['id'],second['id'],saved['account_key'],None,json.dumps(saved)))
+    return p,first,second
+
+
+def test_account_recovery_rolls_back_all_observations_on_later_failure(adapter,ledger,monkeypatch):
+    from app.brokers import mt5_execution_reconciliation as module
+    p,first,second=two_saved_attempts(ledger)
+    before=[ledger.attempt(i['id']) for i in (first,second)]
+    original=module.reconcile_order;calls=[]
+    def failing(*args,**kwargs):
+        calls.append(1)
+        if len(calls)==2:raise RuntimeError('simulated later persistence failure')
+        return original(*args,**kwargs)
+    monkeypatch.setattr(module,'reconcile_order',failing)
+    with pytest.raises(RuntimeError):reconcile_account(adapter[0],ledger,p['id'])
+    assert len(calls)==2
+    assert ledger.reconciliations(first['id'])==ledger.reconciliations(second['id'])==[]
+    assert [ledger.attempt(i['id']) for i in (first,second)]==before
+    assert ledger.account_guard_status(p['id'])['state']=='RECONCILIATION_REQUIRED'
+
+
+def test_account_recovery_write_failure_preserves_previous_success(adapter,ledger):
+    import sqlite3
+    p,first,second=two_saved_attempts(ledger)
+    reconcile_account(adapter[0],ledger,p['id'])
+    previous=[ledger.reconciliations(i['id']) for i in (first,second)]
+    pointers=[ledger.attempt(i['id']) for i in (first,second)]
+    with ledger.database.connect() as c:
+        # Database failure after the first intent has been processed.
+        c.execute("CREATE TRIGGER fail_second BEFORE INSERT ON mt5_execution_reconciliations WHEN NEW.intent_id='"+second['id']+"' BEGIN SELECT RAISE(ABORT,'fixture write failure'); END")
+    adapter[0]._clock=lambda:1800000001.
+    with pytest.raises(sqlite3.IntegrityError):reconcile_account(adapter[0],ledger,p['id'])
+    assert [ledger.reconciliations(i['id']) for i in (first,second)]==previous
+    assert [ledger.attempt(i['id']) for i in (first,second)]==pointers
+
+
+def test_atomic_recovery_keeps_other_accounts_separate_and_retries_idempotent(adapter,ledger):
+    p,first,second=two_saved_attempts(ledger)
+    other=ledger.configure({**policy(),'account_key':'c'*64})
+    third=ledger.draft(other['id'],order())
+    with ledger.account_guard(other['id']) as token:ledger.begin_attempt(third['id'],guard_token=token)
+    result=reconcile_account(adapter[0],ledger,p['id'])
+    assert len(result['observations'])==2
+    assert [row['decision']['state'] for row in result['observations']]==['FILLED_PROTECTED','UNRESOLVED']
+    assert not result['account_released'] and not result['execution_enabled']
+    assert ledger.reconciliations(third['id'])==[]
+    reconcile_account(adapter[0],ledger,p['id'])
+    assert all(len(ledger.reconciliations(i['id']))==1 for i in (first,second))
+
+
+def test_restart_during_snapshot_collection_prevents_old_owner_commit(adapter,ledger,monkeypatch):
+    from app.brokers import mt5_recovery_snapshot as module
+    from app.brokers.mt5_execution_ledger import MT5ExecutionLedger
+    p,first=attempt(ledger)
+    original=module.collect
+    def restart(a):
+        result=original(a);MT5ExecutionLedger(ledger.database);return result
+    monkeypatch.setattr(module,'collect',restart)
+    with pytest.raises(ValueError,match='superseded'):reconcile_account(adapter[0],ledger,p['id'])
+    assert ledger.reconciliations(first['id'])==[]

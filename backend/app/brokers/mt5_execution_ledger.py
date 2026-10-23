@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from uuid import uuid4
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
@@ -139,7 +139,7 @@ class MT5ExecutionLedger:
 
     def record_reconciliation(self, intent_id, executions, open_positions, *,
                               broker_order_id, account_key, environment, complete,
-                              observed_at_ms, use_attempt_receipt=False):
+                              observed_at_ms, use_attempt_receipt=False, _connection=None):
         """Persist backend broker evidence, not submission/attribution authority.
 
         The caller owns terminal locks and establishes snapshot completeness.
@@ -159,8 +159,8 @@ class MT5ExecutionLedger:
                 or not 1 <= len(broker_order_id) <= 20 or int(broker_order_id) <= 0):
             raise ValueError('Invalid broker order ticket')
         executions = list(executions)
-        with self.database.connect() as c:
-            c.execute('BEGIN IMMEDIATE')
+        with (self.database.connect() if _connection is None else nullcontext(_connection)) as c:
+            if _connection is None:c.execute('BEGIN IMMEDIATE')
             self._owns(c)
             row = c.execute('SELECT document FROM mt5_execution_intents WHERE id=?', (intent_id,)).fetchone()
             if not row:
@@ -219,6 +219,31 @@ class MT5ExecutionLedger:
             return [json.loads(r[0]) for r in c.execute(
                 'SELECT document FROM mt5_execution_reconciliations WHERE intent_id=? ORDER BY rowid DESC LIMIT ?',
                 (intent_id, limit))]
+
+    def reconcile_account_snapshot(self,policy_id,executions,open_positions,*,account_key,
+                                   environment,currency,complete,observed_at_ms):
+        """Atomically record one account observation, never release or arm it.
+
+        Native collection must finish before entering this short write transaction.
+        Receipt identities and owner fencing are rechecked from durable state.
+        A failed classification/write rolls back every observation and latest pointer.
+        """
+        self._manual_only()
+        if environment!='demo':raise ValueError('Recovery requires a demo account')
+        executions=list(executions)
+        with self.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE');self._owns(c)
+            raw=c.execute('SELECT document FROM mt5_execution_policies WHERE id=?',(policy_id,)).fetchone()
+            policy=json.loads(raw[0])['policy'] if raw else {}
+            if (policy.get('account_key'),policy.get('environment'),policy.get('currency'))!=(account_key,environment,currency):
+                raise ValueError('Recovery account identity changed')
+            rows=c.execute('''SELECT i.id FROM mt5_execution_intents i
+                JOIN mt5_execution_attempts a ON a.intent_id=i.id
+                JOIN mt5_execution_policies p ON p.id=i.policy_id
+                WHERE json_extract(p.document,'$.policy.account_key')=? ORDER BY i.rowid''',(account_key,)).fetchall()
+            return [self.record_reconciliation(row[0],executions,open_positions,
+                broker_order_id=None,account_key=account_key,environment=environment,complete=complete,
+                observed_at_ms=observed_at_ms,use_attempt_receipt=True,_connection=c) for row in rows]
 
     def begin_attempt(self, intent_id, *, guard_token):
         """Write-ahead uncertainty marker; grants NO permission to call MT5.

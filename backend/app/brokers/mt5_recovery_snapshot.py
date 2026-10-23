@@ -110,15 +110,9 @@ def reconcile_account(adapter, ledger, policy_id):
     snapshot = collect(adapter)
     if snapshot['currency'] != selected['currency']:
         raise ValueError('Recovery account currency changed')
-    records = []
-    for policy in policies:
-        if policy['policy']['account_key'] != snapshot['account_key']:
-            continue
-        for intent in ledger.intents(policy['id']):
-            if ledger.attempt(intent['id']) is not None:
-                records.append(ledger.reconcile_attempt(intent['id'], snapshot['executions'], snapshot['open_positions'],
-                    account_key=snapshot['account_key'], environment='demo',
-                    complete=not snapshot['pending_order_ids'], observed_at_ms=snapshot['observed_at_ms']))
+    records = ledger.reconcile_account_snapshot(policy_id,snapshot['executions'],snapshot['open_positions'],
+        account_key=snapshot['account_key'],environment='demo',currency=snapshot['currency'],
+        complete=not snapshot['pending_order_ids'],observed_at_ms=snapshot['observed_at_ms'])
     return dict(status='recovery_observed', observations=records,
                 deals_retrieved=len(snapshot['executions']), open_positions=len(snapshot['open_positions']),
                 pending_orders=len(snapshot['pending_order_ids']), execution_enabled=False,

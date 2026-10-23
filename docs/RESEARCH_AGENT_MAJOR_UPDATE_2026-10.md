@@ -1691,3 +1691,11 @@ observations/lifecycle events through the campaign operation panel. Stale update
 are possible-stall indications, not proof of failure or permission to retry.
 Current final verification counts and remaining work are in
 `UNIFIED_DEVELOPMENT_2026-10.md`.
+
+The 23 October accumulated checkpoint additionally includes the opt-in read-only
+Fedora/Wine bridge, policy-scoped recovery history paging and atomic account
+recovery persistence. Full backend verification passed **1,963 tests, 41 skipped**
+(587.11s); **144 frontend tests** and production build passed. See the unified
+handoff for exact scope and [MT5 Linux bridge](MT5_LINUX_BRIDGE.md) for installation
+and pending real Fedora acceptance. T01 automated execution remains disabled;
+these changes are not a completed automated trading system.

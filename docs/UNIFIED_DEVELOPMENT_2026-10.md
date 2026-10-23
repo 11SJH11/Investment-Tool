@@ -875,3 +875,32 @@ Full backend suite was not repeated for this bounded monitoring increment.
 Outstanding work remains the Fedora acceptance/timestamp investigation, T01
 runtime/protection/recovery orchestration, complete monitoring analytics and
 screenshot annotations; trading is still disabled.
+
+### Atomic account recovery (23 October)
+
+Reproduced a partial-commit bug: if reconciliation of a later intent failed,
+earlier intent observations from the same account pass remained committed. The
+account recovery coordinator now delegates persistence to one ledger transaction,
+including latest-reconciliation pointers. Native collection finishes before that
+transaction. The selected account/currency and current process ownership are
+rechecked inside it; observations remain receipt-bound and never release account
+guards or authorize trading.
+
+New regressions cover late classification failure, late SQLite write failure
+with previous successful evidence preserved, separate account histories,
+idempotent repeated recovery and a process restart during snapshot collection.
+The original single-intent API retains its existing transaction behaviour.
+No schema migration, real broker call, account change or order was performed.
+
+This closes a persistence gap, not the complete T01 execution workflow. The
+automatic runtime, protection orchestration, verified session timing, actual demo
+acceptance, remaining analytics and screenshot annotations are still outstanding.
+Large account recovery performance also needs acceptance before runtime deployment;
+atomicity does not establish that a large historical recovery is inexpensive.
+
+Final verification against this accumulated bridge/monitoring/recovery tree:
+**1,963 backend passed, 41 skipped**, one existing deprecation warning, in
+587.11s. Focused MT5/broker/monitoring suite **424 passed**. Frontend **144 passed**;
+production build passed on unchanged retry after the known intermittent Windows
+resolver error (174 modules; existing large-chunk warning). Diff check passed.
+No real broker acceptance or Docker opt-in rerun is implied by these counts.
