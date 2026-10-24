@@ -1,6 +1,7 @@
 """Allowlisted persisted operation metadata. Never load evidence, source or results."""
 from datetime import datetime, timezone
 import json
+from .model_diagnostics import public_validation
 
 
 def _seconds(start, end):
@@ -29,6 +30,7 @@ def operations(database,campaign,*,now=None):
                               for v in usage.values()]
                     costs=[m['estimated_cost_microusd'] for m in metering if type(m['estimated_cost_microusd']) is int and m['estimated_cost_microusd']>=0]
                     rows.append(dict(id=record['id'],family_id=family,kind=record.get('kind','COMMITTEE'),
+                        diagnostic=public_validation(record),
                         status=record['status'],created_at=record.get('created_at'),finished_at=record.get('finished_at'),
                         updated_at=record.get('updated_at'),deadline=record.get('deadline'),
                         operation={k:op.get(k) for k in ('kind','role','status','started_at','finished_at')},

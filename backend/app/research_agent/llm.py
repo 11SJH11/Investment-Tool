@@ -10,7 +10,7 @@ class ModelFailure(ValueError):
     pass
 
 
-def strict_schema(model):
+def strict_schema(model, evidence=None):
     schema = model.model_json_schema()
     def visit(node):
         if isinstance(node, dict):
@@ -22,6 +22,12 @@ def strict_schema(model):
         elif isinstance(node, list):
             for value in node: visit(value)
     visit(schema)
+    refs = schema.get('properties', {}).get('evidence_refs')
+    if refs is not None and isinstance(evidence, dict) and 'evidence' in evidence:
+        identifiers = sorted(evidence.get('evidence', {}))
+        if not identifiers:
+            raise ModelFailure('missing_evidence_ids')
+        refs['items'] = {'type': 'string', 'enum': identifiers}
     return schema
 
 
@@ -57,7 +63,7 @@ class OpenAICommitteeModel:
         body = {'model': self.settings.research_llm_model, 'store': False, 'service_tier': 'default',
                 'instructions': instructions, 'input': json.dumps(evidence, allow_nan=False),
                 'max_output_tokens': self.settings.research_llm_max_output_tokens,
-                'text': {'format': {'type': 'json_schema', 'name': role, 'strict': True, 'schema': strict_schema(model)}}}
+                'text': {'format': {'type': 'json_schema', 'name': role, 'strict': True, 'schema': strict_schema(model, evidence)}}}
         if len(json.dumps(body).encode()) > MODEL_REQUEST_BYTES:
             raise ModelFailure('model_input_limit')
         try:

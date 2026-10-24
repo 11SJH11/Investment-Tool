@@ -77,6 +77,8 @@ def queue(request):
         # timeframes lists required inputs, not interchangeable primary bars.
         if not spec or any(tf != spec.timeframes[0] for tf in policy['timeframes']):
             continue
+        from .market_preflight import validate_research_market
+        validate_research_market(key, policy['symbols'], spec.timeframes[0])
         selected.append(dict(family_id=family, strategy_key=key,
                              reason='Registered research family; deterministic catalog order, no performance selection'))
     if not selected:

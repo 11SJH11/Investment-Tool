@@ -115,6 +115,8 @@ class ResearchDirector:
                     raise ValueError('Configuration cannot move the frozen strategy, market or dataset boundaries')
                 payload = BacktestRequest.model_validate({**raw, **expected, 'save_run': True,
                                                           'test_role': 'development', 'research_experiment': None}).model_dump()
+                from .market_preflight import validate_research_market
+                validate_research_market(payload['strategy_key'], payload['symbols'], payload['primary_timeframe'])
                 entries.append(dict(**link, state='QUEUED', payload=payload,
                                     numeric_cycles=numeric_cycles,
                                     structural=structural,

@@ -168,7 +168,8 @@ class Committee:
                             raise ModelFailure('usage_exceeded_cost_reservation')
                     if ResearchRepository(self.database).get(project_id)['state']!='BASELINE_ANALYSIS' or not permitted():raise ModelFailure('project_not_active')
                     result = schema.model_validate(result).model_dump()
-                    if any(ref not in snapshot['evidence'] for ref in result['evidence_refs']):raise ModelFailure('unknown_evidence_reference')
+                    from .model_diagnostics import validate_evidence
+                    validate_evidence(document, result['evidence_refs'], snapshot['evidence'])
                     if role=='Researcher':
                         if result['decision']=='PROPOSE':
                             plan=preview(config,result['axes'])

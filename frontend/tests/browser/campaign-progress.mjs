@@ -10,6 +10,7 @@ function fixtures(){
  window.progressRequests=[];
  report.operations={limitation:'Fixture metering only',model_operations:[{id:'model-fixture',family_id:'family',kind:'COMMITTEE',status:'FAILED',operation:{role:'Researcher',status:'RETURNED'},elapsed_seconds:12,reserved_calls:3,returned_usage_calls:1,reserved_cost_microusd:500000,estimated_reported_cost_microusd:100000,unpriced_returned_calls:0}]};
  report.operations.sandbox_operations=[{id:'docker-fixture',family_id:'family',status:'RUNNING',phase:'CAUSALITY_PREFIX',updated_at:'2026-10-21T17:52:15Z',suspected_stall:true,progress:{processed:25,total:100},lifecycle:[]}];
+ report.operations.model_operations[0].diagnostic={event_id:'model-fixture:evidence_reference_validation',timestamp:'2026-10-24T16:32:46Z',component:'research.model.validation',operation:'evidence_reference_validation',level:'ERROR',error_code:'UNKNOWN_EVIDENCE_REFERENCE',message:'The model cited an ID outside the supplied evidence map.',suggested_action:'Use exact supplied evidence IDs; no automatic retry.',retryable:false,details:{},legacy_details_unavailable:true};
  report.activity={items:[{id:3,action:'FIXTURE_LATEST',created_at:'2026-10-21T17:52:15Z',detail:'Latest fixture'}],next_before:3};
  window.failOlder=true;
  window.fetch=async(url,options={})=>{
@@ -38,6 +39,7 @@ assert(await evaluate(`document.body.innerText.includes('26.5%')&&document.body.
 assert(await evaluate(`!progressRequests.some(r=>r.method!=='GET')`));
 assert(await evaluate(`document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Calls reserved: 3')&&document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Returned usage: 1')`));
 assert(await evaluate(`document.querySelector('[aria-label="Recorded Docker operations"]').innerText.includes('25 / 100 bars observed')&&document.body.innerText.includes('Possible stall')`));
+assert(await evaluate(`document.querySelector('[aria-label="Research diagnostics"]').innerText.includes('UNKNOWN_EVIDENCE_REFERENCE')`));
 await click('Load older activity');
 await waitFor(`document.querySelector('[aria-label="Campaign activity"] [role="alert"]')`);
 assert(await evaluate(`document.body.innerText.includes('FIXTURE LATEST')`));
@@ -55,5 +57,6 @@ await waitFor(`document.body.innerText.includes('Research Agent')`);
 if(!await evaluate(`document.body.innerText.includes('Recorded execution: FAILED')`))await click('Research Agent');
 await waitFor(`document.body.innerText.includes('Recorded execution: FAILED')`);
 assert.deepEqual(errors,[]);
+assert(await evaluate(`document.querySelector('[aria-label="Research diagnostics"]').innerText.includes('UNKNOWN_EVIDENCE_REFERENCE')`));
 console.log('Campaign progress production smoke passed: 390/1024/1440/1920; reload; GET-only; no runtime errors.');
 await send('Browser.close');close();

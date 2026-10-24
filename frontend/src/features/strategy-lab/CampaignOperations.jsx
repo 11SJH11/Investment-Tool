@@ -1,7 +1,8 @@
+import ResearchDiagnostics from './ResearchDiagnostics.jsx';
 const cost=value=>value==null?'Unknown':`$${(value/1000000).toFixed(4)}`;
 export default function CampaignOperations({data}){
  if(!data?.model_operations?.length&&!data?.sandbox_operations?.length)return null;
- return <><article className="insight-panel" aria-label="Recorded model operations">
+ return <><ResearchDiagnostics operations={data.model_operations}/><article className="insight-panel" aria-label="Recorded model operations">
   <h4 className="font-semibold">Model operations</h4>
   <p className="text-xs muted">{data.limitation}</p>
   {(data.model_operations||[]).map(op=><div key={op.id} className="mt-3 text-sm">

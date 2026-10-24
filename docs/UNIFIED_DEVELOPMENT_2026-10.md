@@ -1126,3 +1126,18 @@ real demo acceptance, complete monitoring and screenshots remain outstanding.
 
 Final verification (24 October 2026): backend 2,054 passed, 41 skipped (701.53s); frontend 144 passed; production build passed on unchanged retry after a Windows Rolldown resolution failure. No paid generation calls were made. One read-only model metadata request succeeded. The subsequent campaign-diagnostics investigation is a separate checkpoint.
 
+### Current priority: Research Agent failure diagnostics
+
+See [the 24 October investigation](RESEARCH_DIAGNOSTICS_2026-10-24.md).
+The ORB market mismatch and both evidence-reference failures are traced from saved
+records/code. The first repair adds early market rejection, schema-bound citations,
+persisted sanitized validation details, and a diagnostics panel using existing polling.
+The comprehensive lifecycle event stream, authenticated cursor endpoint, private
+traceback handling and wider failure coverage remain unfinished. Complete those
+before resuming genuine acceptance, MT5 protection/recovery and dashboard work.
+No paid retries or automated execution were enabled during this investigation.
+
+First diagnostics repair verified: backend 2,059 passed / 41 skipped (623.82s),
+frontend 145 passed, production build passed, mocked browser 390/1024/1440/1920
+including diagnostics after reload passed, and diff whitespace check passed.
+

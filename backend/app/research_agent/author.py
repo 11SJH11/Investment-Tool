@@ -225,8 +225,8 @@ class CodeAuthor:
                     raise ModelFailure('usage_exceeded_cost_reservation')
                 self._guard(item, parent)
                 output = schema.model_validate(output).model_dump()
-                if any(ref not in item['evidence']['evidence'] for ref in output['evidence_refs']):
-                    raise ModelFailure('unknown_evidence_reference')
+                from .model_diagnostics import validate_evidence
+                validate_evidence(item, output['evidence_refs'], item['evidence']['evidence'])
                 item['roles'][role] = output
                 if role == 'Researcher':
                     from .research_ledger import preregistration
