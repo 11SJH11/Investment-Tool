@@ -1758,3 +1758,42 @@ Final current-tree verification for the observation-cycle checkpoint:
 production build passed first attempt with the existing chunk-size warning.
 Diff check passed. No frontend code changes or new browser acceptance; no live
 broker or real-Docker acceptance is implied by these counts.
+
+### Follow-up: persistent T01 diagnostic lifecycle (24 October)
+
+Application services now own an explicitly started diagnostic worker service,
+without automatic startup polling or any execution authority. The additive
+`mt5_t01_workers` table records ownership generation, profile/account, heartbeat,
+last cycle/decision and sanitized failure category. A partial unique index
+enforces one active diagnostic stream per account. Stop/shutdown and stale-owner
+takeover fence late results in the same transaction as the decision commit.
+
+Algo Trading distinguishes observed local thread liveness from persisted state,
+with recovery/stall indications and no fabricated Running deployment. First
+observation waits for the completed New York session-opening minute. Restart
+requires explicit action; there is no historical catch-up or public activation
+endpoint. Native calls can outlive the bounded shutdown join but cannot commit
+late decisions. Full contract and remaining execution gates:
+[MT5_T01_DECISION_RUNTIME.md](MT5_T01_DECISION_RUNTIME.md).
+
+A temporary-database, flat-synthetic 2,880-minute probe completed processing in
+137.83s, with a 0.075s final step (0.111s maximum) and 25.74s restart replay.
+The backend suite was running concurrently, so these are diagnostic measurements,
+not production latency guarantees or broker acceptance. The probe's subsequent
+temporary-directory deletion hit a Windows SQLite file lock; no user database
+was involved. Stream bounds and fail-closed missed-minute behavior remain.
+
+Receipt-bound position/protection integration, verified TradeQuo timestamp
+semantics, market-closure recovery and authorized demo execution remain required.
+Research campaign records, holdout restrictions, Journal records and live-account
+permissions were not modified. Complete monitoring analytics and screenshot
+annotations remain later work.
+
+Final worker-checkpoint verification: **2,037 backend passed / 41 skipped**,
+one existing Starlette/httpx warning, 605.12s; **47 focused checks passed**;
+**144 frontend tests passed**; production build passed first attempt (176 modules,
+existing chunk-size warning). Fixture browser smoke passed at
+**390/1024/1440/1920px**, including persisted worker recovery labels, reload,
+stale/retry, paging, GET-only requests and no runtime errors/page overflow.
+Diff check passed. The worker adds 12 deterministic cases; no real broker or
+Docker acceptance was rerun for this checkpoint.

@@ -1027,3 +1027,43 @@ existing large-chunk warning. Diff check passed. No frontend code changed, so
 browser smoke was not repeated in this increment; the prior fixture viewport
 results remain historical evidence. No real broker or opt-in Docker acceptance
 was rerun. Orders and automated execution remain disabled.
+
+### Persistent T01 diagnostic worker (24 October)
+
+Added the explicitly started, execution-disabled diagnostic worker and integrated
+its construction/shutdown with application services. Startup creates additive
+diagnostic/worker tables but never starts polling or contacts a terminal. Initial
+observation waits for 20:01 New York; missing minutes are not backfilled. Account
+leases, generation fencing and a decision-transaction commit guard reject late
+results after stop, shutdown or explicit stale-owner takeover. One active stream
+per account is enforced by storage. No Journal records or policy permissions are
+changed; development checks used temporary databases only.
+
+Algo Trading now displays actual local thread liveness, persisted heartbeat and
+last-decision/error evidence. Interrupted workers require recovery; persisted
+state does not become a Running deployment after restart. Stop is distinct from
+closing/protecting positions. Blocked native reads can outlive the two-second join
+budget and remain visibly STOPPING; they cannot subsequently commit decisions.
+There is no public activation endpoint or automatic resume.
+
+The new additive table is `mt5_t01_workers`, with a partial unique active-account
+index. Worker implementation joins the immutable diagnostic source fingerprint;
+old streams cannot silently adopt changed code. See
+[the runtime contract](MT5_T01_DECISION_RUNTIME.md) and
+[the major update](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md).
+
+Remaining: independently verified TradeQuo timestamp semantics, receipt-bound
+position observations, submission/protection/recovery orchestration, market-closure
+recovery, and separately authorized demo execution acceptance. Complete dashboard
+analytics/controls, genuine model-driven campaign acceptance and screenshot
+annotations are not claimed complete. T01 remains NOT_DEPLOYED and disabled.
+
+Verified this checkpoint: **2,037 backend passed, 41 skipped**, one existing
+Starlette/httpx deprecation warning, in 605.12s. Focused worker/runtime/monitoring:
+**47 passed**. Frontend: **144 passed**. Production build passed first attempt,
+176 modules, existing chunk warning. Fixture browser smoke passed at
+**390/1024/1440/1920px**, including recovery labels, stale/retry, reload, paging,
+GET-only requests and no runtime errors/page overflow. Diff check passed.
+The new worker suite contributes 12 cases. No real broker or Docker acceptance
+was rerun. The bounded-runtime performance probe and its temporary-file cleanup
+limitation are recorded in the major update; neither is live execution evidence.

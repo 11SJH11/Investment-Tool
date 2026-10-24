@@ -3,6 +3,7 @@ import {api} from '../../api/client';
 import DataTable from '../../components/table/DataTable';
 import RecoveryActivity from './RecoveryActivity';
 import AccountSafeguards from './AccountSafeguards';
+import DiagnosticWorkers from './DiagnosticWorkers';
 
 const columns=[['name','Strategy','text'],['mode','Mode','category'],['environment','Environment','category'],['symbol','Symbol','text'],['status','Observed status','category'],['last_evaluation_at','Last evaluation','date']].map(([key,label,kind])=>({key,label,kind,render:row=>row[key]??'Unavailable'}));
 const money=(value,currency)=>value==null?'Unavailable':`${Number(value).toFixed(2)} ${currency}`;
@@ -28,6 +29,7 @@ export default function AlgoTradingPage(){
    </article>
    <DataTable id="algo.deployments" label="Strategy monitoring" columns={columns} rows={report.items} primaryAction={{label:'Inspect',onClick:row=>setSelected(row.id)}} summary={rows=><p className="p-3 text-xs muted">N = {rows.length} matching preparations/deployments. Simulated accounts are not pooled with broker balances.</p>}/>
    {!report.items.length&&<p className="text-sm muted">No recorded deployment or MT5 preparation. No sample performance is displayed.</p>}
+   <DiagnosticWorkers rows={report.diagnostic_workers??[]}/>
    <RecoveryActivity key={selected??'all'} policyId={selected}/>
    {detail&&<article className="insight-panel" aria-label="Strategy monitoring detail"><div className="ui-toolbar"><h2 className="font-semibold">{detail.name}</h2><button className="mini-btn" onClick={()=>setSelected(null)}>Close details</button></div>
     <p>{detail.mode} · {detail.environment} · {detail.status}</p><p className="text-xs muted">{detail.limitation}</p>

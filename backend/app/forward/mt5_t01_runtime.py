@@ -29,7 +29,7 @@ def implementation_identity():
     root = Path(__file__).resolve().parents[1]
     files = [Path(__file__), root/'backtesting/strategies/base.py',
              root/'forward/bars.py', root/'forward/deployments.py', root/'forward/runtime.py',
-             root/'forward/mt5_t01_feed.py', root/'forward/mt5_t01_poll.py']
+             root/'forward/mt5_t01_feed.py', root/'forward/mt5_t01_poll.py', root/'forward/mt5_t01_worker.py']
     files += sorted((root/'market_concepts').rglob('*.py'))
     return dict(runtime=runtime_identity(), dependencies={
         str(p.relative_to(root)): sha256(p.read_bytes()).hexdigest() for p in files})
@@ -123,7 +123,7 @@ class T01DecisionRuntime:
                 or definition['runtime_identity'] != implementation_identity()):
             raise ValueError('Frozen T01 implementation changed; diagnostic stream cannot upgrade')
 
-    def step(self, identifier, bar, *, observed_at, equity, position=None, attribution_verified=False, feed_evidence=None):
+    def step(self, identifier, bar, *, observed_at, equity, position=None, attribution_verified=False, feed_evidence=None, commit_guard=None):
         """One completed minute, no orders. Failed validation leaves frontier intact.
 
         Positions must be supplied by future receipt-bound broker orchestration.
@@ -200,6 +200,8 @@ class T01DecisionRuntime:
                     mode='DIAGNOSTIC_ONLY', execution_enabled=False)
                 with self.database.connect() as c:
                     c.execute('BEGIN IMMEDIATE')
+                    if commit_guard is not None:
+                        commit_guard(c)
                     changed = c.execute('UPDATE mt5_t01_diagnostics SET revision=revision+1 WHERE id=? AND revision=?', (identifier, revision))
                     if changed.rowcount != 1:
                         raise ValueError('Concurrent T01 frontier changed')

@@ -8,6 +8,7 @@ function fixtures(){
  window.monitorRequests=[];window.failMonitor=false;window.failRecovery=true;
  const report={observed_at:'2026-10-22T12:00:00Z',accounts:[],warnings:[],limitation:'Fixture observations only',items:[{id:'fixture',name:'T01 preparation fixture',mode:'MT5_PREPARATION',environment:'demo',symbol:'XAUUSD',status:'NOT_DEPLOYED',persisted_status:'DISABLED',source_hash:'fixture-hash',metrics:null,trades:[],risk:{},limitation:'Saved policy only'}]};
  report.items[0].currency='USD';
+ report.diagnostic_workers=[{id:'worker-fixture',stream_id:'worker-fixture',profile_id:'demo-fixture',state:'RECOVERY_REQUIRED',thread_alive:false,heartbeat_at:'2026-10-23T00:00:00Z',last_decision_at:null,error_category:'diagnostic_cycle_failed'}];
  report.items[0].safeguards={guard:{state:'RECONCILIATION_REQUIRED',since:'2026-10-23T00:00:00Z'},recorded_account_attempts:2,latest_risk_assessment:{allowed:false,reasons:['uncertain_submission'],evaluated_at_ms:1000000,risk_day_utc:'1970-01-01',projected_loss_budget:100,projected_gross_exposure:5000}};
  report.items[0].safeguards.latest_diagnostic_stream={id:'diagnostic-fixture',completed_decisions:60,last_decision_at:'2026-10-23T01:00:00Z',last_signal:'entry',mode:'DIAGNOSTIC_ONLY'};
  report.recovery_observations=[{id:'recovery',policy_id:'fixture',intent_id:'intent',observed_at_ms:1000000,state:'PROTECTION_UNVERIFIED',identity_basis:'durable_attempt_receipt',complete:true,filled_lots:'0.1',remaining_lots:'0.1'}];
@@ -26,6 +27,8 @@ function fixtures(){
 await send('Page.addScriptToEvaluateOnNewDocument',{source:`(${fixtures.toString()})()`});
 await send('Page.navigate',{url:base+'/?algo-monitoring-smoke'});
 await waitFor(`document.body.innerText.includes('NOT_DEPLOYED')`);
+assert(await evaluate(`document.querySelector('[aria-label="Read-only diagnostic workers"]').innerText.includes('RECOVERY_REQUIRED')`));
+assert(await evaluate(`document.body.innerText.includes('never resumes them automatically after restart')`));
 await waitFor(`document.body.innerText.includes('PROTECTION_UNVERIFIED')`);
 assert(await evaluate(`document.body.innerText.includes('Protection evidence may be stale')`));
 await click('Inspect');

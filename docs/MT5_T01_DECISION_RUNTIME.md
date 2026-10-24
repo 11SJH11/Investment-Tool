@@ -44,14 +44,16 @@ Repeated identical latest observations do not create duplicate decisions.
 
 ## Storage and monitoring
 
-The internal runtime initializes two additive tables on explicit construction:
+The internal runtime initializes two additive tables on construction:
 
 - `mt5_t01_diagnostics`: immutable definition/hash and committed revision.
 - `mt5_t01_decisions`: bar, observation, decision, timestamps and integrity hash,
   keyed by stream and sequence.
 
 No existing Journal, execution attempt, account guard or policy state is changed.
-This checkpoint does not initialize these tables in the user's running database.
+Normal application construction now initializes this additive schema and the
+worker table described below. Development verification used temporary databases,
+not the user's running database.
 
 Algo Trading preparation details can display the newest prepared diagnostic
 stream's saved count, decision timestamp and signal kind. They do not show it as
@@ -78,8 +80,9 @@ Full checkpoint counts and build/browser results are in
 ## Read-only MT5 observation cycle
 
 `mt5_t01_feed.py` and `mt5_t01_poll.py` now connect one explicit diagnostic cycle
-to the existing broker profile locks and native/bridge adapter. There is still no
-automatic polling thread, startup activation or new public endpoint.
+to the existing broker profile locks and native/bridge adapter. A manually started
+diagnostic worker can repeat the cycle; there is no startup activation or new
+public endpoint.
 
 The cycle requires an enabled DEMO profile, its selected opaque account identity,
 an explicit terminal path or bridge, and matching currency. The collector passes
@@ -121,12 +124,42 @@ Focused isolated verification:
 .venv/Scripts/python.exe -m pytest -q tests/test_mt5_t01_feed.py tests/test_mt5_t01_poll.py tests/test_mt5_t01_runtime.py
 ```
 
+## Persistent diagnostic worker
+
+`mt5_t01_worker.py` owns explicit internal `start`/`stop` operations and bounded
+shutdown. Constructing Ledger does not start a worker or contact MT5. A first
+stream waits until 20:01 America/New_York to observe the completed 20:00 bar;
+it does not backfill a missed opening decision. Subsequent missing minutes fail
+closed. This is not market-closure recovery or an indefinite deployment.
+
+The additive `mt5_t01_workers` table stores stream/profile/account identity,
+process owner, lease generation, state, heartbeat, last cycle/decision and safe
+error category. A partial unique index allows only one active stream per account.
+Fresh ownership cannot be reclaimed. Explicit recovery of a stale same-stream
+owner increments the generation; a different active stream must be resolved first.
+Commit guards validate ownership and cancellation inside the decision transaction.
+Late native replies cannot advance a stopped or superseded worker's frontier.
+
+Monitoring reports actual local thread liveness separately from persisted state.
+Missing threads require recovery; stale or future heartbeats are not healthy.
+Restart never resumes trading or diagnostics automatically. A blocked native call
+may outlive the two-second shutdown join budget, remains visibly STOPPING, and
+cannot commit after shutdown. Native-call interruption is not guaranteed.
+
+Algo Trading shows these states in a read-only table. Diagnostic workers are not
+trading deployments, have no order authority and do not manage existing positions.
+There is no public start/stop endpoint in this increment. Internal verification:
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q tests/test_mt5_t01_worker.py tests/test_mt5_t01_poll.py tests/test_mt5_t01_runtime.py
+```
+
 ## Still required before a real T01 deployment
 
 1. Independently validate MT5 timestamp representation and feed continuity. The
    `verified_utc` argument does not perform that verification.
-2. Implement the persistent polling worker, deployment lifecycle/heartbeat,
-   recovery at market closures, and pause/stop semantics.
+2. Extend the diagnostic worker into the separately authorized deployment
+   lifecycle, with market-closure recovery and position-management pause semantics.
 3. Build broker-attributed position observations and atomically connect decisions
    to risk checks, intents, receipts, protective orders and recovery. Diagnostic
    records are never submission authorization.

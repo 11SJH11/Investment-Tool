@@ -9,7 +9,7 @@ from .mt5_t01_feed import read_minute
 
 
 def poll_once(runtime, connections, identifier, profile_id, *,
-              clock=lambda:datetime.now(timezone.utc), cancelled=lambda:False):
+              clock=lambda:datetime.now(timezone.utc), cancelled=lambda:False, commit_guard=None):
     runtime._manual_only()
     with runtime.lock, runtime.registry.executing():
         if cancelled():
@@ -47,7 +47,7 @@ def poll_once(runtime, connections, identifier, profile_id, *,
         # The collector rechecks identity and freshness after all broker reads.
         # Runtime commit still uses its own CAS frontier for cross-process races.
         decision = runtime.step(identifier, observed['bar'], observed_at=observed['observed_at'],
-            equity=observed['equity'], feed_evidence=dict(provider='mt5', profile_id=profile_id,
+            equity=observed['equity'], commit_guard=commit_guard, feed_evidence=dict(provider='mt5', profile_id=profile_id,
                 volume_basis=observed['volume_basis'], timestamp_policy=observed['timestamp_policy'],
                 observation_basis=observed['observation_basis']))
         return dict(status='decision_recorded', decision=decision, execution_enabled=False)

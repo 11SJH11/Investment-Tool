@@ -82,6 +82,8 @@ class AppServices:
     def __post_init__(self):
         from app.forward.service import ForwardService
         self.forward = ForwardService(self.database, self.settings)
+        from app.forward.mt5_t01_worker import T01DiagnosticWorker
+        self.mt5_diagnostics = T01DiagnosticWorker(self.database, self.broker_connections)
         if self.backtest_jobs:
             from app.research_agent.sandbox_runs import SandboxRuns
             self.research_sandbox = SandboxRuns(self.database, self.backtest)
@@ -100,6 +102,8 @@ class AppServices:
             self.research_director = ResearchDirector(self)
 
     def close(self) -> None:
+        if getattr(self,'mt5_diagnostics',None):
+            self.mt5_diagnostics.close()
         if getattr(self,'forward',None):
             self.forward.close()
         if self.research_director:

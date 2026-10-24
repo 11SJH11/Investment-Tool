@@ -74,6 +74,8 @@ def report(services):
                     metrics=row.get('metrics'),position=state.get('position'),trades=state.get('trade_history',[])[-100:],
                     equity=state.get('equity'),risk=definition['engine'],intent_counts={},
                     limitation='Independent simulated account. Active configuration alone does not prove fresh evaluation.'))
-    return dict(observed_at=datetime.now(timezone.utc).isoformat(),items=items,accounts=accounts,warnings=warnings,recovery_observations=recovery,
+    diagnostic_service=getattr(services,'mt5_diagnostics',None)
+    diagnostic_workers=diagnostic_service.report()['items'] if diagnostic_service else []
+    return dict(observed_at=datetime.now(timezone.utc).isoformat(),items=items,accounts=accounts,warnings=warnings,recovery_observations=recovery,diagnostic_workers=diagnostic_workers,
         mt5_execution_enabled=False,broker_totals=None,
         limitation='Monitoring foundation: broker connectivity is last sync evidence, not a current terminal probe. No account balances are inferred or pooled. Paper controls remain in Forward validation; T01 deployment/execution integration is not complete.')
