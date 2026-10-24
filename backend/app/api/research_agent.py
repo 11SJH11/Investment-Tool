@@ -34,6 +34,16 @@ def operation(fn):
 
 @router.get('')
 def projects(repository=Depends(repo)):return {'items':repository.list()}
+
+@router.get('/model-status')
+def model_status(services=Depends(get_services)):
+    from app.research_agent.llm import OpenAICommitteeModel
+    from app.research_agent.acceptance_spending import AcceptanceSpending
+    return dict(**OpenAICommitteeModel(services.settings).status(),
+                configured_acceptance_limit_usd=getattr(services.settings,'research_llm_acceptance_budget_usd',None),
+                acceptance_spending=AcceptanceSpending.read_report(services.database),
+                connection_tested=False)
+
 @router.post('')
 def create(payload: Project,repository=Depends(repo)):
     return operation(lambda:repository.create(payload.name,payload.strategy_key,[d.model_dump() for d in payload.datasets],payload.research_budget.model_dump()))
@@ -98,7 +108,7 @@ class CommitteeRequest(Input):
 def committee_service(services):
     from app.research_agent.committee import Committee
     from app.research_agent.llm import OpenAICommitteeModel
-    return Committee(services.database, OpenAICommitteeModel(services.settings))
+    return Committee(services.database, OpenAICommitteeModel(services.settings,database=services.database))
 
 
 @router.get('/{id}/committee')

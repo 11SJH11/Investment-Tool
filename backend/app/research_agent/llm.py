@@ -26,9 +26,24 @@ def strict_schema(model):
 
 
 class OpenAICommitteeModel:
-    def __init__(self, settings, transport=None):
+    def __init__(self, settings, transport=None, database=None):
         self.settings = settings
         self.transport = transport
+        self.database = database
+
+    def acceptance_budget(self):
+        from .acceptance_spending import AcceptanceSpending
+        cap=getattr(self.settings,'research_llm_acceptance_budget_usd',None)
+        if self.database is not None:
+            # Removing the environment option must not bypass a persisted cap.
+            from contextlib import closing
+            with closing(self.database.connect()) as c:
+                if c.execute("SELECT 1 FROM sqlite_master WHERE name='agent_acceptance_allowance'").fetchone():
+                    row=c.execute('SELECT limit_microusd FROM agent_acceptance_allowance WHERE id=1').fetchone()
+                    if row and cap is None:cap=row[0]/1e6
+        if cap is None:return None
+        if self.database is None:raise ModelFailure('acceptance_budget_storage_required')
+        return AcceptanceSpending(self.database,cap)
 
     def status(self):
         model = self.settings.research_llm_model
@@ -39,12 +54,17 @@ class OpenAICommitteeModel:
     def generate(self, role, instructions, evidence, model):
         if not self.status()['configured']:
             raise ModelFailure('model_not_configured')
-        body = {'model': self.settings.research_llm_model, 'store': False,
+        body = {'model': self.settings.research_llm_model, 'store': False, 'service_tier': 'default',
                 'instructions': instructions, 'input': json.dumps(evidence, allow_nan=False),
                 'max_output_tokens': self.settings.research_llm_max_output_tokens,
                 'text': {'format': {'type': 'json_schema', 'name': role, 'strict': True, 'schema': strict_schema(model)}}}
         if len(json.dumps(body).encode()) > MODEL_REQUEST_BYTES:
             raise ModelFailure('model_input_limit')
+        try:
+            budget=self.acceptance_budget()
+            reservation=budget.reserve(quote(self.settings)) if budget else None
+        except ModelFailure:raise
+        except Exception:raise ModelFailure('acceptance_budget_blocked') from None
         try:
             with httpx.Client(timeout=60, follow_redirects=False, transport=self.transport, trust_env=False) as client:
                 with client.stream('POST', 'https://api.openai.com/v1/responses',
@@ -66,6 +86,7 @@ class OpenAICommitteeModel:
             usage = result.get('usage') or {}
             counts = {k: usage[k] for k in ('input_tokens','output_tokens','total_tokens') if type(usage.get(k)) is int and usage[k] >= 0}
             if isinstance(result.get('model'),str) and re.fullmatch(r'[a-zA-Z0-9_.:-]{1,100}',result['model']):counts['resolved_model']=result['model']
+            if budget:budget.finish(reservation,counts)
             return parsed, counts
         except ModelFailure:
             raise

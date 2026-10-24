@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import time
 from tempfile import TemporaryDirectory
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app.brokers.metatrader5 import MetaTrader5History
@@ -14,6 +15,7 @@ from app.core.config import Settings
 from app.services.broker_connections import BrokerConnections
 from app.storage.database import Database
 from app.storage.journal_repository import JournalRepository
+from app.brokers.mt5_clock_diagnostic import summarize_bridge_samples
 
 
 def main():
@@ -35,11 +37,17 @@ def main():
         if second['created']!=0:raise RuntimeError('Repeat sync unexpectedly created trades; inspect ongoing broker changes')
         adapter=MetaTrader5History({'bridge_url':args.bridge_url,'bridge_token_file':args.token_file},'demo')
         try:
-            adapter.connect(key);diagnostics=adapter._module.tick_diagnostics(args.symbol)
+            adapter.connect(key)
+            clock_samples=[]
+            for index in range(5):
+                clock_samples.append(adapter._module.tick_diagnostics(args.symbol))
+                if index<4:time.sleep(1)
+            diagnostics=clock_samples[-1]
         finally:adapter.close()
         safe=lambda value:{k:value.get(k) for k in ('created','executions_changed','deals_retrieved','positions_processed','closed_trades_imported') if k in value}
         print(json.dumps(dict(environment='demo',account_key=key,first_sync=safe(first),repeat_sync=safe(second),
             journal_trades=len(JournalRepository(database).list_trades()),tick_diagnostics=diagnostics,
+            clock_samples=clock_samples,clock_summary=summarize_bridge_samples(clock_samples),
             orders_sent=False,existing_database_touched=False),indent=2))
 
 

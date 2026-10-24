@@ -3,6 +3,18 @@ import math
 from statistics import median
 
 
+def summarize_bridge_samples(samples):
+    """Use bounded receipt intervals; never turn a single stale quote into policy."""
+    observations=[]
+    for sample in samples:
+        before,after,tick=(sample.get(k) for k in ('receipt_before_utc_ms','receipt_after_utc_ms','raw_time_msc'))
+        if (any(type(v) not in (int,float) or not math.isfinite(v) or v<=0 for v in (before,after,tick))
+                or not 0<=after-before<=5000):
+            return summarize([])
+        observations.append(dict(receipt_ms=after,tick_ms=tick))
+    return summarize(observations)
+
+
 def summarize(samples):
     result = dict(status='unverified', observed_offset_seconds=None,
                   dst_rule_verified=False, execution_enabled=False,

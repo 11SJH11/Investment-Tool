@@ -209,3 +209,18 @@ access, or disable the MT5 profile on Linux. Never delete Journal records or the
 Wine prefix. To inspect the port without authenticating, use ss; a GET request is
 intentionally not a health/data endpoint. The authenticated checker is the health
 and identity check.
+
+## Advancing-clock evidence (24 October follow-up)
+
+The checker now collects five tick diagnostics one second apart and returns
+`clock_samples` and `clock_summary` alongside the existing `tick_diagnostics`.
+Run the same documented command while Gold is trading. It can identify a current
+0/+2/+3-hour candidate only with bounded receipt times and advancing quotes.
+Stationary, ambiguous or wide-interval samples remain unverified. This does not
+establish a seasonal rule, convert historical bars or enable execution.
+
+The supplied raw timestamp 1792866678196 and receipt 1792855880555 differ by
+10,797.641 seconds: consistent with UTC+3 and a 2.359-second-old quote. One
+sample is insufficient to verify clock progression or DST. T01 continues to
+require independently verified timestamp semantics. The user has now authorized
+future demo acceptance trades, but no orders were sent and safety gates remain.

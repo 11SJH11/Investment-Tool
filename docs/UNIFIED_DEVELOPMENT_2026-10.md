@@ -1092,3 +1092,37 @@ smoke passed at **390/1024/1440/1920px**, including decision paging, failed-page
 retention/retry, recovery, reload, GET-only requests and no runtime errors or page
 overflow. Diff check passed. Eight new backend cases cover the decision view.
 No live broker, orders or real-Docker acceptance was performed in this increment.
+
+### Acceptance budget and Windows configuration check (24 October)
+
+The user authorized an initial USD 5 total API test allowance and future demo
+trades, then explicitly held paid model calls while Windows backend status is
+established. No paid generation or orders were made. The previous verified worker
+and decision-history commits were pushed to feature/mt5-demo-execution.
+
+Added a shared persistent pre-dispatch acceptance cap (maximum USD 5), covering
+concurrent/in-flight and failed/unknown calls across projects in one database.
+It survives restart/removal of the environment setting and has no reset/refund
+or increase endpoint. Two additive tables are initialized only on capped use;
+production schema/data were not changed. Model requests explicitly use default
+service tier. A safe GET model-status endpoint reports config and reservation/
+usage estimates without keys, provider calls or table creation.
+
+Windows settings have a key and gpt-6.1-sol selected. A free model-metadata GET
+returned HTTP 200; paid generation remains untested. Configured USD 1/5 rates are
+Flex/Batch rates; standard calls require current USD 2/10 per million tokens.
+The stored secret configuration was not rewritten. No Ledger API was found on
+the checked local ports. Read-only DB checks found no active campaigns/loops or
+queued/running backtest jobs; two stale BASELINE_RUNNING projects remain intact.
+Normal startup performs recovery and scheduling, so the user backend was not
+launched merely to check configuration. Details and safe overrides:
+[initial acceptance guide](RESEARCH_ACCEPTANCE_BUDGET.md).
+
+The Fedora bridge checker now gathers five advancing tick observations and
+summarizes current offset evidence without authorizing conversion or execution.
+The user's single sample is consistent with UTC+3 minus 2.359 seconds of quote
+age, not a verified seasonal policy. Timestamp/position/protection integration,
+real demo acceptance, complete monitoring and screenshots remain outstanding.
+
+Final verification (24 October 2026): backend 2,054 passed, 41 skipped (701.53s); frontend 144 passed; production build passed on unchanged retry after a Windows Rolldown resolution failure. No paid generation calls were made. One read-only model metadata request succeeded. The subsequent campaign-diagnostics investigation is a separate checkpoint.
+

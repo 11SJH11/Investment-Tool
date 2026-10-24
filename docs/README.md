@@ -27,6 +27,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Backtest workflow](BACKTEST_WORKFLOW.md): configuration, queue and saved runs.
 - [Research Agent current handoff](RESEARCH_AGENT_FOUNDATION.md) and [comprehensive October update](RESEARCH_AGENT_MAJOR_UPDATE_2026-10.md): research workflow, Market Concepts, Docker isolation, verification and operating limits.
 - [Research experiments](RESEARCH_EXPERIMENTS.md): exact spectra/grids and CPU budget.
+- [Initial OpenAI acceptance budget](RESEARCH_ACCEPTANCE_BUDGET.md): safe model status, lifetime USD 5 cap and current Windows configuration findings.
 - [Research diagnostics](RESEARCH_DIAGNOSTICS.md): Run Viewer metrics and exports.
 - [Strategy refresh](STRATEGY_REFRESH.md): direct Python files, safe registry updates and provenance.
 - [Legacy Workspace backend](STRATEGY_WORKSPACE.md): retained drafts/history and API reference.

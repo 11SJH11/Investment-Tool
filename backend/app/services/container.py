@@ -95,7 +95,7 @@ class AppServices:
                 except SandboxError:pass  # Ordinary Ledger remains usable; sandbox approvals retry cleanup and fail closed.
             from app.research_agent.loop import ResearchLoop
             from app.research_agent.llm import OpenAICommitteeModel
-            self.research_loop = ResearchLoop(self.database, self.backtest_jobs, OpenAICommitteeModel(self.settings))
+            self.research_loop = ResearchLoop(self.database, self.backtest_jobs, OpenAICommitteeModel(self.settings,database=self.database))
             from app.research_agent.author import CodeAuthor
             self.research_author = CodeAuthor(self.database, self.research_loop.committee.model)
             from app.research_agent.director import ResearchDirector

@@ -1823,3 +1823,30 @@ existing chunk warning (177 modules). Fixture browser checks passed at
 recovery, reload, GET-only requests, no runtime errors and no page overflow.
 Diff check passed. Eight new deterministic backend cases; no live broker or
 real-Docker acceptance rerun. Automated execution remains disabled.
+
+### Follow-up: lifetime API acceptance allowance and real configuration check
+
+Added shared SQLite pre-call reservations for an optional one-time allowance up
+to USD 5, with concurrency serialization, immutable cap, retained unknown/failed
+spend, restart persistence and no automatic refunds/increases. Both application
+model-adapter paths share the database. Calls explicitly use default service tier.
+The safe model-status GET exposes configuration and estimates without contacting
+OpenAI or returning keys. See [acceptance guide](RESEARCH_ACCEPTANCE_BUDGET.md)
+for the additive tables, configuration and accounting limits.
+
+The actual Windows configuration selects gpt-6.1-sol and contains a key. A free
+authenticated model-metadata request returned HTTP 200. No generation calls were
+made: paid spend USD 0; complete genuine Research Agent acceptance remains pending
+under the user's latest no-paid-call instruction. Stored rates (USD 1/5) do not
+match standard rates (USD 2/10 per million); this must be corrected by acceptance
+process overrides before spending. No secret configuration or campaign state was
+rewritten. Current campaigns, queue and stale project flags were inspected only
+read-only, without accessing holdout contents or starting the app's workers.
+
+The bridge checker now collects five clock samples, with bounded receipt intervals
+and advancing-quote checks. It reports only a current offset candidate; seasonal
+timing and trading authority are not inferred. Future demo-trade authorization is
+recorded, but no orders have been sent and execution remains disabled.
+
+Final verification (24 October 2026): backend 2,054 passed, 41 skipped (701.53s); frontend 144 passed; production build passed on unchanged retry after a Windows Rolldown resolution failure. No paid generation calls were made. One read-only model metadata request succeeded. The subsequent campaign-diagnostics investigation is a separate checkpoint.
+

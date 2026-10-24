@@ -1,5 +1,18 @@
 import pytest
 from app.brokers.mt5_clock_diagnostic import summarize
+from app.brokers.mt5_clock_diagnostic import summarize_bridge_samples
+
+
+def test_user_tradequo_sample_is_not_a_seasonal_clock_verification():
+    sample=dict(raw_time_msc=1792866678196,receipt_before_utc_ms=1792855880555,receipt_after_utc_ms=1792855880555)
+    assert summarize_bridge_samples([sample])['status']=='unverified'
+    rows=[{k:v+i*1000 for k,v in sample.items()} for i in range(5)]
+    result=summarize_bridge_samples(rows)
+    assert result['observed_offset_seconds']==10800
+    assert result['median_residual_seconds']==pytest.approx(-2.359)
+    assert not result['dst_rule_verified'] and not result['execution_enabled']
+    rows[2]['receipt_after_utc_ms']+=5001
+    assert summarize_bridge_samples(rows)['status']=='unverified'
 
 
 def samples(offset=10800):
