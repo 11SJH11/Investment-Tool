@@ -154,6 +154,26 @@ There is no public start/stop endpoint in this increment. Internal verification:
 .venv/Scripts/python.exe -m pytest -q tests/test_mt5_t01_worker.py tests/test_mt5_t01_poll.py tests/test_mt5_t01_runtime.py
 ```
 
+### Inspecting recorded decisions
+
+In Algo Trading, choose **View decisions** on a diagnostic worker. The table
+shows recorded no-signal, entry, management and exit decisions, their timestamps,
+eligible application time and suggested stop/target instructions. These are not
+orders, trades, broker protection or a claim that a signal was executed. The
+runtime does not record a specific reason for every no-signal evaluation.
+
+`GET /algo-trading/diagnostic-decisions?stream_id=<64-character stream ID>` reads
+up to 50 records by default (maximum 100). `before=<sequence>` pages backwards;
+new writes do not shift earlier pages. The composite stream/sequence primary key
+supports bounded reads. Filtering in the UI applies to the loaded page, not the
+entire stream. Failed page requests retain the previous page with a visible error.
+
+This endpoint neither reconstructs strategy state nor contacts MT5. It validates
+stored checksums, exposes allowlisted scalar fields, and displays invalid evidence
+as unavailable without returning its contents. A checksum verifies stored content
+consistency, not broker authenticity. Raw observations, position metadata and
+source archives are excluded. It has no mutation/control route or schema migration.
+
 ## Still required before a real T01 deployment
 
 1. Independently validate MT5 timestamp representation and feed continuity. The

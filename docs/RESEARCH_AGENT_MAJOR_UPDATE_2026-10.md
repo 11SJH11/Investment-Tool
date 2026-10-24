@@ -1797,3 +1797,29 @@ existing chunk-size warning). Fixture browser smoke passed at
 stale/retry, paging, GET-only requests and no runtime errors/page overflow.
 Diff check passed. The worker adds 12 deterministic cases; no real broker or
 Docker acceptance was rerun for this checkpoint.
+
+### Follow-up: inspectable diagnostic decision history (24 October)
+
+The Algo Trading worker table now provides **View decisions**, backed by a bounded
+read-only stream/sequence cursor endpoint. It shows persisted no-signal, entry,
+management and exit evidence with timestamp/stop/target instructions. It never
+recalculates history, contacts MT5 or turns suggestions into executed trades.
+Checksums are validated, corrupt rows are marked unavailable, and only allowlisted
+fields are returned. Raw observations, provider metadata and source are excluded.
+Failed paging preserves the previous evidence with an error; stale responses are
+ignored. UI filters apply to the loaded page. No schema change or trading-control
+endpoint was added. See the runtime contract for API/manual inspection details.
+
+A separate temporary-database probe populated 100 synthetic streams with 2,880
+decisions each (288,000 records). Twenty 100-row page reads averaged 2.40ms,
+maximum 4.38ms, during the full test run. Temporary cleanup passed. These are
+local query measurements, not browser or real-broker latency guarantees.
+
+Final decision-history checkpoint: **2,045 backend passed / 41 skipped**, one
+existing deprecation warning (590.08s); **28 focused backend checks passed**;
+**144 frontend tests passed**; production build passed first attempt with the
+existing chunk warning (177 modules). Fixture browser checks passed at
+**390/1024/1440/1920px**, covering decision paging, failure retention/retry,
+recovery, reload, GET-only requests, no runtime errors and no page overflow.
+Diff check passed. Eight new deterministic backend cases; no live broker or
+real-Docker acceptance rerun. Automated execution remains disabled.

@@ -1067,3 +1067,28 @@ GET-only requests and no runtime errors/page overflow. Diff check passed.
 The new worker suite contributes 12 cases. No real broker or Docker acceptance
 was rerun. The bounded-runtime performance probe and its temporary-file cleanup
 limitation are recorded in the major update; neither is live execution evidence.
+
+### Paginated diagnostic decision evidence (24 October)
+
+Algo Trading's worker table now opens recorded diagnostic decisions. The bounded
+read-only endpoint uses stream/sequence cursor paging, verifies persisted checksums
+and returns only allowlisted timestamps, decision type and numeric instructions.
+Corrupt evidence remains visible as unavailable; raw observations/provider data
+are not returned. No strategy reconstruction, broker request or state mutation
+occurs when inspecting history. The UI preserves the previous page on failure,
+guards stale responses, and explains that suggestions/no-signal observations are
+not broker trades or invented waiting reasons. Filters apply to the loaded page.
+
+No new schema in this increment. Tests cover actual T01 runtime output, unchanged
+legacy databases, stream isolation, paging during insertion, sanitized signal
+projection, corrupt evidence and API bounds/read-only behavior. Execution and
+broader remaining-work limitations above are unchanged.
+
+Final decision-history verification: **2,045 backend passed, 41 skipped**, one
+existing Starlette/httpx deprecation warning, in 590.08s. Focused decision history,
+monitoring and worker tests: **28 passed**. Frontend: **144 passed**. Production
+build passed first attempt (177 modules, existing chunk warning). Fixture browser
+smoke passed at **390/1024/1440/1920px**, including decision paging, failed-page
+retention/retry, recovery, reload, GET-only requests and no runtime errors or page
+overflow. Diff check passed. Eight new backend cases cover the decision view.
+No live broker, orders or real-Docker acceptance was performed in this increment.
