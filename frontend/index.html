@@ -4,7 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ledger</title>
-  </head>
+  
+    <script id="ledger-randomuuid-compat">
+      (() => {
+        const c = globalThis.crypto;
+        if (!c || typeof c.randomUUID === "function" ||
+            typeof c.getRandomValues !== "function") return;
+
+        Object.defineProperty(c, "randomUUID", {
+          configurable: true,
+          value: () => {
+            const b = c.getRandomValues(new Uint8Array(16));
+            b[6] = (b[6] & 15) | 64;
+            b[8] = (b[8] & 63) | 128;
+            const x = Array.from(b, n =>
+              n.toString(16).padStart(2, "0")).join("");
+            return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`;
+          }
+        });
+      })();
+    </script>
+</head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
