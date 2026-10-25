@@ -45,7 +45,7 @@ class BrokerConnections:
             saved = json.loads(self._setting('broker_connection:' + p.id) or '{}')
             if 'disconnected' in saved:
                 p.enabled = not saved['disconnected']
-            if p.provider in {'tradelocker', 'mt5', 'trading212', 'robinhood'} and saved.get('environment') in {'demo', 'live'}:
+            if p.provider in {'tradelocker', 'mt5', 'trading212', 'robinhood'} and saved.get('environment') in {'demo', 'live'} and not (p.provider=='mt5' and p.credentials.get('bridge_url')):
                 p.environment = saved['environment']
         self._oanda = {}
         for p in self.profiles.values():
@@ -75,6 +75,7 @@ class BrokerConnections:
         p = self._profile(profile_id)
         status = {**CAPABILITIES[p.provider], "profile_id": p.id, "environment": p.environment,
                   "configured": p.configured, "status": "never_synced" if p.configured else "not_configured"}
+        status['environment_locked']=bool(p.provider=='mt5' and p.credentials.get('bridge_url'))
         saved = json.loads(self._setting('broker_connection:' + p.id) or '{}')
         status['disconnected'] = bool(saved.get('disconnected'))
         status['error_category'] = self._setting('broker_error_category:' + p.id)
@@ -358,6 +359,8 @@ class BrokerConnections:
 
     def configure_connection(self, profile_id, enabled, environment):
         p = self._profile(profile_id)
+        if p.provider=='mt5' and p.credentials.get('bridge_url') and environment!=p.environment:
+            raise BrokerHistoryError('MT5 bridge environment is pinned by backend configuration; use a separate profile',category='configuration')
         if p.provider=='robinhood' and environment!='live':
             raise BrokerHistoryError('Robinhood supports only live profiles',category='configuration')
         if p.provider not in {'tradelocker', 'mt5', 'trading212', 'robinhood'} or environment not in {'demo', 'live'}:

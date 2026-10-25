@@ -85,7 +85,7 @@ def test_raw_tick_diagnostics_do_not_invent_utc_or_seasonal_conversion(bridge):
 
 
 def test_disconnect_expiry_and_live_profile_rejected(bridge):
-    with pytest.raises(BrokerHistoryError,match='DEMO'):BridgeClient(bridge[2],str(bridge[3]),'live')
+    with pytest.raises(BrokerHistoryError,match='identity_mismatch'):BridgeClient(bridge[2],str(bridge[3]),'live').initialize()
     c=client(bridge);c.initialize();bridge[0].terminal_info=lambda:NS(connected=False)
     with pytest.raises(BrokerHistoryError,match='disconnected'):c.account_info()
     bridge[1].expires=0

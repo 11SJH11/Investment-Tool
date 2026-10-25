@@ -1150,10 +1150,10 @@ and independent compatible-family discovery. See
 exact scope and remaining limitations. No paid calls, broker orders or production
 database initialization are part of the automated verification.
 
-### Queued next: dual MT5 accounts and Fedora deployment
+### Implemented: dual MT5 accounts and Fedora deployment
 
 User brief read: attachment `facfbeee-a0f8-4ae4-a0d9-9003be651ae8`.
-After the Research Agent repair, implement LIVE read-only bridge at 127.0.0.1:18766
+After the Research Agent repair, added LIVE read-only bridge at 127.0.0.1:18766
 using `/home/SJH/.mt5-live`; preserve DEMO `/home/SJH/.mt5`, port 18765 and the
 separate Telegram bot. Pin environment/login/server before and after operations.
 Provide an idempotent guided `deploy/setup-mt5-live-bridge.sh` with --check,
@@ -1163,6 +1163,22 @@ acceptance. Do not edit production SQLite, restart the backend/bot, overwrite
 existing config or send orders. User will run Fedora acceptance locally; no SSH
 access was provided. Required final guide: `docs/MT5_DUAL_ACCOUNT_FEDORA.md`.
 Keep `feature/mt5-demo-execution`; commits/pushes are authorized.
+
+Implementation and operator instructions: [Dual-account MT5 Fedora deployment](MT5_DUAL_ACCOUNT_FEDORA.md).
+The new bridge protocol, pinned saved-profile environment, additive private profile
+file, guided installer and isolated Journal acceptance are implemented. No schema
+migration. Production Fedora installation/acceptance remains pending the user's run.
+No backend, DEMO service or Telegram bot was restarted; no orders or paid calls.
+The separate Telegram bot's execution safeguards cannot be verified from this repo.
+
+Final dual-account verification: backend **2,075 passed / 41 skipped** (625.13s),
+focused broker/deployment **80 passed**, frontend **145 passed**, production build
+passed (180 modules), broker browser fixtures at 1024/1440/1920 and Research Agent
+fixtures at 390/1024/1440/1920 passed. A reload readiness race in the browser test
+was fixed without application changes. Existing deprecation/chunk-size warnings
+remain. Real Fedora acceptance and timestamp-seasonality confirmation remain
+external; broader T01 execution/protection, complete monitoring and annotations
+are not declared finished by this checkpoint.
 
 
 Verified lifecycle checkpoint: backend 2,065 passed / 41 skipped (601.86s), frontend 145 passed, production build passed, browser 390/1024/1440/1920 including authenticated-reader fixtures, token non-persistence and reload passed. Existing deprecation/chunk-size warnings remain. No paid calls or production DB changes.

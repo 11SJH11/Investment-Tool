@@ -23,7 +23,8 @@ class BridgeClient:
         if (parsed.scheme!='http' or parsed.hostname!='127.0.0.1' or parsed.username or parsed.password
                 or parsed.path not in ('','/') or parsed.query or parsed.fragment or not parsed.port):
             raise BrokerHistoryError('MT5 bridge requires an explicit IPv4 loopback HTTP port',category='configuration')
-        if environment!='demo':raise BrokerHistoryError('MT5 bridge currently requires a DEMO profile',category='configuration')
+        if environment not in {'demo','live'}:raise BrokerHistoryError('MT5 bridge requires an explicit demo/live profile',category='configuration')
+        self.environment=environment
         self.port=parsed.port;self.token_file=token_file;self.lease=None;self.constants={};self.timestamp_policy='unverified'
 
     def _call(self,method,args=(),kwargs=None):
@@ -31,7 +32,9 @@ class BridgeClient:
         try:
             token=Path(self.token_file).read_text(encoding='utf-8').strip()
             if len(token)<32:raise ValueError()
-            body=json.dumps(dict(method=method,args=list(args),kwargs=kwargs or {},lease=self.lease),allow_nan=False).encode()
+            request=dict(method=method,args=list(args),kwargs=kwargs or {},lease=self.lease)
+            if self.environment=='live':request['environment']='live'
+            body=json.dumps(request,allow_nan=False).encode()
             if len(body)>MAX_REQUEST:raise ValueError()
             connection=http.client.HTTPConnection('127.0.0.1',self.port,timeout=40)
             connection.request('POST','/v1/read',body,{'Authorization':'Bearer '+token,'Content-Type':'application/json'})
@@ -53,7 +56,10 @@ class BridgeClient:
         # service; never transmit credentials or let a profile switch accounts.
         if any(kwargs.get(k) for k in ('login','password','server')):
             raise BrokerHistoryError('Bridge profiles must not supply login credentials; pin identity in the service',category='configuration')
-        opened=self._call('open');self.lease=opened['lease'];self.constants=opened['constants'];self.timestamp_policy=opened['timestamp_policy'];return True
+        opened=self._call('open')
+        if opened.get('environment','demo')!=self.environment:
+            raise BrokerHistoryError('MT5 bridge environment mismatch',category='configuration')
+        self.lease=opened['lease'];self.constants=opened['constants'];self.timestamp_policy=opened['timestamp_policy'];return True
 
     def shutdown(self):
         try:

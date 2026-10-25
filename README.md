@@ -53,6 +53,7 @@ and opt-in browser checks. Never run fixture scripts against the live database.
 - [Charts and drawings](docs/CHART_WORKSPACE.md), [Journal](docs/JOURNAL.md)
 - [Backtest workflow](docs/BACKTEST_WORKFLOW.md), [Strategy Workspace](docs/STRATEGY_WORKSPACE.md)
 - [Broker connections](docs/BROKER_CONNECTIONS.md), [extension contract](docs/BROKER_EXTENSION_CONTRACT.md)
+- [Dual-account MT5 on Fedora](docs/MT5_DUAL_ACCOUNT_FEDORA.md): guided LIVE read-only bridge alongside existing DEMO.
 - [Futures economics](docs/FUTURES_FOUNDATION.md), [continuous methodology and real NQ evidence](docs/CONTINUOUS_FUTURES_RESEARCH.md)
 - [Momentum/VCP](docs/MOMENTUM_VCP_BASELINE_V1.md), [ORB/VWAP](docs/ORB_VWAP_BASELINES.md), [Gold variants](docs/GOLD_EXPERIMENTS.md)
 - [Release history](docs/RELEASE_CHECKPOINTS.md), [third-party notices](docs/THIRD_PARTY.md)

@@ -62,7 +62,7 @@ for(const width of [390,1024,1440,1920]){
  assert(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`),'Page overflow '+width);
 }
 await send('Page.reload');
-await waitFor(`document.body.innerText.includes('Research Agent')`);
+await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent==='Research Agent')`);
 if(!await evaluate(`document.body.innerText.includes('Recorded execution: FAILED')`))await click('Research Agent');
 await waitFor(`document.body.innerText.includes('Recorded execution: FAILED')`);
 assert.deepEqual(errors,[]);

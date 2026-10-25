@@ -17,22 +17,28 @@ from .mt5_bridge_protocol import CONSTANTS, MAX_REQUEST, MAX_RESPONSE, ProtocolE
 
 class Bridge:
     def __init__(self,module,config):
-        if (config.get('environment')!='demo' or config.get('allow_initialize') is not True
+        if (config.get('environment') not in {'demo','live'} or config.get('allow_initialize') is not True
                 or type(config.get('expected_login')) is not int or config['expected_login']<=0
                 or not config.get('expected_server') or not config.get('terminal_path')):
-            raise ValueError('Explicit demo identity, terminal path and initialization consent required')
+            raise ValueError('Explicit environment, identity, terminal path and initialization consent required')
+        expected_mode=0 if config['environment']=='demo' else 2
+        if config.get('expected_trade_mode',expected_mode)!=expected_mode:
+            raise ValueError('Configured trade mode does not match environment')
         if config.get('timestamp_policy','unverified') not in {'unverified','verified_utc'}:raise ValueError('Invalid timestamp policy')
         self.module=module;self.config=config;self.lease=None;self.expires=0;self.initialized=False
 
     def identity(self):
         terminal=self.module.terminal_info();account=self.module.account_info()
         if terminal is None or not terminal.connected or account is None:raise ProtocolError('disconnected')
-        if (account.trade_mode!=self.module.ACCOUNT_TRADE_MODE_DEMO or account.login!=self.config['expected_login']
+        expected_mode=0 if self.config['environment']=='demo' else 2
+        if (account.trade_mode!=expected_mode or account.login!=self.config['expected_login']
                 or account.server!=self.config['expected_server']):raise ProtocolError('identity_mismatch')
         return account
 
     def dispatch(self,request):
-        if not isinstance(request,dict) or set(request)-{'method','args','kwargs','lease'}:raise ProtocolError('invalid_request')
+        if not isinstance(request,dict) or set(request)-{'method','args','kwargs','lease','environment'}:raise ProtocolError('invalid_request')
+        # Missing environment is the legacy DEMO-only protocol, never LIVE.
+        if request.get('environment','demo')!=self.config['environment']:raise ProtocolError('identity_mismatch')
         method=request.get('method');args=request.get('args',[]);kwargs=request.get('kwargs',{})
         now=time.monotonic()
         if method=='open':
@@ -45,7 +51,7 @@ class Bridge:
             self.identity();self.lease=secrets.token_hex(32);self.expires=now+60
             constants={n:getattr(self.module,n) for n in CONSTANTS if hasattr(self.module,n)}
             constants.update({n:getattr(self.module,n) for n in dir(self.module) if n.startswith('SYMBOL_CALC_MODE_') and type(getattr(self.module,n)) is int})
-            return dict(lease=self.lease,constants=constants,timestamp_policy=self.config.get('timestamp_policy','unverified'))
+            return dict(lease=self.lease,constants=constants,environment=self.config['environment'],timestamp_policy=self.config.get('timestamp_policy','unverified'))
         if not self.lease or not isinstance(request.get('lease'),str) or not hmac.compare_digest(request['lease'],self.lease) or now>=self.expires:raise ProtocolError('session_expired')
         if method=='close':
             if args or kwargs:raise ProtocolError('invalid_request')

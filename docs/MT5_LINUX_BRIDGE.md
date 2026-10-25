@@ -1,7 +1,8 @@
 # Read-only MT5 bridge on Fedora / Wine
 
-Status: implemented and fixture-tested; **real Fedora Ledger discovery and Journal
-sync acceptance pending the user's run below**. Existing terminal connectivity
+Status: implemented and fixture-tested; the user reports the DEMO bridge working.
+For the new separate LIVE read-only instance, use [dual-account Fedora deployment](MT5_DUAL_ACCOUNT_FEDORA.md).
+Existing terminal connectivity
 evidence (official MetaTrader5 5.0.6231, Windows Python 3.11.9, shared `~/.mt5`
 prefix, TradeQuo DEMO quotes) is useful but is not Ledger acceptance.
 
@@ -9,7 +10,8 @@ The native Linux backend uses the existing MetaTrader5History adapter through an
 explicit module facade. Blank MT5_BRIDGE_URL retains Windows-native behaviour.
 Account keys, full-position reconciliation, incremental cursor overlap and Journal
 idempotency remain canonical. There is no new schema or migration. Do not change
-a LIVE profile to point at this demo service; initial support is DEMO only.
+a LIVE profile to point at this demo service; LIVE requires its own explicitly
+configured bridge, prefix, token and port.
 
 ## Safety and supported operations
 

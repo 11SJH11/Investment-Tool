@@ -7,6 +7,8 @@ function fixtures(){
  localStorage.clear();localStorage.setItem('ledger.ui.navigation.active',JSON.stringify('Settings'));
  window.brokerCalls=[];
  window.profiles=['trading212','tradelocker','mt5'].map(provider=>({provider,profile_id:provider+'-default',environment:'demo',configured:true,supported:true,read_only:true,execution:false,destination:provider==='trading212'?'portfolio':'journal',status:'never_synced',auto_sync:{enabled:true,interval_seconds:provider==='trading212'?300:60,minimum_seconds:provider==='trading212'?300:60,status:'scheduled'}}));
+ window.profiles[2].environment_locked=true;
+ window.profiles.push({...window.profiles[2],profile_id:'mt5-live',environment:'live'});
  window.fetch=async(url,options={})=>{
   const p=new URL(String(url),location.href).pathname;let body={items:[]};window.brokerCalls.push({path:p,method:options.method||'GET',body:options.body});
   const profile=window.profiles.find(x=>p.includes('/'+x.profile_id+'/'));
@@ -37,6 +39,7 @@ await button('TradeLocker','Enable connection');await waitFor(`document.body.inn
 await evaluate(`(()=>{const el=document.querySelector('[aria-label="TradeLocker environment"]');el.value='live';el.dispatchEvent(new Event('change',{bubbles:true}));})()`);
 await waitFor(`document.querySelector('[aria-label="TradeLocker connection"]').innerText.includes('TradeLocker / live')`);
 assert(await evaluate(`!document.querySelector('input[type=password]')`));
+assert(await evaluate(`(()=>{const cards=[...document.querySelectorAll('article')].filter(c=>c.innerText.includes('Environment pinned by the read-only bridge'));return cards.length===2&&cards.every(c=>c.querySelector('select').disabled)&&cards.some(c=>c.innerText.includes('mt5-live'))&&cards.some(c=>c.innerText.includes('mt5-default'));})()`),'Both MT5 environments must remain visible and locked');
 for(const width of [1024,1440,1920]){
  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
  assert(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`),'Page overflow at '+width);

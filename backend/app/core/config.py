@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     trading212_api_secret: str = Field(default="", validation_alias="TRADING212_API_SECRET", repr=False)
     trading212_environment: str = Field(default="demo", validation_alias="TRADING212_ENVIRONMENT")
     broker_profiles_json: str = Field(default="[]", validation_alias="BROKER_PROFILES_JSON", repr=False)
+    broker_profiles_file: str = Field(default='', validation_alias='BROKER_PROFILES_FILE', repr=False)
     tradelocker_enabled: bool = Field(default=False, validation_alias="TRADELOCKER_ENABLED")
     tradelocker_environment: str = Field(default="demo", validation_alias="TRADELOCKER_ENVIRONMENT")
     tradelocker_email: str = Field(default="", validation_alias="TRADELOCKER_EMAIL", repr=False)

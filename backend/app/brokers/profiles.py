@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 import json
 import re
+from pathlib import Path
 
 from app.brokers.base import BrokerHistoryError
 
@@ -45,6 +46,12 @@ def profiles(settings):
         extra = json.loads(settings.broker_profiles_json)
         if not isinstance(extra, list):
             raise ValueError()
+        if getattr(settings,'broker_profiles_file',''):
+            path=Path(settings.broker_profiles_file)
+            if path.stat().st_size>1048576:raise ValueError()
+            additional=json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(additional,list):raise ValueError()
+            extra=extra+additional
         ids = {p.id for p in result}
         for item in extra:
             if not isinstance(item, dict) or set(item) - {"id", "provider", "environment", "enabled", "credentials"}:
