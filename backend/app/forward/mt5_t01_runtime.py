@@ -22,6 +22,8 @@ from .deployments import digest, encoded
 from .runtime import runtime_identity, serial
 
 KEY = 'gold_ifvg_v2_skip_23et'
+T02_KEY = 'gold_ifvg_v2_fvg_ratio_020'
+SUPPORTED_KEYS = frozenset((KEY, T02_KEY))
 MAX_BARS = 2880
 
 
@@ -79,7 +81,7 @@ class T01DecisionRuntime:
         from app.brokers.mt5_execution_ledger import MT5ExecutionLedger
         MT5ExecutionLedger._manual_only()
 
-    def prepare(self, ledger, policy_id, *, symbol, stream_key, timestamp_policy):
+    def prepare(self, ledger, policy_id, *, symbol, stream_key, timestamp_policy, parameters=None):
         self._manual_only()
         if timestamp_policy != 'verified_utc':
             raise ValueError('Verified UTC bars required; seasonal offsets are not inferred')
@@ -87,14 +89,19 @@ class T01DecisionRuntime:
             raise ValueError('Bounded diagnostic stream identity required')
         if ledger.database is not self.database:
             raise ValueError('Policy and diagnostic storage must match')
+        parameters={'direction':'both'} if parameters is None else dict(parameters)
+        if set(parameters)!={'direction'} or parameters['direction'] not in {'both','long','short'}:
+            raise ValueError('Only the frozen strategy direction parameter is supported')
         with self.lock, self.registry.executing(), self.database.connect() as c:
             c.execute('BEGIN IMMEDIATE'); ledger._owns(c)
             row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
             if row is None:
                 raise ValueError('Unknown execution policy')
             policy = json.loads(row[0])['policy']
-            provenance = self.registry.provenance(KEY)
-            if (policy['environment'] != 'demo' or policy['strategy_key'] != KEY
+            key=policy['strategy_key']
+            if key not in SUPPORTED_KEYS:raise ValueError('Frozen T01/T02 strategy required')
+            provenance = self.registry.provenance(key)
+            if (policy['environment'] != 'demo'
                     or policy['strategy_source_hash'] != provenance['source_sha256']
                     or symbol not in policy['symbols']):
                 raise ValueError('Frozen T01 demo policy/source/symbol required')
@@ -104,13 +111,15 @@ class T01DecisionRuntime:
                 if digest(json.loads(previous[0])) != previous[1]:
                     raise ValueError('T01 definition integrity failed')
                 self._verify(json.loads(previous[0]))
+                if json.loads(previous[0])['parameters']!=parameters:
+                    raise ValueError('Diagnostic parameters are immutable; create a new stream')
                 return dict(id=identifier, definition=json.loads(previous[0]), execution_enabled=False)
             archive = store(c, provenance, self.registry.sources())
             if archive['status'] != 'archived':
                 raise ValueError('Complete T01 source identity required')
             definition = dict(mode='DIAGNOSTIC_ONLY', policy_id=policy_id,
                 account_key=policy['account_key'], environment='demo', currency=policy['currency'],
-                symbol=symbol, strategy_key=KEY, parameters={'direction':'both'},
+                symbol=symbol, strategy_key=key, parameters=parameters,
                 implementation=provenance, source_archive=archive,
                 runtime_identity=implementation_identity(), timestamp_policy=timestamp_policy)
             c.execute('INSERT INTO mt5_t01_diagnostics VALUES(?,?,?,0)', (identifier, encoded(definition), digest(definition)))
@@ -118,8 +127,8 @@ class T01DecisionRuntime:
 
     def _verify(self, definition):
         if (definition['mode'] != 'DIAGNOSTIC_ONLY' or definition['environment'] != 'demo'
-                or definition['strategy_key'] != KEY or definition['timestamp_policy'] != 'verified_utc'
-                or definition['implementation'] != self.registry.provenance(KEY)
+                or definition['strategy_key'] not in SUPPORTED_KEYS or definition['timestamp_policy'] != 'verified_utc'
+                or definition['implementation'] != self.registry.provenance(definition['strategy_key'])
                 or definition['runtime_identity'] != implementation_identity()):
             raise ValueError('Frozen T01 implementation changed; diagnostic stream cannot upgrade')
 
@@ -157,7 +166,7 @@ class T01DecisionRuntime:
                     self._verify(definition)
                     if position is not None and (attribution_verified is not True
                             or position.symbol != definition['symbol']
-                            or position.metadata.get('strategy_version') != KEY
+                            or position.metadata.get('strategy_version') != definition['strategy_key']
                             or stamp(position.entry_time) > stamp(value['timestamp'])):
                         raise ValueError('Previously attributed T01 position required')
                     saved = c.execute('SELECT document,sha256 FROM mt5_t01_decisions WHERE deployment_id=? ORDER BY sequence', (identifier,)).fetchall()
@@ -181,7 +190,7 @@ class T01DecisionRuntime:
                         raise ValueError('Diagnostic stream must begin at 20:00 New York')
                 current = self.cache.get(identifier)
                 if current is None or current[0] != revision:
-                    strategy = self.registry.create(KEY, **definition['parameters']); strategy.reset()
+                    strategy = self.registry.create(definition['strategy_key'], **definition['parameters']); strategy.reset()
                     bars = []
                     for record in records:
                         bars.append(record['bar'])

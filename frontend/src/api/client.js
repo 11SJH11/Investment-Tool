@@ -1,6 +1,8 @@
 import {notifyActivity,beginRequest,requestLabel} from '../app/activityEvents.js';
 import {chartRequests,stableKey} from "./chartRequests.js";
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+// Production requests follow the browser's Ledger origin (including remote HTTPS).
+// Vite proxies this same path to the local development backend.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
 
 async function request(path, options = {}) {
   const label=requestLabel(path,options.method||'GET');
@@ -182,6 +184,8 @@ export const api = {
   brokerSizingPreview: (id,payload) => request(`/brokers/${encodeURIComponent(id)}/sizing-preview`, {method:'POST',body:JSON.stringify(payload)}),
   brokerAccountSnapshot: id => request(`/brokers/${encodeURIComponent(id)}/account-snapshot`, {method:'POST'}),
   brokerAccountObservations: id => request(`/brokers/${encodeURIComponent(id)}/account-observations`),
+  mt5DeploymentDraft: (body,token,preview=true) => request(`/algo-trading/deployments${preview?'/preview':''}`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:JSON.stringify(body)}),
+  mt5Deployments: token => request('/algo-trading/deployments',{headers:{Authorization:`Bearer ${token}`}}),
   brokerMarketCoverage: id => request(`/brokers/${encodeURIComponent(id)}/market-coverage`),
   selectBrokerAccount: (id, account_key) => request(`/brokers/${encodeURIComponent(id)}/account`, {method:'PUT',body:JSON.stringify({account_key})}),
   configureBrokerConnection: (id, payload) => request(`/brokers/${encodeURIComponent(id)}/connection`, {method:'PATCH',body:JSON.stringify(payload)}),

@@ -5,6 +5,7 @@ import RecoveryActivity from './RecoveryActivity';
 import AccountSafeguards from './AccountSafeguards';
 import DiagnosticWorkers from './DiagnosticWorkers';
 import AccountObservations from './AccountObservations';
+import DeploymentDraftForm from './DeploymentDraftForm';
 
 const columns=[['name','Strategy','text'],['mode','Mode','category'],['environment','Environment','category'],['symbol','Symbol','text'],['status','Observed status','category'],['last_evaluation_at','Last evaluation','date']].map(([key,label,kind])=>({key,label,kind,render:row=>row[key]??'Unavailable'}));
 const money=(value,currency)=>value==null?'Unavailable':`${Number(value).toFixed(2)} ${currency}`;
@@ -19,6 +20,7 @@ export default function AlgoTradingPage(){
  return <section className="space-y-4 min-w-0" aria-label="Algo Trading monitoring">
   <header className="ui-toolbar"><div><h1 className="text-2xl font-semibold">Algo Trading</h1><p className="text-sm muted">Execution readiness and recorded forward activity</p></div><button className="mini-btn" onClick={()=>setRefresh(n=>n+1)}>Refresh monitoring</button></header>
   <p className="text-sm">MT5 automated execution disabled. T01 is not deployed. This page does not start strategies or send orders.</p>
+  <DeploymentDraftForm/>
   {error&&<p role="alert">{error}. {report?'Displayed data may be stale.':'No monitoring report received.'} Retrying automatically.</p>}
   {!report&&!error&&<p role="status">Loading monitoring state…</p>}
   {report&&<><p className="text-xs muted">Report refreshed {report.observed_at}. Broker observations and evaluations have their own timestamps.</p>

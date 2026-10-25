@@ -1,6 +1,16 @@
 # Unified Ledger development — 19 October 2026
 
-## Latest checkpoint: 25 October account observations and diagnostic fallback
+## Latest checkpoint: 25 October T02 saved-run drafts
+
+See [MT5 DEMO automation status](MT5_DEMO_AUTOMATION.md) for the verified T02 parity,
+immutable unarmed deployment drafts, operator authentication, same-origin API fix
+and safe Fedora installer foundation. Full backend: 2,104 passed / 41 skipped.
+Actual submission/management/worker integration remains unfinished. The user now
+requests DEMO activation once technical acceptance passes; the Windows LIVE profile
+must remain ineligible. Continue gateway/protection/recovery, not another draft-only
+handoff. Preserve Telegram and both read-only bridges. No production changes yet.
+
+## Previous checkpoint: 25 October account observations and diagnostic fallback
 
 Research coordinator failures now have a bounded sanitized file fallback independent
 of SQLite. Algo Trading has persisted real account observations, explicit read-only
