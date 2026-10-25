@@ -37,7 +37,21 @@ def report(services):
     if connections:
         for row in connections.statuses()['items']:
             if row.get('provider')!='mt5':continue
-            accounts.append({k:row.get(k) for k in ('profile_id','provider','environment','configured','status','account_key','last_success_at','error_category')})
+            account={k:row.get(k) for k in ('profile_id','provider','environment','configured','status','account_key','last_success_at','error_category')}
+            if hasattr(connections,'account_observations'):
+                observation=connections.account_observations(row['profile_id'],history=False)
+                snapshot=observation['snapshot']
+                # Account selection can change while the report is being read.
+                if snapshot and (snapshot['account_key']!=row.get('account_key') or snapshot['environment']!=row.get('environment')):
+                    snapshot=None
+                # Account selection can change while the report is being read.
+                if snapshot and (snapshot['account_key']!=row.get('account_key') or snapshot['environment']!=row.get('environment')):
+                    snapshot=None
+                account['observation']=dict(last_attempt_at=observation['last_attempt_at'],error_category=observation['error_category'],
+                    facts=snapshot['account'] if snapshot else None,observed_at=snapshot['observed_at'] if snapshot else None,
+                    position_count=len(snapshot['positions']) if snapshot else None,
+                    pending_order_count=len(snapshot['pending_orders']) if snapshot else None)
+            accounts.append(account)
     with services.database.connect() as c:
         c.execute('BEGIN')
         tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -77,5 +91,26 @@ def report(services):
     diagnostic_service=getattr(services,'mt5_diagnostics',None)
     diagnostic_workers=diagnostic_service.report()['items'] if diagnostic_service else []
     return dict(observed_at=datetime.now(timezone.utc).isoformat(),items=items,accounts=accounts,warnings=warnings,recovery_observations=recovery,diagnostic_workers=diagnostic_workers,
-        mt5_execution_enabled=False,broker_totals=None,
-        limitation='Monitoring foundation: broker connectivity is last sync evidence, not a current terminal probe. No account balances are inferred or pooled. Paper controls remain in Forward validation; T01 deployment/execution integration is not complete.')
+        mt5_execution_enabled=False,broker_totals=account_totals(accounts),
+        limitation='Broker figures are recorded observations, not a current terminal probe or strategy performance. Demo/live and currencies remain separate. Paper controls remain in Forward validation; T01 deployment/execution integration is not complete.')
+
+
+def account_totals(accounts):
+    """Latest observation per verified account, never per strategy or profile."""
+    unique={}
+    for account in accounts:
+        observation=account.get('observation') or {}
+        if not account.get('account_key') or not observation.get('facts'):continue
+        key=(account['environment'],account['account_key'])
+        if key not in unique or observation['observed_at']>unique[key]['observation']['observed_at']:
+            unique[key]=account
+    groups={}
+    for account in unique.values():
+        observation=account['observation'];facts=observation['facts']
+        key=(account['environment'],facts['currency'])
+        group=groups.setdefault(key,dict(environment=key[0],currency=key[1],accounts=0,balance=0,equity=0,
+            oldest_observed_at=observation['observed_at'],newest_observed_at=observation['observed_at']))
+        group['accounts']+=1;group['balance']+=facts['balance'];group['equity']+=facts['equity']
+        group['oldest_observed_at']=min(group['oldest_observed_at'],observation['observed_at'])
+        group['newest_observed_at']=max(group['newest_observed_at'],observation['observed_at'])
+    return list(groups.values()) or None

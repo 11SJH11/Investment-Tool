@@ -1,0 +1,119 @@
+{
+  "run_id": 235,
+  "name": "Gold SR A4 \u00b7 trend filter \u00b7 copy",
+  "test_role": "development",
+  "start_date": "2025-01-01",
+  "end_date": "2025-09-30",
+  "strategy": {
+    "key": "gold_sr_a4_trend_rejection_v1",
+    "name": "Gold SR A4 \u00b7 trend filter",
+    "params": {
+      "direction": "short",
+      "lookback_15m": 24,
+      "level_tolerance_atr": 0.2
+    },
+    "implementation": {
+      "key": "gold_sr_a4_trend_rejection_v1",
+      "module": "app.backtesting.strategies.experimental_strategy_batch_2026_v1",
+      "class_name": "GoldResistanceA4",
+      "source_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "registry_sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c"
+    },
+    "review_config": {},
+    "concepts": {},
+    "source_archive": {
+      "status": "archived",
+      "sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c",
+      "module": "experimental_strategy_batch_2026_v1.py",
+      "module_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "module_count": 36,
+      "scope": "Loaded strategy modules only; excludes engine, base classes, external dependencies and market data. Not a complete executable environment."
+    }
+  },
+  "config": {
+    "start_date": "2025-01-01",
+    "end_date": "2025-09-30",
+    "warmup_start_date": null,
+    "primary_timeframe": "1m",
+    "additional_timeframes": [],
+    "session": "auto",
+    "strategy_params": {
+      "direction": "short",
+      "lookback_15m": 24,
+      "level_tolerance_atr": 0.2
+    },
+    "starting_balance": 10000.0,
+    "sizing_mode": "risk_pct",
+    "risk_value": 2.0,
+    "commission_per_order": 0.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0,
+    "max_leverage": 20.0,
+    "max_open_positions": 5,
+    "same_bar_policy": "stop_first",
+    "entry_windows": [],
+    "trading_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "allow_overnight": true,
+    "force_close_time": null,
+    "max_trades_per_day": null,
+    "max_daily_loss_r": null,
+    "max_consecutive_losses": null,
+    "cooldown_minutes": 0,
+    "queue_job_id": "202f8ca1-7631-4465-a014-383aecfe33d2",
+    "research_experiment": null,
+    "market_data_fingerprint": "2037480a65a26306ee958cb55cb8022360f91427309e1e9b6f2739d980782c0c",
+    "strategy_provenance": {
+      "key": "gold_sr_a4_trend_rejection_v1",
+      "module": "app.backtesting.strategies.experimental_strategy_batch_2026_v1",
+      "class_name": "GoldResistanceA4",
+      "source_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "registry_sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c"
+    },
+    "experiment_group": "",
+    "strategy_key": "gold_sr_a4_trend_rejection_v1",
+    "symbols": [
+      "XAUUSD"
+    ]
+  },
+  "metrics": {
+    "trades": 92,
+    "wins": 25,
+    "losses": 67,
+    "breakeven": 0,
+    "win_rate_pct": 27.173913043478258,
+    "average_r": -0.18560360323595954,
+    "expectancy_r": -0.18560360323595954,
+    "median_r": -1.0,
+    "total_r": -17.075531497708276,
+    "average_planned_rr": 2.0,
+    "average_winner_r": 2.0,
+    "average_loser_r": -1.0011273357866908,
+    "largest_winner_r": 2.0,
+    "largest_loser_r": -1.075531497708276,
+    "profit_factor_r": 0.7454283087075995,
+    "profit_factor_cash": 0.692295448509013,
+    "gross_profit": 5067.575331309537,
+    "gross_loss": 7319.960491179746,
+    "net_pnl": -2252.3851598702113,
+    "starting_balance": 10000.0,
+    "ending_balance": 7747.614840129789,
+    "return_pct": -22.523851598702116,
+    "max_drawdown_cash": -3126.4215374284013,
+    "max_drawdown_pct": -29.173556969543217,
+    "max_drawdown_r": -22.075531497708276,
+    "longest_losing_streak": 10,
+    "average_hold_minutes": 17.880434782608695
+  },
+  "symbols": [
+    "XAUUSD"
+  ],
+  "primary_timeframe": "1m",
+  "session": "24h",
+  "trade_count_saved": 92
+}

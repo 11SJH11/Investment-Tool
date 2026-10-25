@@ -4,6 +4,7 @@ import DataTable from '../../components/table/DataTable';
 import RecoveryActivity from './RecoveryActivity';
 import AccountSafeguards from './AccountSafeguards';
 import DiagnosticWorkers from './DiagnosticWorkers';
+import AccountObservations from './AccountObservations';
 
 const columns=[['name','Strategy','text'],['mode','Mode','category'],['environment','Environment','category'],['symbol','Symbol','text'],['status','Observed status','category'],['last_evaluation_at','Last evaluation','date']].map(([key,label,kind])=>({key,label,kind,render:row=>row[key]??'Unavailable'}));
 const money=(value,currency)=>value==null?'Unavailable':`${Number(value).toFixed(2)} ${currency}`;
@@ -23,10 +24,7 @@ export default function AlgoTradingPage(){
   {report&&<><p className="text-xs muted">Report refreshed {report.observed_at}. Broker observations and evaluations have their own timestamps.</p>
    <p className="text-xs muted">{report.limitation}</p>
    {report.warnings.map(w=><p role="status" key={w}>{w}</p>)}
-   <article className="insight-panel"><h2 className="font-semibold">MT5 broker connections</h2>
-    {!report.accounts.length&&<p className="text-sm mt-2">No MT5 profile is available. Configure a separate demo connection in Settings. A connection does not authorize trading.</p>}
-    {report.accounts.map(a=><div key={a.profile_id} className="mt-3 text-sm"><strong>{a.profile_id} · {a.environment?.toUpperCase()}</strong><p>Last sync state: {a.status} · {a.last_success_at??'Never observed'}</p>{a.error_category&&<p role="status">{a.error_category}</p>}<p className="text-xs muted">Account {a.account_key?.slice(0,12)??'Not selected'}. Current balance/equity unavailable from this read-only status report.</p></div>)}
-   </article>
+   <AccountObservations accounts={report.accounts} totals={report.broker_totals} onChanged={()=>setRefresh(n=>n+1)}/>
    <DataTable id="algo.deployments" label="Strategy monitoring" columns={columns} rows={report.items} primaryAction={{label:'Inspect',onClick:row=>setSelected(row.id)}} summary={rows=><p className="p-3 text-xs muted">N = {rows.length} matching preparations/deployments. Simulated accounts are not pooled with broker balances.</p>}/>
    {!report.items.length&&<p className="text-sm muted">No recorded deployment or MT5 preparation. No sample performance is displayed.</p>}
    <DiagnosticWorkers rows={report.diagnostic_workers??[]}/>

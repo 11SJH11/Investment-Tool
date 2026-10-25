@@ -1,0 +1,115 @@
+{
+  "run_id": 239,
+  "name": "ICT 4",
+  "test_role": "development",
+  "start_date": "2025-01-01",
+  "end_date": "2025-09-30",
+  "strategy": {
+    "key": "ict_confluence_c04_four_of_five_v1",
+    "name": "ICT C04 \u00b7 4/5 confluence score",
+    "params": {
+      "direction": "both"
+    },
+    "implementation": {
+      "key": "ict_confluence_c04_four_of_five_v1",
+      "module": "app.backtesting.strategies.mtf_ict_research_v2",
+      "class_name": "ICTC04FourOfFive",
+      "source_sha256": "64e5cc96db3970153b1529c4fb43e8a539cda7695b17aafe17cc14662fb2a0ad",
+      "registry_sha256": "28aa02d7ec78b46f950df25c2ee12e396a2268682a2054c5bb74312b3ffd2a56"
+    },
+    "review_config": {},
+    "concepts": {},
+    "source_archive": {
+      "status": "archived",
+      "sha256": "28aa02d7ec78b46f950df25c2ee12e396a2268682a2054c5bb74312b3ffd2a56",
+      "module": "mtf_ict_research_v2.py",
+      "module_sha256": "64e5cc96db3970153b1529c4fb43e8a539cda7695b17aafe17cc14662fb2a0ad",
+      "module_count": 37,
+      "scope": "Loaded strategy modules only; excludes engine, base classes, external dependencies and market data. Not a complete executable environment."
+    }
+  },
+  "config": {
+    "start_date": "2025-01-01",
+    "end_date": "2025-09-30",
+    "warmup_start_date": null,
+    "primary_timeframe": "5m",
+    "additional_timeframes": [],
+    "session": "auto",
+    "strategy_params": {
+      "direction": "both"
+    },
+    "starting_balance": 10000.0,
+    "sizing_mode": "risk_pct",
+    "risk_value": 2.0,
+    "commission_per_order": 0.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0,
+    "max_leverage": 20.0,
+    "max_open_positions": 5,
+    "same_bar_policy": "stop_first",
+    "entry_windows": [],
+    "trading_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "allow_overnight": true,
+    "force_close_time": null,
+    "max_trades_per_day": null,
+    "max_daily_loss_r": null,
+    "max_consecutive_losses": null,
+    "cooldown_minutes": 0,
+    "queue_job_id": "925a5f81-72bc-4e03-8cbc-b857c5a14f85",
+    "research_experiment": null,
+    "market_data_fingerprint": "1ca02ca3093409b2bffc6d94ef269811375fd940dbfd9ca15c14212f371d8470",
+    "strategy_provenance": {
+      "key": "ict_confluence_c04_four_of_five_v1",
+      "module": "app.backtesting.strategies.mtf_ict_research_v2",
+      "class_name": "ICTC04FourOfFive",
+      "source_sha256": "64e5cc96db3970153b1529c4fb43e8a539cda7695b17aafe17cc14662fb2a0ad",
+      "registry_sha256": "28aa02d7ec78b46f950df25c2ee12e396a2268682a2054c5bb74312b3ffd2a56"
+    },
+    "experiment_group": "",
+    "strategy_key": "ict_confluence_c04_four_of_five_v1",
+    "symbols": [
+      "XAUUSD"
+    ]
+  },
+  "metrics": {
+    "trades": 73,
+    "wins": 21,
+    "losses": 52,
+    "breakeven": 0,
+    "win_rate_pct": 28.767123287671232,
+    "average_r": -0.15140870494140618,
+    "expectancy_r": -0.15140870494140618,
+    "median_r": -1.0,
+    "total_r": -11.052835460722651,
+    "average_planned_rr": 2.0,
+    "average_winner_r": 2.0,
+    "average_loser_r": -1.0202468357831278,
+    "largest_winner_r": 2.0,
+    "largest_loser_r": -2.0528354607226516,
+    "profit_factor_r": 0.7916636242957165,
+    "profit_factor_cash": 0.7575724565420415,
+    "gross_profit": 6520.57707896297,
+    "gross_loss": 8607.199248935616,
+    "net_pnl": -2086.622169972653,
+    "starting_balance": 10000.0,
+    "ending_balance": 7913.377830027347,
+    "return_pct": -20.866221699726527,
+    "max_drawdown_cash": -3156.8242903846094,
+    "max_drawdown_pct": -29.942103177391676,
+    "max_drawdown_r": -18.05283546072265,
+    "longest_losing_streak": 17,
+    "average_hold_minutes": 279.7945205479452
+  },
+  "symbols": [
+    "XAUUSD"
+  ],
+  "primary_timeframe": "5m",
+  "session": "24h",
+  "trade_count_saved": 73
+}

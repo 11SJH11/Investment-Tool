@@ -361,7 +361,9 @@ class ResearchDirector:
                 self.last_cycle_finished_at = self.clock().isoformat()
                 failures = 0
                 self.last_error = None
-            except Exception:
+            except Exception as exc:
+                from .failure_log import record
+                record(self.database, exc)
                 failures += 1
                 self.last_error = 'director_storage_unavailable'
                 if failures >= 3:

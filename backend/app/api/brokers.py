@@ -19,6 +19,14 @@ def account_snapshot(profile_id: str, services=Depends(get_services)):
         raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
 
 
+@router.get('/brokers/{profile_id}/account-observations')
+def account_observations(profile_id: str, services=Depends(get_services)):
+    try:
+        return services.broker_connections.account_observations(profile_id)
+    except BrokerHistoryError as exc:
+        raise HTTPException(400, {'category': exc.category, 'message': str(exc)}) from None
+
+
 @router.post('/brokers/{profile_id}/sizing-preview')
 def sizing_preview(profile_id: str, body: SizingRequest, services=Depends(get_services)):
     try:

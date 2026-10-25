@@ -207,22 +207,38 @@ class BrokerConnections:
 
     def account_snapshot(self, profile_id):
         from app.brokers.mt5_account import read_snapshot
+        from app.storage import mt5_observations
         p=self._profile(profile_id)
         if p.provider!='mt5' or not p.configured:
             raise BrokerHistoryError('An enabled MT5 profile is required',category='configuration')
         lock=self._profile_locks[profile_id]
         if not lock.acquire(blocking=False):
             raise BrokerHistoryError('A broker operation is already running for this profile',category='busy')
-        adapter=None
+        adapter=None;selected=None
         try:
             selected=self._setting(self._selection(p))
             if not selected:raise BrokerHistoryError('Select an MT5 account first',category='configuration')
             adapter=self.factories[p.provider](p.credentials,p.environment)
             adapter.connect(selected)
-            return read_snapshot(adapter)
+            snapshot=read_snapshot(adapter)
+            mt5_observations.save(self.database,snapshot)
+            return snapshot
+        except BrokerHistoryError:
+            if selected:
+                try:mt5_observations.failed(self.database,selected,p.environment)
+                except Exception:pass  # Preserve the original error; never replace the last good facts.
+            raise
+        except sqlite3.Error:
+            raise BrokerHistoryError('Account observation could not be persisted; previous observation retained',category='storage') from None
         finally:
             if adapter is not None:adapter.close()
             lock.release()
+
+    def account_observations(self, profile_id, *, history=True):
+        from app.storage.mt5_observations import read
+        p=self._profile(profile_id)
+        if p.provider!='mt5':raise BrokerHistoryError('MT5 profile required',category='configuration')
+        return read(self.database,self._setting(self._selection(p)),p.environment,history=history)
 
     def sizing_preview(self, profile_id, request):
         from app.brokers.mt5_sizing import estimate, SizingRequest

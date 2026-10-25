@@ -1,0 +1,115 @@
+{
+  "run_id": 228,
+  "name": "1H / 5m breakout-retest \u00b7 no daily bias",
+  "test_role": "development",
+  "start_date": "2025-01-01",
+  "end_date": "2025-09-30",
+  "strategy": {
+    "key": "mtf_h1_m5_retest_no_daily_v1",
+    "name": "1H / 5m breakout-retest \u00b7 no daily bias",
+    "params": {
+      "hourly_lookback": 12
+    },
+    "implementation": {
+      "key": "mtf_h1_m5_retest_no_daily_v1",
+      "module": "app.backtesting.strategies.experimental_strategy_batch_2026_v1",
+      "class_name": "DailyHourlyFiveMinNoBias",
+      "source_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "registry_sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c"
+    },
+    "review_config": {},
+    "concepts": {},
+    "source_archive": {
+      "status": "archived",
+      "sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c",
+      "module": "experimental_strategy_batch_2026_v1.py",
+      "module_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "module_count": 36,
+      "scope": "Loaded strategy modules only; excludes engine, base classes, external dependencies and market data. Not a complete executable environment."
+    }
+  },
+  "config": {
+    "start_date": "2025-01-01",
+    "end_date": "2025-09-30",
+    "warmup_start_date": null,
+    "primary_timeframe": "5m",
+    "additional_timeframes": [],
+    "session": "auto",
+    "strategy_params": {
+      "hourly_lookback": 12
+    },
+    "starting_balance": 10000.0,
+    "sizing_mode": "risk_pct",
+    "risk_value": 2.0,
+    "commission_per_order": 0.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0,
+    "max_leverage": 20.0,
+    "max_open_positions": 5,
+    "same_bar_policy": "stop_first",
+    "entry_windows": [],
+    "trading_weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "allow_overnight": true,
+    "force_close_time": null,
+    "max_trades_per_day": null,
+    "max_daily_loss_r": null,
+    "max_consecutive_losses": null,
+    "cooldown_minutes": 0,
+    "queue_job_id": "8dc838dd-fbca-4b70-9639-047ce77d0aca",
+    "research_experiment": null,
+    "market_data_fingerprint": "876d38975bde74e7cb13c75aeb9db7e18274aa99486f8f758d0a0ef32e1c513e",
+    "strategy_provenance": {
+      "key": "mtf_h1_m5_retest_no_daily_v1",
+      "module": "app.backtesting.strategies.experimental_strategy_batch_2026_v1",
+      "class_name": "DailyHourlyFiveMinNoBias",
+      "source_sha256": "87f138abece8b9271b98c3da01c94a9f9ff81df3c3f7773991c386bd86275fc4",
+      "registry_sha256": "a7eaceb057c493a7859440d45b724217913239c5f56d12bbef274421d86ccf5c"
+    },
+    "experiment_group": "",
+    "strategy_key": "mtf_h1_m5_retest_no_daily_v1",
+    "symbols": [
+      "XAUUSD"
+    ]
+  },
+  "metrics": {
+    "trades": 130,
+    "wins": 52,
+    "losses": 78,
+    "breakeven": 0,
+    "win_rate_pct": 40.0,
+    "average_r": 0.19907716016323987,
+    "expectancy_r": 0.19907716016323987,
+    "median_r": -1.0,
+    "total_r": 25.880030821221183,
+    "average_planned_rr": 2.0,
+    "average_winner_r": 2.0,
+    "average_loser_r": -1.0015380663946003,
+    "largest_winner_r": 2.0,
+    "largest_loser_r": -1.11677452968958,
+    "profit_factor_r": 1.3312857274942635,
+    "profit_factor_cash": 1.3145329536833843,
+    "gross_profit": 24530.441105964666,
+    "gross_loss": 18660.95561714843,
+    "net_pnl": 5869.485488816241,
+    "starting_balance": 10000.0,
+    "ending_balance": 15869.48548881624,
+    "return_pct": 58.69485488816242,
+    "max_drawdown_cash": -2462.4396342765813,
+    "max_drawdown_pct": -18.396069399443,
+    "max_drawdown_r": -8.0,
+    "longest_losing_streak": 7,
+    "average_hold_minutes": 370.11538461538464
+  },
+  "symbols": [
+    "XAUUSD"
+  ],
+  "primary_timeframe": "5m",
+  "session": "24h",
+  "trade_count_saved": 130
+}
