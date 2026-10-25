@@ -95,3 +95,10 @@ def test_profile_change_during_preview_fails_closed(prepared):
     repo.connections.status=changing
     with pytest.raises(ValueError,match='changed during'):repo.preview(request)
     assert repo.list()==[]
+
+
+def test_intended_strategy_must_match_saved_run(prepared):
+    repo,request,_,_=prepared
+    with pytest.raises(ValueError,match='requested deployment strategy'):
+        repo.preview(request|dict(strategy_key='gold_ifvg_v2_skip_23et'))
+    assert repo.list()==[]

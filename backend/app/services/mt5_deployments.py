@@ -17,6 +17,7 @@ class DeploymentDraft(BaseModel):
     run_id:int=Field(gt=0,strict=True)
     profile_id:str=Field(pattern=r'^[a-z][a-z0-9-]{0,59}$')
     broker_symbol:str=Field(min_length=1,max_length=100)
+    strategy_key:Literal['gold_ifvg_v2_fvg_ratio_020','gold_ifvg_v2_skip_23et']='gold_ifvg_v2_fvg_ratio_020'
     mode:Literal['SHADOW','DEMO']='SHADOW'
     risk_percent:float=Field(default=.5,gt=0,le=5)
     max_daily_loss_percent:float=Field(default=2,gt=0,le=20)
@@ -46,6 +47,8 @@ class MT5Deployments:
             if not row:raise ValueError('Saved backtest not found')
             config,strategy,symbols=json.loads(row[0]),json.loads(row[1] or '{}'),json.loads(row[2])
             key=strategy.get('key')
+            if key!=draft.strategy_key:
+                raise ValueError('Selected saved result does not use the requested deployment strategy')
             if key not in SUPPORTED_KEYS or config.get('strategy_key')!=key or row[3]!='1m' or len(symbols)!=1:
                 raise ValueError('A single-symbol, 1m execution T01/T02 saved run is required')
             current=self.registry.provenance(key)

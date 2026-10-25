@@ -1,12 +1,12 @@
 import {useEffect,useState} from 'react';
 import {api} from '../../api/client';
 
-export default function DeploymentDraftForm({runId}){
+export default function DeploymentDraftForm({runId,strategyKey='gold_ifvg_v2_fvg_ratio_020'}){
  const [open,setOpen]=useState(false);
- return <section className="insight-panel"><button className="mini-btn" onClick={()=>setOpen(v=>!v)}>{open?'Close deployment configuration':'Deploy to DEMO'}</button><p className="text-xs muted">Configure an unarmed saved-run draft. Activation is unavailable until DEMO execution acceptance passes.</p>{open&&<Draft runId={runId}/>}</section>;
+ return <section className="insight-panel"><button className="mini-btn" onClick={()=>setOpen(v=>!v)}>{open?'Close deployment configuration':'Deploy to DEMO'}</button><p className="text-xs muted">Configure an unarmed saved-run draft. Activation is unavailable until DEMO execution acceptance passes.</p>{open&&<Draft runId={runId} strategyKey={strategyKey}/>}</section>;
 }
-function Draft({runId}){
- const [form,setForm]=useState({request_key:crypto.randomUUID(),run_id:runId??'',name:'Gold T02 DEMO',profile_id:'',broker_symbol:'',mode:'DEMO',risk_percent:.5,max_daily_loss_percent:2,max_positions:1,max_trades_per_day:1,max_gross_exposure:''});
+function Draft({runId,strategyKey}){
+ const [form,setForm]=useState({request_key:crypto.randomUUID(),run_id:runId??'',strategy_key:strategyKey,name:strategyKey==='gold_ifvg_v2_fvg_ratio_020'?'Gold T02 DEMO':'Gold T01 DEMO',profile_id:'',broker_symbol:'',mode:'DEMO',risk_percent:.5,max_daily_loss_percent:2,max_positions:1,max_trades_per_day:1,max_gross_exposure:''});
  const [profiles,setProfiles]=useState([]),[token,setToken]=useState(''),[preview,setPreview]=useState(null),[saved,setSaved]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{let alive=true;api.brokerProfiles().then(r=>{if(alive)setProfiles(r.items.filter(p=>p.provider==='mt5'&&p.environment==='demo'&&p.configured&&p.account_key))}).catch(e=>{if(alive)setError(e.message)});return()=>{alive=false}},[]);
  function change(key,value){setForm(old=>({...old,[key]:value,request_key:crypto.randomUUID()}));setPreview(null);setSaved(null);}
@@ -14,6 +14,7 @@ function Draft({runId}){
  return <div className="space-y-3 mt-3" aria-label="DEMO deployment configuration">
   <p className="text-xs muted">T01/T02 only at this stage. Source mismatch blocks preparation. Saved results are never edited. Only direction is configurable; 1R, +0.68R and the variant&apos;s rules stay frozen.</p>
   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+   <label>Strategy<select className="input" value={form.strategy_key} disabled={!!runId||busy} onChange={e=>change('strategy_key',e.target.value)}><option value="gold_ifvg_v2_fvg_ratio_020">Gold T02 · FVG/stop ≤ 0.20</option><option value="gold_ifvg_v2_skip_23et">Gold T01 · skip 23 ET</option></select></label>
    <label>Saved run ID<input className="input" type="number" min="1" value={form.run_id} disabled={!!runId||busy} onChange={e=>change('run_id',e.target.value)}/></label>
    <label>Deployment name<input className="input" value={form.name} maxLength={100} disabled={busy} onChange={e=>change('name',e.target.value)}/></label>
    <label>Verified DEMO profile<select className="input" value={form.profile_id} disabled={busy} onChange={e=>change('profile_id',e.target.value)}><option value="">Select account</option>{profiles.map(p=><option key={p.profile_id} value={p.profile_id}>{p.profile_id} · {p.account_key.slice(0,12)}</option>)}</select></label>

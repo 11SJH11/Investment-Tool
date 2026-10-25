@@ -1,6 +1,19 @@
 # Unified Ledger development — 19 October 2026
 
-## Latest checkpoint: 25 October T02 saved-run drafts
+## Latest work: 25 October guarded DEMO submission/protection
+
+T02 draft/parity/API-origin/installer checkpoint is committed as `6ec5e39`.
+Next local implementation adds native submission and receipt-owned stop tightening,
+reusing durable account guards, sizing/risk and reconciliation. Default authority
+denies orders; no execution API or active worker is wired yet. See
+[automation implementation status](MT5_DEMO_AUTOMATION.md) for precise boundaries.
+87 focused native-boundary and existing ledger/reconciliation tests passed using
+mock brokers. Full regression: 2,128 passed / 41 skipped; frontend 145 passed and
+production build passed (182 modules). Do not confuse this with genuine
+Fedora acceptance. The user explicitly requests activation, but Fedora access and
+verified clock/coexistence/protection checks remain prerequisites.
+
+## Previous checkpoint: 25 October T02 saved-run drafts
 
 See [MT5 DEMO automation status](MT5_DEMO_AUTOMATION.md) for the verified T02 parity,
 immutable unarmed deployment drafts, operator authentication, same-origin API fix

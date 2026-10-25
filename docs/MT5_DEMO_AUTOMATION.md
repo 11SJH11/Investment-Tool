@@ -3,6 +3,49 @@
 Updated 25 October 2026. This is the current implementation record for the T02
 saved-run deployment brief, not a claim that automated broker execution is ready.
 
+## Next checkpoint: guarded native submission and protection
+
+`app/brokers/mt5_demo_submission.py` now implements a separate native submission
+boundary. It is not wired into an active worker or public order endpoint. Its
+default authorization callback refuses every operation. Tests inject a clearly
+mocked authority; this must not be mistaken for production activation.
+
+Implemented and tested locally:
+
+- Existing account guard, full-history recovery snapshot, broker lot/margin checks
+  and account-wide risk calculation are reused. Executable quote and identity are
+  checked again before submission. An immutable intent is never silently repriced.
+- Actual native `order_send` call is behind that boundary, with broker-side SL/TP
+  supplied in the request. The ledger writes uncertainty **before** calling it.
+- Missing/malformed responses, exceptions, partial fills and rejections retain
+  durable uncertainty. Returned native comments/errors are not exposed. No blind
+  resend, no claim that a receipt proves protective orders are working.
+- Explicit recovery can release the account only after complete, receipt-bound
+  positive broker evidence. Missing receipts and external pending orders block it.
+  Recovery never arms a deployment.
+- Stop tightening uses the receipt's position identifier and fresh native ticket,
+  checks canonical fills, current volume/SL/TP, exact DEMO identity, quote freshness,
+  tick alignment and broker stop/freeze distance. TP is preserved and SL cannot
+  move farther away. Unrelated manual/Telegram scale-in makes ownership ambiguous
+  and blocks modification.
+- Modification requests are immutable/idempotent, written before native calls in
+  `mt5_protection_attempts`, and marked verified only after broker re-observation.
+  Unknown modifications remain blocked and are not automatically resent.
+- Reconciliation uses a verified tightened stop without rewriting the original
+  intent. Restart still fences the old writer and preserves all uncertainty.
+- Draft requests explicitly name the intended strategy; selecting a T01 run for a
+  T02 deployment is rejected even if both versions are installed and source-valid.
+
+Focused native submission/protection/ledger/reconciliation regression: **87 passed**.
+Full native-boundary checkpoint: **2,128 passed / 41 skipped**, one existing
+deprecation warning, 591.25s (`demo-submission-full.log`). Frontend **145 passed**;
+production build passed (182 modules); mocked browser checks passed at
+390/1024/1440/1920, including same-origin API routing. This includes mocked native
+calls only. Continuous worker authority, per-session counters (the
+submission boundary currently counts historical attempts conservatively), unknown
+modification recovery, deployment lifecycle and Journal/dashboard integration are
+still outstanding. Neither native code nor a mocked passing test grants activation.
+
 ## Verified checkpoint: immutable drafts and decision parity
 
 - T01 and T02 reuse the canonical frozen Gold strategy through the existing
@@ -94,7 +137,8 @@ execution worker requires reviewing broker-side protection first.
 
 ## Remaining implementation — do not call this complete
 
-1. Separate DEMO execution gateway, without adding order methods to read-only bridges.
+1. Connect the guarded native submission boundary to an authenticated separate DEMO
+   gateway/worker, without adding order methods to read-only bridges.
 2. Persistent worker wiring: fresh completed bars, risk reservation, broker submission,
    protective SL/TP, partial/unknown receipts, owned position management and recovery.
 3. Persisted Pause/Resume/Stop, authenticated activation and restart reconciliation.
@@ -108,3 +152,29 @@ the objective; it does not establish that the technical acceptance gates passed.
 Do not activate the Windows LIVE profile. No Fedora SSH access is configured;
 the user previously elected to run Fedora acceptance commands. Timestamp seasonal
 rules and independent broker/protection acceptance remain outstanding.
+
+## Read-only Fedora evidence needed for genuine acceptance
+
+No service restart, database migration or order is involved in these checks. On
+Fedora, from the current checkout, run:
+
+```bash
+cd /home/SJH/Projects/Investment-Tool/backend
+.venv/bin/python tools/check_mt5_bridge.py \
+  --bridge-url http://127.0.0.1:18765 \
+  --token-file "$HOME/.config/ledger-mt5-bridge/token" \
+  --symbol XAUUSDs --confirm-demo
+```
+
+This existing tool uses a new temporary database, verifies DEMO identity, imports
+twice for idempotence, and takes five clock samples. It does not open Ledger's
+production DB. Run during an active market for useful moving-tick evidence; a
+weekend stale tick cannot establish a current UTC offset. Do not paste token
+contents. A newly observed offset alone does not establish all historical DST rules.
+
+For the remote UI error, inspect whether the existing backend service is running
+and whether nginx forwards `/api/algo-trading` to it. Share the HTTP status rather
+than private environment files. Windows had no running backend at inspection.
+The new frontend needs rebuilding on Fedora; an old explicit `VITE_API_BASE_URL`
+still overrides the repaired same-origin default. Do not restart production
+services as an implicit part of development verification.

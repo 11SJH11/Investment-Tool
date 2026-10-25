@@ -167,6 +167,18 @@ class MT5ExecutionLedger:
                 raise ValueError('Unknown MT5 execution intent')
             intent = json.loads(row[0])
             attempt = None
+            # Only a durable, broker-verified tightening may update the expected
+            # protection for reconciliation. Original order facts stay immutable.
+            protection_id = None
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='mt5_protection_attempts'").fetchone():
+                protection = c.execute("SELECT document FROM mt5_protection_attempts WHERE state='VERIFIED' AND json_extract(document,'$.intent_id')=? ORDER BY rowid DESC LIMIT 1",(intent_id,)).fetchone()
+                if protection:
+                    verified=json.loads(protection[0]);old=intent['request']['stop'];new=verified['new_stop']
+                    if (verified['target']!=intent['request']['target'] or
+                            (new<old if intent['request']['side']=='buy' else new>old)):
+                        raise ValueError('Recorded protection conflicts with original intent')
+                    intent['request']['stop']=new
+                    protection_id=verified['id']
             if use_attempt_receipt:
                 attempt_row = c.execute('SELECT document FROM mt5_execution_attempts WHERE intent_id=?',
                                         (intent_id,)).fetchone()
@@ -186,6 +198,8 @@ class MT5ExecutionLedger:
                           execution_enabled=False, attribution_verified=False)
             if attempt is not None:
                 record.update(attempt_id=attempt['id'], identity_basis='durable_attempt_receipt')
+            if protection_id is not None:
+                record['verified_protection_id']=protection_id
             identifier = sha256(encoded(record).encode()).hexdigest()
             record['id'] = identifier
             c.execute('INSERT OR IGNORE INTO mt5_execution_reconciliations VALUES(?,?,?)',

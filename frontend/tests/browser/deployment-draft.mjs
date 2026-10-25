@@ -8,7 +8,7 @@ function fixtures(){
  window.requests=[];
  window.fetch=async(url,options={})=>{
   const path=new URL(String(url),location.href).pathname;
-  window.requests.push({path,method:options.method||'GET'});
+  window.requests.push({path,url:String(url),method:options.method||'GET'});
   let data={items:[]};
   if(path.endsWith('/algo-trading'))data={items:[],accounts:[],warnings:[]};
   else if(path.endsWith('/brokers'))data={items:[{profile_id:'demo-fixture',provider:'mt5',environment:'demo',configured:true,account_key:'a'.repeat(64)},{profile_id:'live-fixture',provider:'mt5',environment:'live',configured:true,account_key:'b'.repeat(64)}]};
@@ -39,6 +39,7 @@ assert(await evaluate(`![...Object.values(localStorage),...Object.values(session
 await click('Close deployment configuration');await click('Deploy to DEMO');
 assert.equal(await evaluate(`document.querySelector('input[type="password"]').value`),'');
 assert(await evaluate(`requests.filter(r=>r.method==='POST').every(r=>r.path.endsWith('/deployments')||r.path.endsWith('/deployments/preview'))`));
+assert(await evaluate(`requests.filter(r=>r.path.startsWith('/api/')).every(r=>r.url.startsWith('/api/'))`),'Default API must use the Ledger origin, not the viewing device localhost');
 assert.deepEqual(errors,[]);
 console.log('PASS unarmed deployment preview/save, DEMO-only list, token memory clearing, no activation calls, 390/1024/1440/1920 layout.');
 await send('Browser.close');close();
