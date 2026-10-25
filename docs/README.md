@@ -8,6 +8,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 - [Running Ledger](RUNNING_LEDGER.md): local startup, backups and deployment limits.
 - [Read-only MT5 Linux bridge](MT5_LINUX_BRIDGE.md): Fedora/Wine installation, DEMO identity, timestamp limitations and real acceptance commands.
 - [Dual-account MT5 Fedora deployment](MT5_DUAL_ACCOUNT_FEDORA.md): guided separate LIVE read-only service, profile isolation, verification and rollback.
+- [Algo account observations](ALGO_ACCOUNT_OBSERVATIONS.md): persisted read-only balance/equity, failure retention, currency-safe summaries and limits.
 - [Verification](VERIFICATION.md): isolated full-suite/build command and manual checks.
 - [Architecture](ARCHITECTURE.md): ownership, persistence and application boundaries.
 - [Data sources](DATA_SOURCES.md): provider configuration and data limitations.

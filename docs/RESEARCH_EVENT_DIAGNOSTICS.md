@@ -72,9 +72,14 @@ Both cached and provider-preparation paths preserve the rejection information.
 ## Limits still requiring work
 
 - No recovery of lost historical provider exceptions or rejected response text.
-- Database outages can prevent durable event storage; existing coordinator failure
-  and bounded stop behavior remain authoritative. No separate private rotating-file
-  fallback is implemented yet.
+- Database outages can prevent durable event storage. The coordinator now records
+  sanitized failure frames independently in `research-private/coordinator-failures.jsonl`
+  beside the database (256 KiB plus two backups, one backend coordinator owner).
+  This operator-only fallback excludes exception messages and provider output,
+  is not exposed through HTTP, and never claims a state transition committed.
+  If the filesystem also fails, logging is best-effort and the original bounded
+  three-failure stop remains authoritative. POSIX files/directories use 0600/0700;
+  Windows additionally relies on the data directory's existing user ACL.
 - Not every fine-grained numerical/evaluation gate has a dedicated event/code.
   Some worker failures still require the linked job and private frame record.
 - No new background retry, model spending, holdout access, deployment or execution

@@ -1,5 +1,23 @@
 # Unified Ledger development — 19 October 2026
 
+## Latest checkpoint: 25 October account observations and diagnostic fallback
+
+Research coordinator failures now have a bounded sanitized file fallback independent
+of SQLite. Algo Trading has persisted real account observations, explicit read-only
+refresh, equity history, paginated positions, account-switch guards and separate
+DEMO/LIVE/currency totals. See [account observations](ALGO_ACCOUNT_OBSERVATIONS.md).
+Full backend: 2,083 passed / 41 skipped (565.77s); frontend 145 passed; production
+build passed (181 modules). No broker orders, paid calls or production DB changes.
+
+New active brief: attachment `e8caffa6-52db-414c-aa36-c60c4846e6ff` requests the full
+DEMO automated trading system, with T02 `gold_ifvg_v2_fvg_ratio_020` first, inherited
+from saved runs. Existing T01 runtime/policies are diagnostic-only. Build safe staged
+deployment/evaluation/execution/recovery/attribution/UI, preserving frozen rules.
+Include a Fedora worker installer/updater; do not restart Telegram, LIVE bridge or
+backend, or alter production data during development. User reports both read-only
+bridges working after reboot. Actual broker submission/production rollout still
+requires separate explicit approval and genuine DEMO safety acceptance.
+
 This is the current continuation handoff. The active brief prioritizes a unified
 Windows-local application and explicitly authorized MT5 **demo** deployments.
 Live-money execution is out of scope for this phase. No broker orders have been
