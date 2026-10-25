@@ -127,7 +127,15 @@ class ResearchLoop:
     def save(self, loop):
         revision=loop['revision'];loop['revision']+=1
         with self.database.connect() as c:
-            return c.execute("UPDATE agent_loops SET document=? WHERE project_id=? AND json_extract(document,'$.revision')=? AND json_extract(document,'$.status')='ACTIVE'",(json.dumps(loop),loop['project_id'],revision)).rowcount==1
+            old=c.execute('SELECT document FROM agent_loops WHERE project_id=?',(loop['project_id'],)).fetchone()
+            updated=c.execute("UPDATE agent_loops SET document=? WHERE project_id=? AND json_extract(document,'$.revision')=? AND json_extract(document,'$.status')='ACTIVE'",(json.dumps(loop),loop['project_id'],revision)).rowcount==1
+            if updated and old:
+                previous=json.loads(old[0])
+                if (previous.get('status'),previous.get('phase'))!=(loop.get('status'),loop.get('phase')):
+                    from .event_diagnostics import append
+                    append(c,loop.get('campaign_id'),component='research.numeric',operation='loop_transition',
+                           status=loop['status'],operation_id=loop.get('id'),project_id=loop['project_id'],phase=loop.get('phase'))
+            return updated
 
     def close(self):
         self.stop.set()

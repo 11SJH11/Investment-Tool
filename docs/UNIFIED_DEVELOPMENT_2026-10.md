@@ -1141,3 +1141,29 @@ First diagnostics repair verified: backend 2,059 passed / 41 skipped (623.82s),
 frontend 145 passed, production build passed, mocked browser 390/1024/1440/1920
 including diagnostics after reload passed, and diff whitespace check passed.
 
+### 25 October: durable research lifecycle diagnostics
+
+The next checkpoint adds transactional bounded events, a token-authenticated cursor
+endpoint, private sanitized exception frames, frontend in-memory authentication,
+and independent compatible-family discovery. See
+[Research event diagnostics](RESEARCH_EVENT_DIAGNOSTICS.md) for configuration,
+exact scope and remaining limitations. No paid calls, broker orders or production
+database initialization are part of the automated verification.
+
+### Queued next: dual MT5 accounts and Fedora deployment
+
+User brief read: attachment `facfbeee-a0f8-4ae4-a0d9-9003be651ae8`.
+After the Research Agent repair, implement LIVE read-only bridge at 127.0.0.1:18766
+using `/home/SJH/.mt5-live`; preserve DEMO `/home/SJH/.mt5`, port 18765 and the
+separate Telegram bot. Pin environment/login/server before and after operations.
+Provide an idempotent guided `deploy/setup-mt5-live-bridge.sh` with --check,
+--install and --validate, private independent config/token, account confirmation,
+temporary-DB import acceptance, safe profile merge and opt-in startup only after
+acceptance. Do not edit production SQLite, restart the backend/bot, overwrite
+existing config or send orders. User will run Fedora acceptance locally; no SSH
+access was provided. Required final guide: `docs/MT5_DUAL_ACCOUNT_FEDORA.md`.
+Keep `feature/mt5-demo-execution`; commits/pushes are authorized.
+
+
+Verified lifecycle checkpoint: backend 2,065 passed / 41 skipped (601.86s), frontend 145 passed, production build passed, browser 390/1024/1440/1920 including authenticated-reader fixtures, token non-persistence and reload passed. Existing deprecation/chunk-size warnings remain. No paid calls or production DB changes.
+

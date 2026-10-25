@@ -16,7 +16,11 @@ function fixtures(){
  window.fetch=async(url,options={})=>{
   const path=new URL(String(url),location.href).pathname;window.progressRequests.push({path,method:options.method||'GET'});
   let data={items:[]};
-  if(path.endsWith('/research-campaigns/fixture/activity')){
+  if(path.endsWith('/research-campaigns/fixture/diagnostics')){
+   const after=Number(new URL(String(url),location.href).searchParams.get('after')||0);
+   data={items:after?[]:[{event_id:1,campaign_id:'fixture',timestamp:'2026-10-25T12:00:00Z',component:'research.committee',operation:'Researcher',status:'FAILED',level:'ERROR',error_code:'UNKNOWN_EVIDENCE_REFERENCE',message:'Fixture event from persisted validation',retryable:false}],next_after:1,has_more:false,retention_gap:false};
+  }
+  else if(path.endsWith('/research-campaigns/fixture/activity')){
    if(window.failOlder){window.failOlder=false;return new Response(JSON.stringify({detail:'Fixture temporary outage'}),{status:503,headers:{'Content-Type':'application/json'}});}
    data={items:[{id:2,action:'FIXTURE_OLDER',created_at:'2026-10-21T17:50:00Z',detail:'Older fixture'}],next_before:null};
   }
@@ -40,6 +44,11 @@ assert(await evaluate(`!progressRequests.some(r=>r.method!=='GET')`));
 assert(await evaluate(`document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Calls reserved: 3')&&document.querySelector('[aria-label="Recorded model operations"]').innerText.includes('Returned usage: 1')`));
 assert(await evaluate(`document.querySelector('[aria-label="Recorded Docker operations"]').innerText.includes('25 / 100 bars observed')&&document.body.innerText.includes('Possible stall')`));
 assert(await evaluate(`document.querySelector('[aria-label="Research diagnostics"]').innerText.includes('UNKNOWN_EVIDENCE_REFERENCE')`));
+await evaluate(`(()=>{const el=document.querySelector('input[type="password"]');el.closest('details').open=true;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'fixture-token-for-browser-only-123456789');el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+await click('Connect diagnostics');
+await waitFor(`document.body.innerText.includes('research.committee')`);
+assert(await evaluate(`!JSON.stringify(localStorage).includes('fixture-token-for-browser')&&!JSON.stringify(sessionStorage).includes('fixture-token-for-browser')`));
+await click('Disconnect diagnostics');
 await click('Load older activity');
 await waitFor(`document.querySelector('[aria-label="Campaign activity"] [role="alert"]')`);
 assert(await evaluate(`document.body.innerText.includes('FIXTURE LATEST')`));

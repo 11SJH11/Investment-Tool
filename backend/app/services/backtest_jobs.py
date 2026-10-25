@@ -152,10 +152,22 @@ class BacktestJobs:
                 self.executor.submit(self._work, job_id)
             return [self.get(job_id) for job_id in ids]
 
-    def _update(self, job_id, *, _progress=False, **values):
+    def _update(self, job_id, *, _progress=False, _diagnostic_trace=None, **values):
         try:
             with closing(self.database.connect(timeout=0 if _progress else 5)) as db:
                 with db:
+                    if not _progress and 'status' in values:
+                        previous=db.execute('SELECT status,payload FROM backtest_jobs WHERE id=?',(job_id,)).fetchone()
+                        if previous and previous['status']!=values['status']:
+                            payload=json.loads(previous['payload'])
+                            if not payload.get('research_campaign_id') and payload.get('research_project_id') and db.execute("SELECT 1 FROM sqlite_master WHERE name='agent_projects'").fetchone():
+                                project=db.execute('SELECT document FROM agent_projects WHERE id=?',(payload['research_project_id'],)).fetchone()
+                                if project:payload['research_campaign_id']=json.loads(project[0]).get('campaign_id')
+                            if payload.get('research_campaign_id'):
+                                from app.research_agent.event_diagnostics import append
+                                append(db,payload['research_campaign_id'],component='research.backtest',operation='job_state',
+                                       status=values['status'],operation_id=job_id,project_id=payload.get('research_project_id'),
+                                       error='backtest_failed' if values['status']=='failed' else None,trace=_diagnostic_trace)
                     db.execute(f"UPDATE backtest_jobs SET {','.join(key+'=?' for key in values)},updated_at=CURRENT_TIMESTAMP WHERE id=?",
                                (*values.values(), job_id))
             return True
@@ -292,7 +304,8 @@ class BacktestJobs:
             phase=self.get(job_id)['status']
             default='strategy_execution' if phase=='running' else 'unknown'
             category,message,retry_at=safe_failure(exc,default=default)
-            self._update(job_id, status='failed', error=f'[{category}] {message}')
+            from app.research_agent.event_diagnostics import private_trace
+            self._update(job_id, status='failed', error=f'[{category}] {message}', _diagnostic_trace=private_trace(exc))
             payload = self.get(job_id)['payload']
             if payload.get('research_children'):
                 document = self.research.get(payload['experiment_group'])

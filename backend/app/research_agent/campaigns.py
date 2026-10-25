@@ -65,9 +65,16 @@ class Campaigns:
             c.execute('CREATE TABLE IF NOT EXISTS agent_campaign_events(id INTEGER PRIMARY KEY, campaign_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL)')
             c.execute('CREATE INDEX IF NOT EXISTS agent_campaign_events_page ON agent_campaign_events(campaign_id,id)')
 
-    def _event(self, c, identifier, action, detail):
+    def _event(self, c, identifier, action, detail, *, exception=None):
         c.execute('INSERT INTO agent_campaign_events(campaign_id,action,detail,created_at) VALUES (?,?,?,?)',
                   (identifier, action, json.dumps(detail, allow_nan=False), self.clock().isoformat()))
+        from .event_diagnostics import append, private_trace
+        # Only internal lifecycle action names, never the free-text detail/prompt.
+        failed=action.endswith('_FAILED')
+        append(c,identifier,component='research.history' if action.startswith('HISTORY_') else 'research.campaign',
+               operation=action,status='failed' if failed else 'recorded',
+               error=detail.get('category','campaign_operation_failed') if failed else None,
+               trace=private_trace(exception) if exception else None)
 
     @staticmethod
     def _get(c, identifier):

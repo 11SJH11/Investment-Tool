@@ -79,6 +79,7 @@ export const api = {
   algoRecovery: (policyId,before) => request('/algo-trading/recovery?'+new URLSearchParams({...(policyId?{policy_id:policyId}:{}),...(before!=null?{before}: {})})),
   researchCampaignPolicy: () => request('/strategy-lab/research-campaigns/policy'),
   researchCampaign: id => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}`),
+  researchDiagnostics: (id,after,token,signal) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/diagnostics?after=${after}`,{headers:{Authorization:`Bearer ${token}`},signal}),
   researchCampaignActivity: (id,before) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/activity?before=${encodeURIComponent(before)}`),
   launchResearchCampaign: payload => request('/strategy-lab/research-campaigns/launch',{method:'POST',body:JSON.stringify(payload)}),
   controlResearchCampaign: (id,action) => request(`/strategy-lab/research-campaigns/${encodeURIComponent(id)}/${action}`,{method:'POST'}),

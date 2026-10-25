@@ -16,6 +16,7 @@ specifications describe frozen contracts; they are not instructions to redo a ph
 ## User and developer workflows
 
 - [Research failure diagnostics](RESEARCH_DIAGNOSTICS_2026-10-24.md): confirmed campaign failures, first repair, verification and remaining diagnostics scope.
+- [Research lifecycle event stream](RESEARCH_EVENT_DIAGNOSTICS.md): authenticated cursor access, bounded persistence, privacy and development-console setup.
 
 - [Unified development and MT5 demo roadmap](UNIFIED_DEVELOPMENT_2026-10.md): current integration, authoritative data, recovery references and remaining checkpoints.
 

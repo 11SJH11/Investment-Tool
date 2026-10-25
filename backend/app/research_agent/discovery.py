@@ -62,7 +62,7 @@ def campaign_coverage(market_data, policy, entries, **bounds):
     return output
 
 
-def queue(request):
+def queue(request, *, rejections=None):
     specs = {s.key: s for s in strategy_registry.specs()}
     policy = request['policy']
     if request['mode'] == 'RESEARCH_IDEA':
@@ -73,12 +73,18 @@ def queue(request):
         choices = FAMILIES
     selected = []
     for family, key in choices:
+        if len(selected)>=policy['budget']['families']:break
         spec = specs.get(key)
         # timeframes lists required inputs, not interchangeable primary bars.
         if not spec or any(tf != spec.timeframes[0] for tf in policy['timeframes']):
             continue
         from .market_preflight import validate_research_market
-        validate_research_market(key, policy['symbols'], spec.timeframes[0])
+        try:
+            validate_research_market(key, policy['symbols'], spec.timeframes[0])
+        except ValueError:
+            if request['mode']=='IMPROVE_STRATEGY' or rejections is None:raise
+            rejections.append(dict(family_id=family,strategy_key=key,error_code='STRATEGY_INSTRUMENT_UNSUPPORTED'))
+            continue
         selected.append(dict(family_id=family, strategy_key=key,
                              reason='Registered research family; deterministic catalog order, no performance selection'))
     if not selected:
@@ -150,9 +156,10 @@ def prepare(services, identifier):
     if services.market_data is None:
         raise ValueError('Market-data service unavailable')
     policy = item['request']['policy']
-    entries = queue(item['request'])
+    rejected=[]
+    entries = queue(item['request'],rejections=rejected)
     coverages = campaign_coverage(services.market_data, policy, entries)
-    discovery = dict(version='cached_discovery_v1', provider_calls=0,
+    discovery = dict(version='cached_discovery_v1', provider_calls=0, rejected_families=rejected,
             price_columns_read=False, warnings=[
                 'Observed cached dates are not a certified exchange calendar; missing sessions/intraday gaps are not inferred.',
                 'No point-in-time stock universe is used. Historical universe may contain survivorship bias.',

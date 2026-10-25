@@ -212,27 +212,33 @@ class CodeAuthor:
                     item['status'] = 'REJECTED'
                     break
                 item['operation'] = dict(kind='MODEL_CALL', role=role, status='RUNNING', started_at=datetime.now(timezone.utc).isoformat())
+                item['diagnostic_stage']='model_request'
                 self.committee._save(item)
                 output, usage = self.model.generate(role, INSTRUCTIONS.format(role=role),
                     {**item['evidence'], 'prior_roles': deepcopy(item['roles'])}, schema)
                 # Persist metering even if authority was revoked during the call.
                 item['usage'][role] = usage
                 item['operation'].update(status='RETURNED',finished_at=datetime.now(timezone.utc).isoformat())
+                item['diagnostic_stage']='usage_validation'
                 pricing = item['provider']['pricing']
                 usage['estimated_cost_microusd'] = usage_cost(usage, pricing)
                 if any(type(usage.get(k)) is not int or usage[k] < 0 or usage[k] > pricing[limit]
                        for k, limit in (('input_tokens', 'input_token_reservation'), ('output_tokens', 'output_token_reservation'))):
                     raise ModelFailure('usage_exceeded_cost_reservation')
                 self._guard(item, parent)
+                item['diagnostic_stage']='schema_validation'
                 output = schema.model_validate(output).model_dump()
+                item['diagnostic_stage']='evidence_reference_validation'
                 from .model_diagnostics import validate_evidence
                 validate_evidence(item, output['evidence_refs'], item['evidence']['evidence'])
                 item['roles'][role] = output
                 if role == 'Researcher':
+                    item['diagnostic_stage']='hypothesis_preregistration'
                     from .research_ledger import preregistration
                     item['hypothesis'] = preregistration(item)
                 self.committee._save(item)
             if item['status'] == 'RUNNING':
+                item['diagnostic_stage']='source_validation'
                 self._guard(item, parent)
                 import ast
                 def source_identity(source,key):
@@ -249,6 +255,8 @@ class CodeAuthor:
                 item.update(status='COMPLETED', draft_id=draft['id'], source_sha256=draft['source_sha256'],
                             next_step='DOCKER_CONTROL_AND_CAUSALITY_REQUIRED')
         except Exception as exc:
+            from .event_diagnostics import private_trace
+            item['_private_diagnostic_trace']=private_trace(exc)
             item.update(status='FAILED', error=str(exc) if isinstance(exc, ModelFailure) else 'author_validation_failed')
         item['finished_at'] = datetime.now(timezone.utc).isoformat()
         if item.get('operation',{}).get('status')=='RUNNING':

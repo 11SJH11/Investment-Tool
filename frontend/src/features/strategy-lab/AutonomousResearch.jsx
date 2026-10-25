@@ -7,6 +7,7 @@ import SandboxTimeline from './SandboxTimeline.jsx';
 import CampaignProgress from './CampaignProgress.jsx';
 import CampaignActivity from './CampaignActivity.jsx';
 import CampaignOperations from './CampaignOperations.jsx';
+import ResearchEventStream from './ResearchEventStream.jsx';
 import FeatureAblation from './FeatureAblation.jsx';
 import {CampaignRegimeForm,CampaignRegimeReport} from './CampaignRegimes.jsx';
 
@@ -81,7 +82,9 @@ export default function AutonomousResearch({strategies}){
    {campaign.preparation&&<p className="text-sm mt-2">History preparation: {campaign.preparation.status} · Fixed deadline {campaign.preparation.deadline}</p>}
   </article>
   <CampaignProgress progress={report.progress}/>
+  {!!campaign.discovery?.rejected_families?.length&&<article className="insight-panel"><h4>Families rejected before research</h4>{campaign.discovery.rejected_families.map(row=><p key={row.family_id}>{row.family_id}: {row.error_code}. No substitute strategy or model call was authorized for this family.</p>)}</article>}
   <CampaignOperations data={report.operations}/>
+  <ResearchEventStream key={selected} identifier={selected} report={report}/>
   <CampaignActivity key={selected} identifier={selected} page={report.activity}/>
   <article className="insight-panel"><h4 className="font-semibold">Research report</h4><div className="overflow-x-auto mt-3"><table className="w-full text-sm text-left"><thead><tr>{['Family','Progress','Baseline N','Baseline avg R','Child N','Finding'].map(h=><th className="p-2 whitespace-nowrap" key={h}>{h}</th>)}</tr></thead><tbody>{report.morning_report.families.map(f=><tr key={f.project_id}><td className="p-2">{f.family_id}</td><td className="p-2">{f.state}</td><td className="p-2">{f.baseline_summary?.n??'—'}</td><td className="p-2">{number(f.baseline_summary?.average_r)}</td><td className="p-2">{f.child_summary?.n??'—'}</td><td className="p-2">{f.verdict}{f.reason&&<p>{f.reason}</p>}{f.warnings.map(w=><p key={w} className="muted mt-1">{w}</p>)}</td></tr>)}</tbody></table></div>
    {report.morning_report.conclusions.map(t=><p className="text-xs muted mt-2" key={t}>{t}</p>)}

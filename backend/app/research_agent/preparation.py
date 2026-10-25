@@ -41,7 +41,8 @@ def start(services, identifier, lookback_days=1460):
         raise ValueError('Only a draft campaign can request history preparation')
     if services.market_data is None or getattr(services, 'market_warmup', None) is None:
         raise ValueError('Market-data warming service unavailable')
-    entries = queue(item['request'])
+    rejected=[]
+    entries = queue(item['request'],rejections=rejected)
     policy = item['request']['policy']
     if any(instrument_spec(s).session_profile not in {'us_equity','oanda_24h'} for s in policy['symbols']):
         raise ValueError('Automatic preparation requires supported equity or spot-metal identity')
@@ -64,7 +65,7 @@ def start(services, identifier, lookback_days=1460):
                        deadline=(clock+timedelta(minutes=policy['budget']['wall_minutes'])).isoformat())
         current['reserved']['compute_minutes'] += minutes
         current['preparation'] = dict(version='campaign_history_v1', lookback_days=lookback_days,
-            symbols=policy['symbols'], timeframes=timeframes, namespaces=namespaces,
+            symbols=policy['symbols'], timeframes=timeframes, namespaces=namespaces,rejected_families=rejected,
             start_date=start_date.isoformat(), end_date=end_date.isoformat(), entries=entries,
             start=datetime.combine(start_date,time.min,tzinfo=ZoneInfo('America/New_York')).isoformat(),
             end=datetime.combine(end_date,time.min,tzinfo=ZoneInfo('America/New_York')).isoformat(),
@@ -124,7 +125,7 @@ def advance(services, identifier):
             coverages=campaign_coverage(services.market_data,item['request']['policy'],prep['entries'],
                 now=datetime.combine(datetime.fromisoformat(prep['end_date']).date(),time(12),tzinfo=ZoneInfo('UTC')),
                 start=prep['start'],end=prep['end'])
-            discovery=dict(version='provider_cache_discovery_v1', warmup_job_ids=list(prep['jobs'].values()),
+            discovery=dict(version='provider_cache_discovery_v1', warmup_job_ids=list(prep['jobs'].values()),rejected_families=prep.get('rejected_families',[]),
                 price_columns_read=False, bounds={'start':prep['start'],'end':prep['end']},
                 warnings=['History ingestion uses the selected provider; no entitlement or complete exchange calendar is inferred.',
                           'Only observed cached timestamps determine fixed splits; no performance selection.',
@@ -145,7 +146,7 @@ def advance(services, identifier):
                 current['status']='PAUSED'
                 current.update(last_error='history_preparation_failed',last_error_detail=detail)
                 repo._save(c,current)
-                repo._event(c,identifier,'HISTORY_PREPARATION_FAILED',detail)
+                repo._event(c,identifier,'HISTORY_PREPARATION_FAILED',detail,exception=exc)
         stop_jobs(services,item)
 
 

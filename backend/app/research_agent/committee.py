@@ -158,19 +158,25 @@ class Committee:
                     if datetime.now(timezone.utc)>datetime.fromisoformat(document['deadline']):raise ModelFailure('review_deadline')
                     if self.model.status()!=document['provider']:raise ModelFailure('model_or_pricing_changed')
                     document['operation'] = dict(kind='MODEL_CALL', role=role, status='RUNNING', started_at=datetime.now(timezone.utc).isoformat())
+                    document['diagnostic_stage']='model_request'
                     self._save(document)
                     result, usage = self.model.generate(role, INSTRUCTIONS.format(role=role), {**snapshot,'prior_roles':deepcopy(document['roles'])}, schema)
                     document['usage'][role]=usage
                     document['operation'].update(status='RETURNED',finished_at=datetime.now(timezone.utc).isoformat())
+                    document['diagnostic_stage']='usage_validation'
                     if pricing:
                         usage['estimated_cost_microusd']=usage_cost(usage,pricing)
                         if usage.get('input_tokens',0)>pricing['input_token_reservation'] or usage.get('output_tokens',0)>pricing['output_token_reservation']:
                             raise ModelFailure('usage_exceeded_cost_reservation')
+                    document['diagnostic_stage']='authority_validation'
                     if ResearchRepository(self.database).get(project_id)['state']!='BASELINE_ANALYSIS' or not permitted():raise ModelFailure('project_not_active')
+                    document['diagnostic_stage']='schema_validation'
                     result = schema.model_validate(result).model_dump()
+                    document['diagnostic_stage']='evidence_reference_validation'
                     from .model_diagnostics import validate_evidence
                     validate_evidence(document, result['evidence_refs'], snapshot['evidence'])
                     if role=='Researcher':
+                        document['diagnostic_stage']='parameter_proposal_validation'
                         if result['decision']=='PROPOSE':
                             plan=preview(config,result['axes'])
                             if plan['job_count']>Budget.model_validate(project.get('research_budget',{})).max_variants_per_hypothesis:raise ModelFailure('proposal_variant_budget')
@@ -180,6 +186,8 @@ class Committee:
                     self._save(document)
                 document['status']='COMPLETED'
             except Exception as exc:
+                from .event_diagnostics import private_trace
+                document['_private_diagnostic_trace']=private_trace(exc)
                 document['status']='FAILED'
                 document['error']=str(exc) if isinstance(exc,ModelFailure) else 'invalid_committee_output'
             document['finished_at']=datetime.now(timezone.utc).isoformat()
@@ -196,6 +204,8 @@ class Committee:
             c.execute('BEGIN IMMEDIATE')
             previous=json.loads(c.execute('SELECT document FROM agent_reviews WHERE id=?',(document['id'],)).fetchone()[0])
             if previous['status']!='RUNNING':raise ValueError('Review is no longer active')
+            from .event_diagnostics import review_transition
+            review_transition(c,previous,document)
             c.execute('UPDATE agent_reviews SET document=? WHERE id=?',(json.dumps(document,allow_nan=False),document['id']))
 
     def preregister(self, project_id, review_id, *, loop_id=None):

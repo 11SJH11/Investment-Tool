@@ -245,7 +245,7 @@ class ResearchDirector:
                             current.update(status='PREPARATION_FAILED',last_error='campaign_launch_failed')
                             current['last_error_detail']=detail
                             self.campaigns._save(c,current)
-                            self.campaigns._event(c,item['id'],'LAUNCH_FAILED',detail)
+                            self.campaigns._event(c,item['id'],'LAUNCH_FAILED',detail,exception=exc)
                     continue
                 if item['status']=='PREPARING':
                     from .preparation import advance
@@ -257,14 +257,14 @@ class ResearchDirector:
                     continue
                 if item['status'] not in {'ACTIVE', 'STOPPING'} or not item.get('execution'): continue
                 try: self._advance(item)
-                except Exception:
+                except Exception as exc:
                     # Fail closed on infrastructure errors, without logging provider secrets.
                     with self.database.connect() as c:
                         current = self.campaigns._get(c, item['id'])
                         if current['status'] in {'ACTIVE', 'STOPPING'}:
                             current.update(status='PAUSED', last_error='campaign_coordination_failed')
                             self.campaigns._save(c, current)
-                            self.campaigns._event(c, item['id'], 'COORDINATION_FAILED', {})
+                            self.campaigns._event(c, item['id'], 'COORDINATION_FAILED', {},exception=exc)
                     self._cancel_current(item)
 
     def _advance(self, item):

@@ -1,6 +1,6 @@
 """Advanced campaign integration API. The minimal-prompt primary UI is still pending."""
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
 from pydantic import Field
 
 from app.api.dependencies import get_services
@@ -12,6 +12,23 @@ from app.research_agent.launch import Launch
 
 
 router = APIRouter(prefix='/strategy-lab/research-campaigns', tags=['research-campaigns'])
+
+
+@router.get('/{identifier}/diagnostics')
+def diagnostics(identifier: str, response: Response, after: int = Query(default=0,ge=0),
+                limit: int = Query(default=100,ge=1,le=100),
+                authorization: str | None = Header(default=None), services=Depends(get_services)):
+    import secrets
+    from app.research_agent.event_diagnostics import page
+    response.headers['Cache-Control']='no-store'
+    token=getattr(services.settings,'research_diagnostics_token','')
+    if len(token)<32:
+        raise HTTPException(503,'Research diagnostics access token is not configured')
+    supplied=(authorization or '').removeprefix('Bearer ')
+    if not authorization or not authorization.startswith('Bearer ') or not secrets.compare_digest(supplied.encode(),token.encode()):
+        raise HTTPException(401,'Research diagnostics authentication required')
+    try:return page(services.database,identifier,after,limit)
+    except ValueError:raise HTTPException(404,'Research campaign unavailable') from None
 
 
 def operation(fn):

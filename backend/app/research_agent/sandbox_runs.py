@@ -189,6 +189,16 @@ class SandboxRuns:
     def _save(self,item):
         item['updated_at']=datetime.now(timezone.utc).isoformat()
         with self.database.connect() as c:
+            previous=c.execute('SELECT document FROM agent_sandbox_runs WHERE id=?',(item['id'],)).fetchone()
+            old=json.loads(previous[0]) if previous else {}
+            if (old.get('status'),old.get('phase'))!=(item.get('status'),item.get('phase')):
+                from .event_diagnostics import append
+                row=c.execute('SELECT document FROM agent_projects WHERE id=?',(item['project_id'],)).fetchone()
+                campaign=json.loads(row[0]).get('campaign_id') if row else None
+                append(c,campaign,component='research.docker',operation='sandbox_phase',status=item['status'],
+                       project_id=item['project_id'],operation_id=item['id'],
+                       phase=item.get('phase'),
+                       error='sandbox_failed' if item['status']=='FAILED' else None)
             c.execute('UPDATE agent_sandbox_runs SET document=? WHERE id=?',(json.dumps(item,allow_nan=False,default=str),item['id']))
 
     def _progress(self,item,deadline):

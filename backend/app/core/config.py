@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     research_llm_acceptance_budget_usd: float | None = Field(default=None, gt=0, le=5, allow_inf_nan=False, validation_alias="RESEARCH_LLM_ACCEPTANCE_BUDGET_USD")
     research_llm_enabled: bool = Field(default=False, validation_alias="RESEARCH_LLM_ENABLED")
+    research_diagnostics_token: str = Field(default='', validation_alias='RESEARCH_DIAGNOSTICS_TOKEN', repr=False, exclude=True)
     research_llm_api_key: str = Field(default="", validation_alias="RESEARCH_LLM_API_KEY", repr=False, exclude=True)
     research_llm_model: str = Field(default="", validation_alias="RESEARCH_LLM_MODEL")
     research_llm_max_output_tokens: int = Field(default=4096, ge=512, le=8192, validation_alias="RESEARCH_LLM_MAX_OUTPUT_TOKENS")
