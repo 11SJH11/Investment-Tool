@@ -11,6 +11,7 @@ import time
 from tempfile import TemporaryDirectory
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app.brokers.metatrader5 import MetaTrader5History
+from app.brokers.base import BrokerHistoryError
 from app.core.config import Settings
 from app.services.broker_connections import BrokerConnections
 from app.storage.database import Database
@@ -43,14 +44,20 @@ def main():
             adapter.connect(key)
             clock_samples=[]
             for index in range(5):
-                clock_samples.append(adapter._module.tick_diagnostics(args.symbol))
+                try:
+                    clock_samples.append(adapter._module.tick_diagnostics(args.symbol))
+                except BrokerHistoryError as exc:
+                    if str(exc) != 'MT5 read-only bridge: unavailable':
+                        raise
+                    clock_samples=[]
+                    break
                 if index<4:time.sleep(1)
-            diagnostics=clock_samples[-1]
+            diagnostics=clock_samples[-1] if clock_samples else None
         finally:adapter.close()
         safe=lambda value:{k:value.get(k) for k in ('created','executions_changed','deals_retrieved','positions_processed','closed_trades_imported') if k in value}
         print(json.dumps(dict(environment=environment,account_key=key,first_sync=safe(first),repeat_sync=safe(second),
             journal_trades=len(JournalRepository(database).list_trades()),tick_diagnostics=diagnostics,
-            clock_samples=clock_samples,clock_summary=summarize_bridge_samples(clock_samples),
+            clock_samples=clock_samples,clock_summary=summarize_bridge_samples(clock_samples) if clock_samples else {'status':'tick_unavailable'},
             orders_sent=False,existing_database_touched=False),indent=2))
 
 
