@@ -1,6 +1,30 @@
 # Unified Ledger development — 19 October 2026
 
+## Latest work: 29 October recovery and session budgets
+
+Pending recovery changes were preserved. The interrupted full backend run stopped
+at 36% with no final result and no remaining Python process; it is not a pass.
+Native submission now records durable session attribution and transactionally
+rechecks the per-account/strategy limit. Legacy unknown sessions remain conservative
+blockers, and a changed source/risk policy cannot reset the session count.
+Focused execution tests: 87 passed. Frontend: 145 passed; build and mocked browser
+checks at four widths passed. Full regression: **2,163 passed, 41 skipped**, one
+existing deprecation warning, 645.07s; `git diff --check` passed. See
+[current automation status](MT5_DEMO_AUTOMATION.md).
+
+Still outstanding: authenticated continuous execution worker/transport, verified
+broker clock policy, Telegram coexistence, lifecycle controls, receipt-based Journal
+attribution/statistics, and actual Fedora DEMO acceptance. Trading remains disabled.
+
 ## Latest work: 25 October guarded DEMO submission/protection
+
+26 October continuation: merged Fedora commits `7f6dc4c` / `1ce1e1f`, preserving
+local checkpoints and user research scripts. Added positive-evidence recovery for
+uncertain stop modifications without resending or rearming. Focused merged-tree
+tests: 78 passed. Full verification subsequently passed on 29 October; see
+[current automation status](MT5_DEMO_AUTOMATION.md) for final counts and remaining
+implementation. User will run read-only Fedora acceptance commands. Continuous
+DEMO execution is still unfinished and disabled.
 
 T02 draft/parity/API-origin/installer checkpoint is committed as `6ec5e39`.
 Next local implementation adds native submission and receipt-owned stop tightening,

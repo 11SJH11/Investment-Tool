@@ -176,3 +176,68 @@ def test_uncertain_modification_is_retained_without_resend(managed):
     assert result['state']=='SUBMISSION_UNCERTAIN' and 'secret' not in str(result)
     assert tighten(managed)==result and len(sends)==2
     assert not gateway.recover(adapter,policy['id'])['account_released']
+
+
+def uncertain_applied(managed):
+    submission,position,_=managed
+    gateway,adapter,policy,_,sends=submission
+    def lost_response(request):
+        sends.append(request)
+        position.sl=request['sl']
+        raise TimeoutError('response lost after broker applied stop')
+    adapter._module.order_send=lost_response
+    record=tighten(managed)
+    assert record['state']=='SUBMISSION_UNCERTAIN'
+    return gateway,adapter,policy,record,sends
+
+
+def test_lost_modification_response_recovers_from_receipt_owned_snapshot_after_restart(managed):
+    gateway,adapter,policy,record,sends=uncertain_applied(managed)
+    restarted=DemoSubmission(MT5ExecutionLedger(gateway.ledger.database))
+    result=restarted.recover_protection(adapter,policy['id'],record['id'])
+    assert result['state']=='VERIFIED'
+    assert result['verification_basis']=='receipt_owned_complete_broker_snapshot'
+    assert len(sends)==2
+    assert restarted.ledger.account_guard_status(policy['id'])['state']=='RECONCILIATION_REQUIRED'
+    assert restarted.recover_protection(adapter,policy['id'],record['id'])==result
+    recovery=restarted.recover(adapter,policy['id'])
+    assert recovery['account_released'] and recovery['execution_enabled'] is False
+    assert len(sends)==2
+
+
+@pytest.mark.parametrize('failure',['unchanged','wrong_target','scale_in','stale','live','wrong_policy','incomplete','pending','closed'])
+def test_uncertain_protection_requires_complete_exact_owned_fresh_evidence(managed,monkeypatch,failure):
+    from dataclasses import replace
+    import app.brokers.mt5_demo_submission as boundary
+    gateway,adapter,policy,record,sends=uncertain_applied(managed)
+    _,position,fills=managed
+    policy_id=policy['id']
+    if failure=='unchanged':position.sl=2991.
+    if failure=='wrong_target':position.tp=3012.
+    if failure=='scale_in':fills.append(replace(fills[0],external_id='other',order_id='manual',quantity='.1'))
+    if failure=='stale':adapter._clock=lambda:120.
+    if failure=='live':adapter.environment='live'
+    if failure=='wrong_policy':policy_id='wrong-policy'
+    if failure in {'incomplete','pending','closed'}:
+        old=boundary.collect
+        def collect(a):
+            result=old(a)
+            if failure=='incomplete':result['complete']=False
+            if failure=='pending':result['pending_order_ids']=['external']
+            if failure=='closed':result['open_positions']={}
+            return result
+        monkeypatch.setattr(boundary,'collect',collect)
+    try:
+        result=gateway.recover_protection(adapter,policy_id,record['id'])
+        assert result['state']=='SUBMISSION_UNCERTAIN'
+    except ValueError:
+        assert failure in {'stale','wrong_policy','live'}
+    assert len(sends)==2
+    assert gateway.ledger.account_guard_status(policy['id'])['state']=='RECONCILIATION_REQUIRED'
+
+
+def test_unknown_protection_recovery_has_no_schema_side_effect(submission):
+    gateway,adapter,policy,_,sends=submission
+    with pytest.raises(ValueError,match='Unknown protection'):
+        gateway.recover_protection(adapter,policy['id'],'missing')
+    assert sends==[]

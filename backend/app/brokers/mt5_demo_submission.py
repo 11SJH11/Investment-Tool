@@ -24,6 +24,70 @@ class DemoSubmission:
         self.ledger = ledger
         self.require_authority = require_authority
 
+    def recover_protection(self, adapter, policy_id, protection_id):
+        """Observe an uncertain SL change without resending or granting authority.
+
+        Only an open, receipt-owned position at exactly the requested SL/TP can
+        resolve uncertainty. A closed position cannot prove which stop applied.
+        Account-wide recovery remains a separate step and never re-arms trading.
+        """
+        ledger = self.ledger
+        ledger._manual_only()
+        with ledger.database.connect() as c:
+            ledger._owns(c)
+            if not c.execute("SELECT 1 FROM sqlite_master WHERE name='mt5_protection_attempts'").fetchone():
+                raise ValueError('Unknown protection attempt')
+            row = c.execute('SELECT document FROM mt5_protection_attempts WHERE id=?',
+                            (protection_id,)).fetchone()
+        if not row:
+            raise ValueError('Unknown protection attempt')
+        record = json.loads(row[0])
+        intent = next((i for i in ledger.intents(policy_id) if i['id'] == record['intent_id']), None)
+        if not intent:
+            raise ValueError('Protection attempt belongs to another policy')
+        if record['state'] == 'VERIFIED':
+            return record
+        attempt = ledger.attempt(intent['id'])
+        receipt = (attempt or {}).get('receipt') or {}
+        if not receipt.get('broker_order_id'):
+            raise ValueError('Protection recovery requires a durable entry receipt')
+        original = Decimal(str(intent['request']['stop']))
+        desired = Decimal(str(record['new_stop']))
+        if (not desired.is_finite() or desired <= 0
+                or record['target'] != intent['request']['target']
+                or (desired < original if intent['request']['side'] == 'buy' else desired > original)):
+            raise ValueError('Protection attempt conflicts with immutable intent')
+        snapshot = collect(adapter)
+        comparison = deepcopy(intent)
+        comparison['request']['stop'] = record['new_stop']
+        evidence = reconcile_order(comparison, snapshot['executions'], snapshot['open_positions'],
+            broker_order_id=receipt['broker_order_id'], account_key=snapshot['account_key'],
+            environment=snapshot['environment'], complete=snapshot['complete'])
+        if (evidence['state'] not in {'FILLED_PROTECTED', 'PARTIAL_PROTECTED'}
+                or evidence.get('position_id') != record['position_id']
+                or snapshot['pending_order_ids']):
+            return record
+        account, account_key = adapter._account()
+        if (adapter.environment != 'demo' or snapshot['environment'] != 'demo'
+                or account.trade_mode != adapter._module.ACCOUNT_TRADE_MODE_DEMO
+                or account_key != intent['account_key'] or adapter.account_key != account_key
+                or account.currency != snapshot['currency']):
+            raise ValueError('Protection recovery requires the original DEMO account')
+        with ledger.database.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            ledger._owns(c)
+            if not 0 <= int(adapter._clock()*1000)-snapshot['observed_at_ms'] <= 5000:
+                raise ValueError('Protection recovery evidence expired')
+            current = c.execute('SELECT document FROM mt5_protection_attempts WHERE id=?',
+                                (protection_id,)).fetchone()
+            if not current or current[0] != row[0]:
+                raise ValueError('Protection attempt changed during recovery')
+            record.update(state='VERIFIED', recovered_at_ms=snapshot['observed_at_ms'],
+                          verification_basis='receipt_owned_complete_broker_snapshot')
+            c.execute('UPDATE mt5_protection_attempts SET state=?,document=? WHERE id=?',
+                      (record['state'], encoded(record), protection_id))
+        return record
+
     def recover(self,adapter,policy_id):
         """Release only positively reconciled account uncertainty; never re-arm.
 
@@ -190,9 +254,9 @@ class DemoSubmission:
                 observed_at_ms=snapshot['observed_at_ms'])
             safe={'FILLED_PROTECTED','PARTIAL_PROTECTED','CLOSED','PARTIAL_CLOSED'}
             unresolved=sum(r['decision']['state'] not in safe for r in records)
-            # Count all historical attempts conservatively until a verified worker
-            # supplies durable session attribution. Never silently reset to zero.
-            entries=sum(r['intent_id'] in {i['id'] for i in ledger.intents(policy_id)} for r in records)
+            # Session identity must come from the verified worker authority.
+            # Legacy attempts without attribution remain conservative blockers.
+            entries=ledger.session_attempt_count(policy_id,session_key)
             facts=observe(adapter,strategy_key=policy['strategy_key'],session_key=session_key,
                 session_entries=entries,unresolved_submissions=unresolved)
             facts['reconciled']=snapshot['complete'] is True and unresolved==0
@@ -221,7 +285,8 @@ class DemoSubmission:
                 raise ValueError('Executable quote changed before submission')
             if self.require_authority(policy_id=policy_id,intent_id=intent_id,action='entry') is not True:
                 raise ValueError('Deployment authority was revoked')
-            attempt=ledger.begin_attempt(intent_id,guard_token=token)
+            attempt=ledger.begin_attempt(intent_id,guard_token=token,
+                session_key=session_key,max_session_trades=max_session_trades)
             # From this point every outcome remains durably blocked until receipt-
             # bound recovery. Even a timeout can mean the broker accepted it.
             try:

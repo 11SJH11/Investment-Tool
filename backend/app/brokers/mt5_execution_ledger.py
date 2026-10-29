@@ -259,7 +259,27 @@ class MT5ExecutionLedger:
                 broker_order_id=None,account_key=account_key,environment=environment,complete=complete,
                 observed_at_ms=observed_at_ms,use_attempt_receipt=True,_connection=c) for row in rows]
 
-    def begin_attempt(self, intent_id, *, guard_token):
+    def session_attempt_count(self, policy_id, session_key, *, _connection=None):
+        """Count durable attempts across policies for this account and strategy.
+
+        Unknown legacy sessions count in every session, conservatively. Changed
+        risk settings/source versions cannot reset a strategy's session budget.
+        Failed/uncertain attempts consume the budget; no broker resend permission.
+        """
+        if not isinstance(session_key, str) or not 1 <= len(session_key.strip()) <= 128:
+            raise ValueError('Invalid session identity')
+        with (self.database.connect() if _connection is None else nullcontext(_connection)) as c:
+            row = c.execute('SELECT document FROM mt5_execution_policies WHERE id=?', (policy_id,)).fetchone()
+            if not row:
+                raise ValueError('Unknown MT5 execution policy')
+            policy = json.loads(row[0])['policy']
+            rows = c.execute('''SELECT a.document FROM mt5_execution_attempts a
+                JOIN mt5_execution_intents i ON i.id=a.intent_id
+                WHERE a.account_key=? AND json_extract(i.document,'$.strategy_key')=?''',
+                (policy['account_key'], policy['strategy_key'])).fetchall()
+            return sum(json.loads(row[0]).get('session_key') in (None, session_key) for row in rows)
+
+    def begin_attempt(self, intent_id, *, guard_token, session_key=None, max_session_trades=None):
         """Write-ahead uncertainty marker; grants NO permission to call MT5.
 
         Internal future gateway primitive. Authorization, fresh risk checks and
@@ -267,6 +287,11 @@ class MT5ExecutionLedger:
         attempt, including one with no receipt after process death.
         """
         self._manual_only()
+        if ((session_key is None) != (max_session_trades is None)
+                or (session_key is not None and (not isinstance(session_key, str)
+                    or not 1 <= len(session_key.strip()) <= 128
+                    or type(max_session_trades) is not int or max_session_trades < 1))):
+            raise ValueError('Valid session identity and limit are required together')
         with self.database.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             self._owns(c)
@@ -287,9 +312,14 @@ class MT5ExecutionLedger:
                                          (intent['policy_id'],)).fetchone()[0])
             if policy['status'] == 'EMERGENCY_STOP':
                 raise ValueError('MT5 emergency stop is active')
+            if (session_key is not None and self.session_attempt_count(intent['policy_id'], session_key,
+                    _connection=c) >= max_session_trades):
+                raise ValueError('Session trade limit reached')
             attempt = dict(id=str(uuid4()), intent_id=intent_id, account_key=intent['account_key'],
                            state='SUBMISSION_UNCERTAIN', receipt=None, execution_enabled=False,
                            created_at=datetime.now(timezone.utc).isoformat())
+            if session_key is not None:
+                attempt['session_key'] = session_key
             c.execute('INSERT INTO mt5_execution_attempts VALUES(?,?,?,?,?)',
                       (attempt['id'], intent_id, intent['account_key'], None, encoded(attempt)))
             intent['state'] = 'SUBMISSION_UNCERTAIN'

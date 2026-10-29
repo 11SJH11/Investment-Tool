@@ -1,7 +1,57 @@
 # MT5 DEMO automation — implementation status
 
-Updated 25 October 2026. This is the current implementation record for the T02
+Updated 29 October 2026. This is the current implementation record for the T02
 saved-run deployment brief, not a claim that automated broker execution is ready.
+
+## 29 October: durable session budgets
+
+Native submission now persists its verified worker-supplied session identity in
+the write-ahead attempt, and checks the limit again inside that transaction.
+Counts span policy/source-version changes for the same account and strategy;
+distinct accounts and strategies remain separate. Uncertain/rejected attempts
+consume the budget. Attempts with no historical session identity conservatively
+count in every session. A new session never releases unresolved broker state.
+No existing records are rewritten and no schema migration is required: the
+optional session key is stored in the existing attempt JSON document.
+
+Focused session/submission/attempt/reconciliation/ledger suite: **87 passed**,
+including 12 new session-budget cases. Frontend: **145 passed**, production build
+passed (184 modules; existing chunk-size warning). Mocked browser acceptance passed
+at 390/1024/1440/1920. The prior full run ended at 36% without a result and is **not**
+counted as passed. The fresh full run completed: **2,163 passed, 41 skipped**, one
+existing FastAPI/Starlette deprecation warning, **645.07 seconds**. Log:
+`.ledger-test-artifacts/logs/demo-recovery-session-full.log`. `git diff --check`
+passed. Skipped opt-in checks and mocked broker fixtures are not genuine Fedora
+execution acceptance. No orders or paid model calls were made.
+
+The native boundary now supports durable session counts; the future worker must
+derive that identity from verified New York session timing, not a browser input.
+The older read-only diagnostic coordinator still counts all historical attempts
+conservatively. Neither path grants execution authority.
+
+## 26 October: merged Fedora changes and uncertain stop recovery
+
+Fedora commits `7f6dc4c` and `1ce1e1f` have been merged without replacing local
+execution work. User research scripts remain untracked. The sibling import in
+`compare_variants.py` was minimally corrected for package discovery while retaining
+standalone CLI use; without that correction it prevented backend strategy startup.
+
+`DemoSubmission.recover_protection` can now resolve an uncertain modification from
+a fresh complete broker snapshot, including after a Ledger process restart. It
+requires receipt-owned entry fills, the original DEMO account, the exact intended
+stop/target, no external scale-in and no pending orders. It never sends an order,
+retries a modification, clears the account guard or authorizes trading. Separate
+account recovery is still required. Closed/absent positions, stale observations,
+conflicting ownership and incomplete evidence remain unresolved.
+
+Focused merged-tree tests: **78 passed**, including 11 new recovery cases. Full
+merged-tree verification subsequently passed as recorded in the 29 October section.
+Frontend tests/build and mocked browser verification passed at
+390/1024/1440/1920. No genuine broker execution was performed.
+
+The user will run Fedora acceptance commands; no SSH access was supplied. This
+checkpoint does not complete continuous worker authority, lifecycle controls,
+coexistence coordination, clock validation, Journal attribution or activation.
 
 ## Next checkpoint: guarded native submission and protection
 
@@ -42,8 +92,8 @@ deprecation warning, 591.25s (`demo-submission-full.log`). Frontend **145 passed
 production build passed (182 modules); mocked browser checks passed at
 390/1024/1440/1920, including same-origin API routing. This includes mocked native
 calls only. Continuous worker authority, per-session counters (the
-submission boundary currently counts historical attempts conservatively), unknown
-modification recovery, deployment lifecycle and Journal/dashboard integration are
+submission boundary currently counts historical attempts conservatively), unresolved
+closed-position modification recovery, deployment lifecycle and Journal/dashboard integration are
 still outstanding. Neither native code nor a mocked passing test grants activation.
 
 ## Verified checkpoint: immutable drafts and decision parity
