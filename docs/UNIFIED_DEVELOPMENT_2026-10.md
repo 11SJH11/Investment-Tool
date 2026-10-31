@@ -1,5 +1,70 @@
 # Unified Ledger development — 19 October 2026
 
+## Latest work: 29 October recovery and session budgets
+
+Pending recovery changes were preserved. The interrupted full backend run stopped
+at 36% with no final result and no remaining Python process; it is not a pass.
+Native submission now records durable session attribution and transactionally
+rechecks the per-account/strategy limit. Legacy unknown sessions remain conservative
+blockers, and a changed source/risk policy cannot reset the session count.
+Focused execution tests: 87 passed. Frontend: 145 passed; build and mocked browser
+checks at four widths passed. Full regression: **2,163 passed, 41 skipped**, one
+existing deprecation warning, 645.07s; `git diff --check` passed. See
+[current automation status](MT5_DEMO_AUTOMATION.md).
+
+Still outstanding: authenticated continuous execution worker/transport, verified
+broker clock policy, Telegram coexistence, lifecycle controls, receipt-based Journal
+attribution/statistics, and actual Fedora DEMO acceptance. Trading remains disabled.
+
+## Latest work: 25 October guarded DEMO submission/protection
+
+26 October continuation: merged Fedora commits `7f6dc4c` / `1ce1e1f`, preserving
+local checkpoints and user research scripts. Added positive-evidence recovery for
+uncertain stop modifications without resending or rearming. Focused merged-tree
+tests: 78 passed. Full verification subsequently passed on 29 October; see
+[current automation status](MT5_DEMO_AUTOMATION.md) for final counts and remaining
+implementation. User will run read-only Fedora acceptance commands. Continuous
+DEMO execution is still unfinished and disabled.
+
+T02 draft/parity/API-origin/installer checkpoint is committed as `6ec5e39`.
+Next local implementation adds native submission and receipt-owned stop tightening,
+reusing durable account guards, sizing/risk and reconciliation. Default authority
+denies orders; no execution API or active worker is wired yet. See
+[automation implementation status](MT5_DEMO_AUTOMATION.md) for precise boundaries.
+87 focused native-boundary and existing ledger/reconciliation tests passed using
+mock brokers. Full regression: 2,128 passed / 41 skipped; frontend 145 passed and
+production build passed (182 modules). Do not confuse this with genuine
+Fedora acceptance. The user explicitly requests activation, but Fedora access and
+verified clock/coexistence/protection checks remain prerequisites.
+
+## Previous checkpoint: 25 October T02 saved-run drafts
+
+See [MT5 DEMO automation status](MT5_DEMO_AUTOMATION.md) for the verified T02 parity,
+immutable unarmed deployment drafts, operator authentication, same-origin API fix
+and safe Fedora installer foundation. Full backend: 2,104 passed / 41 skipped.
+Actual submission/management/worker integration remains unfinished. The user now
+requests DEMO activation once technical acceptance passes; the Windows LIVE profile
+must remain ineligible. Continue gateway/protection/recovery, not another draft-only
+handoff. Preserve Telegram and both read-only bridges. No production changes yet.
+
+## Previous checkpoint: 25 October account observations and diagnostic fallback
+
+Research coordinator failures now have a bounded sanitized file fallback independent
+of SQLite. Algo Trading has persisted real account observations, explicit read-only
+refresh, equity history, paginated positions, account-switch guards and separate
+DEMO/LIVE/currency totals. See [account observations](ALGO_ACCOUNT_OBSERVATIONS.md).
+Full backend: 2,083 passed / 41 skipped (565.77s); frontend 145 passed; production
+build passed (181 modules). No broker orders, paid calls or production DB changes.
+
+New active brief: attachment `e8caffa6-52db-414c-aa36-c60c4846e6ff` requests the full
+DEMO automated trading system, with T02 `gold_ifvg_v2_fvg_ratio_020` first, inherited
+from saved runs. Existing T01 runtime/policies are diagnostic-only. Build safe staged
+deployment/evaluation/execution/recovery/attribution/UI, preserving frozen rules.
+Include a Fedora worker installer/updater; do not restart Telegram, LIVE bridge or
+backend, or alter production data during development. User reports both read-only
+bridges working after reboot. Actual broker submission/production rollout still
+requires separate explicit approval and genuine DEMO safety acceptance.
+
 This is the current continuation handoff. The active brief prioritizes a unified
 Windows-local application and explicitly authorized MT5 **demo** deployments.
 Live-money execution is out of scope for this phase. No broker orders have been

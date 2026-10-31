@@ -1,5 +1,6 @@
 import ResearchFoundations from "./ResearchHome.jsx";
 import ForwardValidation from './ForwardValidation.jsx';
+import DeploymentDraftForm from '../algo/DeploymentDraftForm.jsx';
 import ResearchPack from './ResearchPack.jsx';
 import {notifyActivity} from '../../app/activityEvents.js';
 import IntegratedResearch,{SweepField,sweepAxes} from './ParameterSweep.jsx';
@@ -409,6 +410,7 @@ function BacktestResults({ result: initialResult, onUseSettings, onBackToRuns })
   const symbols = (result.symbols || []).join(" · ") || "—";
 
   return <section className="mt-5">
+    {runId&&['gold_ifvg_v2_skip_23et','gold_ifvg_v2_fvg_ratio_020'].includes(result.strategy?.key)&&<DeploymentDraftForm runId={runId} strategyKey={result.strategy.key}/>}
     <div className="ui-toolbar mb-3" aria-label="Download saved research evidence"><label>Download <select className="input" value={exportKind} onChange={e=>setExportKind(e.target.value)}>{[['bundle','Research Analysis Bundle (ZIP)'],['pack','Research Pack (JSON)'],['trades','Trades CSV'],['summary','Summary JSON'],['analysis','Analysis JSON'],['analysis-csv','Analysis CSV'],['provenance','Configuration + provenance'],['full','Full saved-result JSON']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportRecorded}>{exportBusy?'Preparing download…':'Download'}</button></div>
     {sectionBusy&&<p role="status" aria-busy="true">{sectionBusy}</p>}{sectionError&&<p role="alert">{sectionError} <button className="mini-btn" onClick={()=>loadSection(viewerTab.toLowerCase())}>Retry loading</button></p>}
     <div className="ui-toolbar mb-3"><button className="mini-btn" disabled={!loaded.current.has("trades")} title="Open Trades first to export filtered trades" onClick={()=>downloadCsv(backtestExportRows(result,filtered),runExportFilename(result,'filtered-trades.csv'))}>Export filtered trades CSV</button><button className="mini-btn" disabled={!!sectionBusy} onClick={async()=>{const data=await loadSection("trades");if(data)downloadCsv(backtestExportRows(data),runExportFilename(data,"all-trades.csv"))}}>Export all trades CSV</button><button className="mini-btn" disabled={exportBusy} onClick={exportFullRun}>{exportBusy?"Preparing export...":"Export full run JSON"}</button><button className="mini-btn" disabled={exportBusy||!runId||result.strategy?.source_archive?.status!=="archived"} onClick={exportSource}>Export recorded strategy source</button><button className="mini-btn" disabled={exportBusy||!runId} onClick={exportManifest}>Export reproducibility manifest</button>{exportError&&<p role="alert">{exportError}</p>}</div>
