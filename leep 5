@@ -1,0 +1,40 @@
+[0;1;34m# ]8;;file://Linux-J/home/SJH/.config/systemd/user/telegram-mt5-bot.service\/home/SJH/.config/systemd/user/telegram-mt5-bot.service]8;;\[0m
+[0;1;36m[Unit][0m
+[0;1;32mDescription=[0mTelegram MT5 Demo Bot
+[0;1;32mWants=[0mnetwork-online.target
+[0;1;32mAfter=[0mnetwork-online.target graphical-session.target
+
+[0;1;36m[Service][0m
+[0;1;32mType=[0msimple
+[0;1;32mWorkingDirectory=[0m%h/Projects/telegram_mt5_demo_bot
+[0;1;32mExecStart=[0m%h/Projects/telegram_mt5_demo_bot/run-fedora.sh
+[0;1;32mRestart=[0mon-failure
+[0;1;32mRestartSec=[0m20
+[0;1;32mEnvironment=[0mPYTHONUNBUFFERED=1
+[0;1;32mEnvironment=[0mWINEDEBUG=-all
+
+[0;1;36m[Install][0m
+[0;1;32mWantedBy=[0mdefault.target
+
+[0;1;34m# ]8;;file://Linux-J/usr/lib/systemd/user/service.d/10-timeout-abort.conf\/usr/lib/systemd/user/service.d/10-timeout-abort.conf]8;;\[0m
+[0;1;38:5:245m# This file is part of the systemd package.[0m
+[0;1;38:5:245m# See https://fedoraproject.org/wiki/Changes/Shorter_Shutdown_Timer.[0m
+[0;1;38:5:245m#[0m
+[0;1;38:5:245m# To facilitate debugging when a service fails to stop cleanly,[0m
+[0;1;38:5:245m# TimeoutStopFailureMode=abort is set to "crash" services that fail to stop in[0m
+[0;1;38:5:245m# the time allotted. This will cause the service to be terminated with SIGABRT[0m
+[0;1;38:5:245m# and a coredump to be generated.[0m
+[0;1;38:5:245m#[0m
+[0;1;38:5:245m# To undo this configuration change, create a mask file:[0m
+[0;1;38:5:245m#   sudo mkdir -p /etc/systemd/user/service.d[0m
+[0;1;38:5:245m#   sudo ln -sv /dev/null /etc/systemd/user/service.d/10-timeout-abort.conf[0m
+
+[0;1;36m[Service][0m
+[0;1;32mTimeoutStopFailureMode=[0mabort
+
+[0;1;34m# ]8;;file://Linux-J/home/SJH/.config/systemd/user/telegram-mt5-bot.service.d/arm-demo.conf\/home/SJH/.config/systemd/user/telegram-mt5-bot.service.d/arm-demo.conf]8;;\[0m
+[0;1;36m[Service][0m
+[0;1;32mExecStart=[0m
+[0;1;32mExecStart=[0m%h/Projects/telegram_mt5_demo_bot/run-fedora.sh --arm-demo
+[0;1;32mStandardInput=[0mdata
+[0;1;32mStandardInputText=[0mDEMO

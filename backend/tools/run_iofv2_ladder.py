@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+"""Research-only persistent-zone IOF V2 with shared-risk ladder orders.
+
+Gold pip size is deliberately NOT assumed. Pass --step-price explicitly;
+0.10 is merely an illustrative absolute Gold price increment, not a promise
+that every broker calls it 10 pips.
+
+This runner models multiple independent resting limits/legs per zone using 1m
+OHLC with a conservative intrabar stop-first rule. It never contacts a broker.
+It is NOT interchangeable with Ledger's native single-position strategy engine.
+"""
+from __future__ import annotations
+
+import argparse
+from bisect import bisect_left, bisect_right, insort
+from dataclasses import dataclass, field
+from pathlib import Path
+import json
+import sys
+from math import isfinite
+
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.run_iofv2_reference import (  # noqa: E402
+    TF_MIN, read_1m_csv, candles_for_timeframe, build_zones
+)
+
+
+@dataclass
+class Leg:
+    rung: int
+    opened: pd.Timestamp
+    entry: float
+    qty: float
+    original_qty: float
+    risk_cash: float
+    closed_qty: float = 0.
+    booked: float = 0.
+
+
+@dataclass
+class Campaign:
+    zone: object
+    risk_budget: float
+    opened: pd.Timestamp
+    legs: list[Leg] = field(default_factory=list)
+    filled_rungs: set[int] = field(default_factory=set)
+    tp1: bool = False
+    tp2: bool = False
+    stop: float = 0.
+    realized: float = 0.
+    closed_qty: float = 0.
+    exit_events: list[str] = field(default_factory=list)
+    closed_at: pd.Timestamp | None = None
+
+    @property
+    def quantity(self):
+        return sum(l.qty for l in self.legs)
+
+    @property
+    def original_quantity(self):
+        return sum(l.original_qty for l in self.legs)
+
+    @property
+    def used_risk(self):
+        return sum(l.risk_cash for l in self.legs)
+
+    @property
+    def weighted_breakeven(self):
+        return (sum(l.entry*l.qty for l in self.legs)/self.quantity
+                if self.quantity>1e-10 else 0.)
+
+
+@dataclass
+class LadderZone:
+    source: object
+    rungs: list[float]
+    weights: list[float]
+    filled: set[int] = field(default_factory=set)
+    status: str = 'active'
+    campaign: Campaign | None = None
+
+
+def make_rungs(zone, *, step_price, max_rungs, allocation='equal', entry_mode='ladder'):
+    """Only rung prices strictly between the zone edge and the initial stop."""
+    if not (isfinite(step_price) and step_price > 0 and max_rungs >= 1):
+        raise ValueError('step_price must be positive and max_rungs >= 1')
+    if entry_mode not in ('single','ladder') or allocation not in ('equal','front_loaded'):
+        raise ValueError('Invalid ladder mode or allocation')
+    d = 1 if zone.direction == 'long' else -1
+    limit = 1 if entry_mode == 'single' else max_rungs
+    prices = []
+    for i in range(limit):
+        price = round(float(zone.entry) - d*i*step_price, 10)
+        if d*(price-float(zone.stop)) <= 1e-8:
+            break
+        prices.append(price)
+    if not prices:
+        return [], []
+    # front_loaded assigns descending *lots*, not just descending risk.
+    # Since deeper levels have a closer fixed stop, equal risk per rung would
+    # otherwise produce LARGER quantities at deeper entries.
+    weights = ([1.]*len(prices) if allocation == 'equal'
+               else [.6**i*abs(px-float(zone.stop)) for i,px in enumerate(prices)])
+    total = sum(weights)
+    return prices, [w/total for w in weights]
+
+
+def run_ladder(df, zones, *, starting_balance=10000., risk_pct=1.,
+               max_leverage=20., max_open=1, step_price=.10, max_rungs=8,
+               allocation='equal', entry_mode='ladder',
+               spread_price=0., slippage_price=0.):
+    """Run an OHLC campaign model, no broker actions or tick assertions.
+
+    - One 1% risk budget per ZONE/campaign, split among potential rungs.
+      front_loaded sizes descending lots at 0.6x per deeper rung; equal gives
+      equal risk per rung (and may use bigger lots at deeper prices).
+    - Rungs are limit orders, filled at the better of rung or bar OPEN.
+    - Different zones may stay pending for unlimited time; at most max_open
+      concurrent filled campaigns. A rung fills once; no refill of same rung.
+    - Stops settle all open legs. Before TP2 the zone is eligible for unfilled
+      rungs. TP2 or initial stop retires the entire zone.
+    - Campaign targets anchored to FIRST ZONE EDGE (not each rung's entry).
+      TP1/2 close worst-price filled legs first, 30% then to 60% cumulative.
+      Remaining 40% gets a single volume-weighted BE stop after TP2.
+    - Conservative: stop before target if one bar touches both. Fills within a
+      bar cannot earn an intrabar profit target on that same bar (ordering unknown).
+      Stops can trigger on the entry candle.
+    """
+    if not (starting_balance > 0 and 0 < risk_pct <= 100 and
+            max_leverage > 0 and max_open >= 1 and
+            isfinite(spread_price) and spread_price >= 0 and
+            isfinite(slippage_price) and slippage_price >= 0):
+        raise ValueError('Invalid account/risk/leverage/cost settings')
+    # Full quoted spread is paid across round trip; slippage is per SIDE.
+    # Long execution at ask, short at bid, with additional adverse slippage.
+    half_cost = spread_price / 2. + slippage_price
+    zones = sorted(zones, key=lambda z: z.confirmed_at)
+    if len(zones) == 0 or df.empty:
+        return {'zones':len(zones),'campaigns':0,'return_pct':0.,'total_r':0.,'ending_balance':starting_balance},[],[],[]
+    active: dict[str,LadderZone] = {}
+    indexed: list[tuple[float,str,int]] = []
+    active_stop_long: list[tuple[float,str]] = []
+    active_stop_short: list[tuple[float,str]] = []
+    active_unfilled_rungs = 0
+    open_campaigns: dict[str,Campaign] = {}
+    all_campaigns: list[Campaign] = []
+    events: list[dict] = []
+    completed: list[dict] = []
+    balance = float(starting_balance)
+    equity_peak = float(starting_balance)
+    worst_close_drawdown_pct = 0.
+    last_close = None
+    zi = 0
+    def emit(c, t, kind, leg, price, qty, pnl):
+        events.append(dict(zone_id=c.zone.zone_id, time=str(t),event=kind,
+                           rung=leg.rung,entry=leg.entry,price=price,quantity=qty,
+                           realized_pnl=pnl,risk_budget=c.risk_budget))
+
+    def liquidate(c, t, why, exit_price, amount=None):
+        """Exit quantity, WORST ENTRY FIRST, with no synthetic profit boost."""
+        nonlocal balance
+        d = 1 if c.zone.direction == 'long' else -1
+        remaining = c.quantity if amount is None else min(c.quantity, max(0., amount))
+        if remaining <= 1e-12:
+            return
+        # worst buy is highest entry; worst sell is lowest entry
+        for leg in sorted(c.legs, key=lambda l: d*l.entry, reverse=True):
+            qty = min(leg.qty, remaining)
+            if qty <= 1e-12:
+                continue
+            # exit_price is already the adverse executable price, not mid.
+            pnl = d*(exit_price-leg.entry)*qty
+            balance += pnl
+            c.realized += pnl
+            c.closed_qty += qty
+            leg.booked += pnl
+            leg.closed_qty += qty
+            leg.qty -= qty
+            remaining -= qty
+            emit(c,t,why,leg,exit_price,qty,pnl)
+            if remaining <= 1e-10:
+                break
+        c.exit_events.append(why)
+
+    def retire(c,t,reason):
+        nonlocal active_unfilled_rungs
+        zs=active[c.zone.zone_id]
+        active_unfilled_rungs -= len(zs.rungs)-len(zs.filled)
+        zs.status=reason
+        c.closed_at=t
+        open_campaigns.pop(c.zone.zone_id,None)
+        completed.append(dict(zone_id=c.zone.zone_id,timeframe=c.zone.timeframe,
+            direction=c.zone.direction,first_entry_at=str(c.opened),last_exit_at=str(t),
+            base_at=str(c.zone.base_at),confirmed_at=str(c.zone.confirmed_at),
+            zone_age_days=round((c.opened-c.zone.confirmed_at).total_seconds()/86400,2),
+            zone_low=c.zone.low,zone_high=c.zone.high,entry_edge=c.zone.entry,
+            original_stop=c.zone.stop,tp1=c.tp1,tp2=c.tp2,rungs_available=len(zs.rungs),
+            rungs_filled=len(c.filled_rungs),risk_budget=c.risk_budget,
+            actually_allocated_risk_cash=c.used_risk,
+            budget_utilization_pct=round(100*c.used_risk/c.risk_budget,2),
+            starting_quantity=c.original_quantity,net_pnl=c.realized,
+            campaign_r=c.realized/c.risk_budget,
+            outcome=reason,events=';'.join(c.exit_events)))
+
+    for bar in df.itertuples(index=False):
+        t=pd.Timestamp(bar.timestamp)
+        op,hi,lo,cl=(float(getattr(bar,x)) for x in ('open','high','low','close'))
+        # First use only previously confirmed zones. A 4h zone first confirmed
+        # at 16:00 cannot fill during 12:00-16:00. Confirmations added at END.
+        prev=op if last_close is None else last_close
+        low_bound=min(lo,op)
+        high_bound=max(hi,op)
+        left=bisect_left(indexed,(low_bound,'',-1))
+        right=bisect_right(indexed,(high_bound,'\uffff',max_rungs+1))
+        candidates=[]
+        for level,zid,rung in indexed[left:right]:
+            zs=active.get(zid)
+            if zs is None or zs.status!='active' or rung in zs.filled:
+                continue
+            z=zs.source
+            if z.confirmed_at>t:
+                continue
+            d=1 if z.direction=='long' else -1
+            # Price must approach from outside the resting limit. Avoid
+            # resurrecting already-crossed rungs on subsequent low-side bars.
+            if (d==1 and prev<level) or (d==-1 and prev>level):
+                continue
+            crossed = (lo<=level if d==1 else hi>=level)
+            if not crossed:
+                continue
+            price=min(op,level) if d==1 else max(op,level)
+            candidates.append((abs(prev-level),z.confirmed_at,zid,rung,price))
+        candidates.sort()
+        newly_filled: set[str] = set()
+        for _,_,zid,rung,price in candidates:
+            zs=active[zid]
+            if zs.status!='active' or rung in zs.filled:
+                continue
+            z=zs.source
+            d=1 if z.direction=='long' else -1
+            # If open is already beyond the SL, no valid resting entry can
+            # be assigned an executable protective stop from OHLC alone.
+            if d*(price-z.stop)<=1e-10:
+                zs.status='gap_through_zone_stop_unverified'
+                continue
+            c=zs.campaign
+            if c is None:
+                if len(open_campaigns)>=max_open or balance<=0:
+                    continue
+                c=Campaign(z, risk_budget=balance*risk_pct/100., opened=t,stop=float(z.stop))
+                zs.campaign=c
+            available_notional=max(0.,balance*max_leverage-
+                         sum(l.qty*l.entry for oc in open_campaigns.values() for l in oc.legs))
+            executed_entry=price+d*half_cost
+            expected_stop_execution=c.stop-d*half_cost
+            if executed_entry<=0 or d*(executed_entry-expected_stop_execution)<=1e-10:
+                continue
+            desired_risk=c.risk_budget*zs.weights[rung]
+            planned_risk_per_unit=abs(zs.rungs[rung]-c.stop)+2*half_cost
+            actual_risk_per_unit=d*(executed_entry-expected_stop_execution)
+            planned_qty=desired_risk/planned_risk_per_unit
+            qty=min(planned_qty,desired_risk/actual_risk_per_unit,
+                    available_notional/executed_entry)
+            if qty<=1e-10:
+                continue
+            if zid not in open_campaigns:
+                open_campaigns[zid]=c
+                all_campaigns.append(c)
+                # Open campaigns have their own protective stop; they no longer
+                # belong to the untouched-zone stop-sweep index.
+                stop_index=active_stop_long if d==1 else active_stop_short
+                key=(float(z.stop),zid)
+                si=bisect_left(stop_index,key)
+                if si<len(stop_index) and stop_index[si]==key:
+                    stop_index.pop(si)
+            leg=Leg(rung,t,executed_entry,qty,qty,qty*actual_risk_per_unit)
+            c.legs.append(leg)
+            c.filled_rungs.add(rung)
+            zs.filled.add(rung)
+            active_unfilled_rungs -= 1
+            newly_filled.add(zid)
+            emit(c,t,'ENTRY',leg,executed_entry,qty,0.)
+
+        # Stop/profit management after fills. Profits cannot be recognized on
+        # entry candles when their high could have preceded a rung fill.
+        for zid,c in list(open_campaigns.items()):
+            z=c.zone
+            d=1 if z.direction=='long' else -1
+            stop_hit=(lo<=c.stop if d==1 else hi>=c.stop)
+            if stop_hit:
+                price=(min(op,c.stop) if d==1 else max(op,c.stop))-d*half_cost
+                liquidate(c,t,'STOP' if not c.tp2 else 'BREAKEVEN',price)
+                retire(c,t,'stopped' if not c.tp2 else 'be_after_tp2')
+                continue
+            if zid in newly_filled:
+                continue
+            edge_r=abs(z.entry-z.stop)
+            target1=z.entry+d*edge_r
+            target2=z.entry+d*2*edge_r
+            target3=z.entry+d*3*edge_r
+            def reached(p):
+                return hi>=p if d==1 else lo<=p
+            if not c.tp1 and reached(target1):
+                liquidate(c,t,'TP1_WORST_FIRST',target1-d*half_cost,c.original_quantity*.30)
+                c.tp1=True
+            if not c.tp2 and reached(target2):
+                # New rungs may have filled after TP1, so bring total closed
+                # to 60% of all filled quantity, protecting 40% for TP3/BE.
+                liquidation=max(0.,c.original_quantity*.60-c.closed_qty)
+                liquidate(c,t,'TP2_WORST_FIRST',target2-d*half_cost,liquidation)
+                c.tp2=True
+                active[zid].status='tp2'
+                # Price needed to EXIT at executed weighted breakeven after
+                # spread/slippage, since execution will again cross the spread.
+                c.stop=c.weighted_breakeven+d*half_cost
+                # If this candle also touched BE, grant no TP3 because the
+                # order of post-TP2 events is unknown (adverse resolution).
+                if c.quantity>1e-10 and (lo<=c.stop if d==1 else hi>=c.stop):
+                    liquidate(c,t,'BE_SAME_BAR',c.stop-d*half_cost)
+                    retire(c,t,'be_after_tp2')
+                    continue
+            if c.tp2 and c.quantity>1e-10 and reached(target3):
+                liquidate(c,t,'TP3',target3-d*half_cost)
+                retire(c,t,'tp3')
+            elif c.quantity<=1e-10:
+                retire(c,t,'tp2_flat')
+
+        # Stop invalidates untouched zones, without scanning every historical
+        # (possibly weeks-old) zone on every minute of a year-long backtest.
+        cut=bisect_left(active_stop_long,(lo,''))
+        for _,zid in active_stop_long[cut:]:
+            zs=active[zid]
+            if zs.status=='active' and zs.campaign is None:
+                zs.status='invalidated_without_fill'
+                active_unfilled_rungs-=len(zs.rungs)-len(zs.filled)
+        del active_stop_long[cut:]
+        cut=bisect_right(active_stop_short,(hi,'\uffff'))
+        for _,zid in active_stop_short[:cut]:
+            zs=active[zid]
+            if zs.status=='active' and zs.campaign is None:
+                zs.status='invalidated_without_fill'
+                active_unfilled_rungs-=len(zs.rungs)-len(zs.filled)
+        del active_stop_short[:cut]
+
+        marked_equity=balance+sum((cl-(1 if camp.zone.direction=='long' else -1)*half_cost-leg.entry)*
+             (1 if camp.zone.direction=='long' else -1)*leg.qty
+             for camp in open_campaigns.values() for leg in camp.legs)
+        equity_peak=max(equity_peak,marked_equity)
+        if equity_peak>0:
+            worst_close_drawdown_pct=min(worst_close_drawdown_pct,
+                                        100*(marked_equity/equity_peak-1))
+        last_close=cl
+        completed_time=t+pd.Timedelta(minutes=1)
+        while zi<len(zones) and zones[zi].confirmed_at<=completed_time:
+            z=zones[zi];zi+=1
+            prices,weights=make_rungs(z,step_price=step_price,max_rungs=max_rungs,
+                                      allocation=allocation,entry_mode=entry_mode)
+            if not prices:
+                continue
+            active[z.zone_id]=LadderZone(z,prices,weights)
+            active_unfilled_rungs+=len(prices)
+            insort(active_stop_long if z.direction=='long' else active_stop_short,
+                   (float(z.stop),z.zone_id))
+            for i,level in enumerate(prices):
+                insort(indexed,(level,z.zone_id,i))
+        # Periodically discard filled/retired limit-order index tombstones.
+        # O(num zones) compaction is amortized and avoids O(year * old zones).
+        if len(indexed)>max(1024,2*max(1,active_unfilled_rungs)):
+            indexed=sorted((level,zid,rung) for zid,zs in active.items()
+                if zs.status=='active' for rung,level in enumerate(zs.rungs)
+                if rung not in zs.filled)
+
+    # End-of-sample close at last observed price. No synthetic target.
+    final_time=pd.Timestamp(df.iloc[-1]['timestamp'])
+    for c in list(open_campaigns.values()):
+        d=1 if c.zone.direction=='long' else -1
+        liquidate(c,final_time,'END_OF_DATA',float(df.iloc[-1]['close'])-d*half_cost)
+        retire(c,final_time,'end_of_data')
+    total_r=sum(row['campaign_r'] for row in completed)
+    wins=sum(row['net_pnl']>0 for row in completed)
+    return ({'zones':len(zones), 'campaigns':len(completed),'wins':wins,
+             'win_rate_pct':round(wins/len(completed)*100,3) if completed else None,
+             'total_r':round(total_r,4),
+             'average_r_per_campaign':round(total_r/len(completed),5) if completed else None,
+             'starting_balance':starting_balance,'ending_balance':round(balance,2),
+             'return_pct':round((balance/starting_balance-1)*100,3),
+             'max_1m_close_equity_drawdown_pct':round(worst_close_drawdown_pct,3),
+             'unfilled_active_zones':sum(zs.status=='active' for zs in active.values()),
+             'multi_rung_campaigns':sum(row['rungs_filled']>1 for row in completed),
+             'zero_cost_research':half_cost==0,
+             'spread_price':spread_price, 'slippage_price_per_side':slippage_price,
+             'execution_model':'persistent multi-zone ladder, shared-risk, 1m OHLC stop-first; tick order unknown'},
+            completed,events,[dict(zone_id=zid,status=z.status,rungs=len(z.rungs),
+                             filled_rungs=len(z.filled),confirmed_at=str(z.source.confirmed_at))
+                              for zid,z in active.items()])
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('csv',help='Historical 1m OHLC CSV with UTC timestamp')
+    parser.add_argument('--out',default='iofv2_ladder_results')
+    parser.add_argument('--market',choices=['gold','equity'],default='gold',help='Market-session anchoring; select equity for regular-session QQQ')
+    parser.add_argument('--entry-mode',choices=['single','ladder'],default='ladder')
+    parser.add_argument('--step-price',type=float,required=True,
+                        help='Absolute instrument price increment; confirm broker pip mapping yourself')
+    parser.add_argument('--max-rungs',type=int,default=8)
+    parser.add_argument('--allocation',choices=['equal','front_loaded'],default='front_loaded')
+    parser.add_argument('--starting-balance',type=float,default=10000.)
+    parser.add_argument('--risk-pct',type=float,default=1.)
+    parser.add_argument('--max-leverage',type=float,default=20.)
+    parser.add_argument('--max-open',type=int,default=1,help='Maximum simultaneous zone campaigns')
+    parser.add_argument('--displacement-atr',type=float,default=2.)
+    parser.add_argument('--min-efficiency',type=float,default=.65)
+    parser.add_argument('--stop-buffer-atr',type=float,default=.10)
+    parser.add_argument('--only-timeframe',choices=list(TF_MIN))
+    parser.add_argument('--only-variant',choices=['basic','bos','bos_fvg'])
+    args=parser.parse_args()
+    if args.step_price<=0 or args.max_rungs<1:
+        parser.error('--step-price must be >0; --max-rungs must be >=1')
+    df=read_1m_csv(args.csv)
+    tf_list=[args.only_timeframe] if args.only_timeframe else list(TF_MIN)
+    out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
+    frames={}
+    for tf in tf_list:
+        frames[tf],incomplete=candles_for_timeframe(df,tf,args.market)
+        print(f'{tf}: {len(frames[tf]):,} completed candles ({incomplete:,} incomplete buckets excluded)')
+    rows=[]
+    for tf in tf_list:
+        variants=[args.only_variant] if args.only_variant else ['basic','bos','bos_fvg']
+        for v in variants:
+            zones=build_zones(frames,tf,v,args.displacement_atr,args.min_efficiency,args.stop_buffer_atr)
+            result,trades,events,states=run_ladder(df,zones,starting_balance=args.starting_balance,
+                risk_pct=args.risk_pct,max_leverage=args.max_leverage,max_open=args.max_open,
+                step_price=args.step_price,max_rungs=args.max_rungs,
+                allocation=args.allocation,entry_mode=args.entry_mode)
+            result.update(timeframe=tf,variant=v,entry_mode=args.entry_mode,allocation=args.allocation,
+                          step_price=args.step_price,max_rungs=args.max_rungs)
+            rows.append(result)
+            prefix=f'{tf}_{v}_{args.entry_mode}_{args.allocation}'
+            pd.DataFrame(trades).to_csv(out/f'{prefix}_campaigns.csv',index=False)
+            pd.DataFrame(events).to_csv(out/f'{prefix}_fills_and_exits.csv',index=False)
+            pd.DataFrame(states).to_csv(out/f'{prefix}_zone_states.csv',index=False)
+            print(tf,v,'zones:',result['zones'],'campaigns:',result['campaigns'],
+                  'multi-rung:',result['multi_rung_campaigns'],'return:',result['return_pct'])
+    pd.DataFrame(rows).to_csv(out/'comparison.csv',index=False)
+    (out/'settings.json').write_text(json.dumps(vars(args),indent=2,default=str),encoding='utf-8')
+    print('Saved',out.resolve())
+
+
+if __name__=='__main__':
+    main()

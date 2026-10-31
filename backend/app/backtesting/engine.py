@@ -150,6 +150,8 @@ class BacktestEngine:
                     raise ValueError('Missing or invalid incremental session-close authority')
             symbols_now = sorted(symbol for symbol, rows in primary_rows.items() if timestamp in rows)
             closed_here: list[BacktestTrade] = []
+            # LEDGER_IOF_LIMIT_FILL_TIMING_FIX_V1: track positions filled AFTER this candle opened.
+            intrabar_limit_fills: set[str] = set()
             force_boundary_symbols: set[str] = set()
 
             # 1) Fill orders generated from already-completed earlier bars.
@@ -234,6 +236,14 @@ class BacktestEngine:
                         )
                         if isinstance(outcome, Position):
                             positions[symbol] = outcome
+                            # A resting limit that opens inside the bar may only use
+                            # price evidence from AFTER it could have filled.
+                            if signal.order_type == "limit" and signal.entry_price is not None and (
+                                (signal.direction == "long" and float(bar["open"]) > float(signal.entry_price))
+                                or (signal.direction == "short" and float(bar["open"]) < float(signal.entry_price))
+                            ):
+                                intrabar_limit_fills.add(symbol)
+                                outcome.metadata["engine_intrabar_limit_fill_bar"] = timestamp_dt.isoformat()
                             balance -= outcome.entry_commission
                             entries_by_day[timestamp_dt.astimezone(self._tz).date()] += 1
                             record.update({"status": "filled", "entry_time": timestamp_dt.isoformat(), "fill_price": float(outcome.entry_price)})
@@ -249,7 +259,9 @@ class BacktestEngine:
                     continue
                 bar = _row_to_series(primary_rows[symbol][timestamp])
                 position = positions[symbol]
-                exit_hit = self._intrabar_exit(position, bar)
+                exit_hit = self._intrabar_exit(
+                    position, bar, entry_filled_intrabar=symbol in intrabar_limit_fills
+                )
                 if exit_hit is not None:
                     raw_price, reason, market_fill = exit_hit
                     trade, balance = self._close_position(
@@ -733,26 +745,56 @@ class BacktestEngine:
             position.metadata.update(dict(signal.metadata))
         return balance
 
-    def _intrabar_exit(self, position: Position, bar: pd.Series) -> tuple[float, str, bool] | None:
+    def _intrabar_exit(
+        self, position: Position, bar: pd.Series, *, entry_filled_intrabar: bool = False
+    ) -> tuple[float, str, bool] | None:
+        """Pessimistic OHLC exits; never time-travel before an intrabar limit fill.
+
+        On a newly touched resting limit, the 1m OPEN pre-dates the fill.
+        A later stop touch is conservatively charged; a profit target touched
+        somewhere in the high/low is ambiguous unless the candle CLOSE also
+        reaches the target. Ambiguous target-only candles keep the trade open.
+        Carried positions and orders filled at the bar open retain ordinary
+        open-gap treatment and the configured same-bar policy.
+        """
         open_price = float(bar["open"])
         high = float(bar["high"])
         low = float(bar["low"])
-        stop = position.stop_loss
-        target = position.take_profit
+        close = float(bar["close"])
+        stop = float(position.stop_loss)
+        target = float(position.take_profit) if position.take_profit is not None else None
+
         if position.direction == "long":
-            if open_price <= stop:
-                return open_price, "stop_gap", True
-            if target is not None and open_price >= target:
-                return open_price, "target_gap", False
+            if not entry_filled_intrabar:
+                if open_price <= stop:
+                    return open_price, "stop_gap", True
+                if target is not None and open_price >= target:
+                    return open_price, "target_gap", False
             hit_stop = low <= stop
             hit_target = target is not None and high >= target
+            if entry_filled_intrabar:
+                # The opening high may pre-date the buy-limit entry. A low that
+                # reaches the stop necessarily traverses the stop after the entry
+                # on a continuous price path; resolve conflicts against trader.
+                if hit_stop:
+                    return stop, "stop_entry_bar", True
+                if hit_target and close >= target:
+                    return target, "target_entry_bar_close_confirmed", False
+                return None
         else:
-            if open_price >= stop:
-                return open_price, "stop_gap", True
-            if target is not None and open_price <= target:
-                return open_price, "target_gap", False
+            if not entry_filled_intrabar:
+                if open_price >= stop:
+                    return open_price, "stop_gap", True
+                if target is not None and open_price <= target:
+                    return open_price, "target_gap", False
             hit_stop = high >= stop
             hit_target = target is not None and low <= target
+            if entry_filled_intrabar:
+                if hit_stop:
+                    return stop, "stop_entry_bar", True
+                if hit_target and close <= target:
+                    return target, "target_entry_bar_close_confirmed", False
+                return None
 
         if hit_stop and hit_target:
             if self.config.same_bar_policy == "target_first":

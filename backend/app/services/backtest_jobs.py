@@ -27,7 +27,7 @@ class BacktestJobs:
         self.backtest.simulation_budget = self.budget
         from app.storage.research_experiment_repository import ResearchExperimentRepository
         self.research = ResearchExperimentRepository(database)
-        self.executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest')
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='backtest')
         with database.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS backtest_jobs (
                 id TEXT PRIMARY KEY, request_key TEXT NOT NULL, ordinal INTEGER NOT NULL,

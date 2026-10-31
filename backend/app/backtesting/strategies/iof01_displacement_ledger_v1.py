@@ -1,0 +1,337 @@
+"""IOF-01 Basic/BOS/BOS+FVG -- native Ledger research adapters.
+
+IMPORTANT: These are **one-entry execution approximations**, not equivalent to
+iof01_reference_backtest.py. The source's second zone re-entry, same-bar 30/30/40
+partial fills and TP2->BE sequencing require campaign-level intrabar fills,
+which the current Ledger Strategy/Engine contract does not provide.
+
+The candidate detector is intentionally transcribed from the source. A signal
+uses a resting limit at the source zone edge, with a structural stop and 3R
+engine target. Partial profit instructions are generated only after completed
+1m bars and executed on the *next* bar's open by Ledger's existing engine.
+No real broker orders or MT5 access.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+
+from app.backtesting.context import StrategyContext
+from app.backtesting.models import EntrySignal, ExitSignal, ManagePositionSignal
+from app.backtesting.strategies.base import ParameterSpec, Strategy, StrategySpec
+from app.backtesting.strategies.registry import strategy_registry
+
+
+@dataclass(frozen=True)
+class DetectorSettings:
+    variant: str = "bos"
+    atr_period: int = 14
+    displacement_atr: float = 2.0
+    impulse_max_bars: int = 3
+    candle_body_min: float = 0.60
+    swing_lookback: int = 20
+    base_lookback: int = 5
+    zone_max_atr: float = 1.50
+    stop_buffer_atr: float = 0.10
+    max_stop_atr: float = 3.0
+
+
+@dataclass(frozen=True)
+class Candidate:
+    signal_id: int
+    detected_i: int
+    direction: int
+    zone_low: float
+    zone_high: float
+    entry: float
+    initial_stop: float
+    atr: float
+    base_i: int
+    impulse_bars: int
+    displacement_in_atr: float
+    bos: bool
+    fvg: bool
+
+
+def make_candidate(df: pd.DataFrame, i: int, cfg: DetectorSettings, sid: int) -> Optional[Candidate]:
+    """Faithful copy of uploaded source's detection rules. Uses prior-bar ATR."""
+    if i < cfg.swing_lookback + cfg.impulse_max_bars + cfg.base_lookback + 2:
+        return None
+    atr = float(df.at[i, "atr_previous"])
+    if not np.isfinite(atr) or atr <= 0:
+        return None
+    o, c, h, l = (float(df.at[i, x]) for x in ("open", "close", "high", "low"))
+    body_ratio = abs(c - o) / max(h - l, 1e-12)
+    if body_ratio < cfg.candle_body_min or c == o:
+        return None
+    direction = 1 if c > o else -1
+    for k in range(1, cfg.impulse_max_bars + 1):
+        start = i - k + 1
+        move = direction * (c - float(df.at[start, "open"]))
+        displacement_in_atr = move / atr
+        if displacement_in_atr < cfg.displacement_atr:
+            continue
+        prior = df.iloc[start - cfg.swing_lookback:start]
+        if len(prior) < cfg.swing_lookback:
+            continue
+        bos = (c > float(prior["high"].max()) if direction == 1
+               else c < float(prior["low"].min()))
+        fvg = (float(df.at[i, "low"]) > float(df.at[i - 2, "high"])
+               if direction == 1 else
+               float(df.at[i, "high"]) < float(df.at[i - 2, "low"]))
+        if cfg.variant in {"bos", "bos_fvg"} and not bos:
+            continue
+        if cfg.variant == "bos_fvg" and not fvg:
+            continue
+        for base in range(start - 1, max(0, start - cfg.base_lookback) - 1, -1):
+            bo, bc = float(df.at[base, "open"]), float(df.at[base, "close"])
+            if direction * (bc - bo) >= 0:
+                continue
+            low = float(df.at[base, "low"])
+            high = float(df.at[base, "high"])
+            if high - low > cfg.zone_max_atr * atr:
+                continue
+            entry = high if direction == 1 else low
+            stop = low - cfg.stop_buffer_atr * atr if direction == 1 else high + cfg.stop_buffer_atr * atr
+            distance = abs(entry - stop)
+            if distance <= 0 or distance > cfg.max_stop_atr * atr:
+                continue
+            between = df.iloc[base + 1:i + 1]
+            if direction == 1 and (between["low"] <= entry).any():
+                impulse = df.iloc[start:i + 1]
+                if (impulse["close"] <= entry).any():
+                    continue
+            if direction == -1 and (between["high"] >= entry).any():
+                impulse = df.iloc[start:i + 1]
+                if (impulse["close"] >= entry).any():
+                    continue
+            return Candidate(sid, i, direction, low, high, entry, stop, atr,
+                             base, k, displacement_in_atr, bos, fvg)
+    return None
+
+
+_SETTINGS = (
+    ParameterSpec("displacement_atr", "Displacement (ATR)", "float", 2.0,
+                  minimum=0.5, maximum=8.0, step=0.25),
+    ParameterSpec("signal_expiry_bars", "Limit expiry (1m bars)", "int", 90,
+                  minimum=1, maximum=300, step=1),
+    ParameterSpec("max_holding_bars", "Optional maximum hold (1m bars; 0 = off)", "int", 0,
+                  minimum=0, maximum=1440, step=1),
+)
+
+
+class _Iof01LedgerBase(Strategy):
+    """Ledger execution-compatible projection of an IOF-01 campaign."""
+    VARIANT = "bos"
+
+    def reset(self) -> None:
+        self._bar_time = None
+        self._last_close = None
+        self._atr_ewm = None
+        self._bar_count = 0
+        self._signal_number = 0
+        self._active_base = None
+        self._active_since = 0
+        self._ever_filled = False
+        self._seen_bases = set()
+        self._fill_first_seen_count = None
+
+    def _update_atr(self, bar: pd.Series) -> Optional[float]:
+        prior = self._atr_ewm if self._bar_count >= self._atr_period() else None
+        high, low, close = (float(bar[x]) for x in ("high", "low", "close"))
+        tr = high - low
+        if self._last_close is not None:
+            tr = max(tr, abs(high - self._last_close), abs(low - self._last_close))
+        alpha = 1.0 / self._atr_period()
+        self._atr_ewm = tr if self._atr_ewm is None else alpha * tr + (1.0 - alpha) * self._atr_ewm
+        self._last_close = close
+        self._bar_count += 1
+        return prior
+
+    @staticmethod
+    def _atr_period():
+        return 14
+
+    def on_bar(self, ctx: StrategyContext):
+        if ctx.primary_timeframe != "1m":
+            return None
+        # All source rules use completed bars. This method is called at 1m close.
+        bars = ctx.bars("1m", count=72)
+        if bars.empty:
+            return None
+        bar = bars.iloc[-1]
+        stamp = pd.Timestamp(bar["timestamp"])
+        if stamp == self._bar_time:
+            return None
+        self._bar_time = stamp
+        atr_previous = self._update_atr(bar)
+
+        position = ctx.position
+        if position is not None:
+            self._ever_filled = True
+            if self._fill_first_seen_count is None:
+                self._fill_first_seen_count = self._bar_count
+            return self._manage(ctx, position, bar)
+
+        if self._active_base is not None:
+            if self._ever_filled:
+                # Ledger has closed this single position (SL/TP/session/end).
+                self._active_base = None
+                self._ever_filled = False
+                self._fill_first_seen_count = None
+            elif self._bar_count - self._active_since <= int(self.params["signal_expiry_bars"]) + 1:
+                # Waiting for existing Ledger limit order; don't duplicate it.
+                return None
+            else:
+                self._active_base = None
+
+        cfg = DetectorSettings(variant=self.VARIANT,
+                               displacement_atr=float(self.params["displacement_atr"]))
+        min_required = cfg.swing_lookback + cfg.impulse_max_bars + cfg.base_lookback + 3
+        if atr_previous is None or len(bars) < min_required:
+            return None
+        lookback = bars.reset_index(drop=True)
+        i = len(lookback) - 1
+        lookback.at[i, "atr_previous"] = atr_previous
+        candidate = make_candidate(lookback, i, cfg, self._signal_number + 1)
+        if candidate is None:
+            return None
+        base_time = pd.Timestamp(lookback.at[candidate.base_i, "timestamp"])
+        key = (base_time.isoformat(), candidate.direction)
+        if key in self._seen_bases:
+            return None
+        self._seen_bases.add(key)
+        self._signal_number += 1
+        self._active_base = key
+        self._active_since = self._bar_count
+        self._ever_filled = False
+        self._fill_first_seen_count = None
+        direction = "long" if candidate.direction == 1 else "short"
+        return EntrySignal(
+            direction=direction,
+            stop_loss=float(candidate.initial_stop),
+            # Engine recomputes 3R from *actual filled price*; source uses fixed
+            # zone edge. Prices may differ for gap-improved fills and costs.
+            target_r=3.0,
+            order_type="limit",
+            entry_price=float(candidate.entry),
+            max_wait_bars=int(self.params["signal_expiry_bars"]),
+            reason=f"iof01_{self.VARIANT}_{direction}_single_entry_proxy",
+            metadata={
+                "iof01_version": "ledger_single_entry_v1",
+                "iof01_reference_variant": self.VARIANT,
+                "iof01_source_zone_entry": candidate.entry,
+                "iof01_zone_low": candidate.zone_low,
+                "iof01_zone_high": candidate.zone_high,
+                "iof01_original_stop": candidate.initial_stop,
+                "iof01_displacement_atr": candidate.displacement_in_atr,
+                "iof01_bos": candidate.bos,
+                "iof01_fvg": candidate.fvg,
+                "iof01_campaign_id": self._signal_number,
+                "iof01_execution_warning": (
+                    "Single fill only; partial exits at subsequent 1m open; "
+                    "not the source's two-entry same-bar 30/30/40 model"
+                ),
+            },
+        )
+
+    def _manage(self, ctx, pos, bar):
+        if pos.metadata.get("iof01_version") != "ledger_single_entry_v1":
+            return None
+        if pos.metadata.get("iof01_reference_variant") != self.VARIANT:
+            return None
+        held_bars = self._bar_count - (self._fill_first_seen_count or self._active_since)
+        max_hold = int(self.params["max_holding_bars"])
+        if max_hold and held_bars >= max_hold:
+            # Next 1m open, whereas original source exits at current candle close.
+            return ExitSignal(reason="iof01_max_hold_next_open")
+        entry = float(pos.entry_price)
+        risk = float(pos.initial_risk_per_share)
+        if risk <= 0:
+            return None
+        sign = 1 if pos.direction == "long" else -1
+        level1, level2 = entry + sign * risk, entry + sign * 2.0 * risk
+        # LEDGER_IOF_LIMIT_FILL_TIMING_FIX_V1:
+        # An entry-bar high/low may have occurred BEFORE the limit filled.
+        # A favorable CLOSE proves a subsequent traversal; an isolated wick
+        # does not. Other candles retain the established source-proxy logic.
+        fill_bar = pos.metadata.get("engine_intrabar_limit_fill_bar")
+        entered_inside_this_bar = (fill_bar is not None and
+                                   pd.Timestamp(fill_bar) == pd.Timestamp(bar["timestamp"]))
+        if entered_inside_this_bar:
+            favorable = float(bar["close"])
+        else:
+            favorable = float(bar["high"]) if sign > 0 else float(bar["low"])
+        touched1 = favorable >= level1 if sign > 0 else favorable <= level1
+        touched2 = favorable >= level2 if sign > 0 else favorable <= level2
+        tp1_done = bool(pos.metadata.get("iof01_tp1_done"))
+        tp2_done = bool(pos.metadata.get("iof01_tp2_done"))
+        if not tp1_done and touched1:
+            return ManagePositionSignal(
+                reduce_fraction=0.30,
+                reason="iof01_tp1_30pct_next_open",
+                metadata={"iof01_tp1_done": True,
+                          "iof01_tp2_seen_while_tp1_pending": bool(touched2)},
+            )
+        if tp1_done and not tp2_done and (touched2 or pos.metadata.get("iof01_tp2_seen_while_tp1_pending")):
+            return ManagePositionSignal(
+                # 30% of original is 3/7 of the 70% remaining.
+                reduce_fraction=3.0 / 7.0,
+                new_stop_loss=entry,
+                reason="iof01_tp2_30pct_and_be_next_open",
+                metadata={"iof01_tp2_done": True},
+            )
+        return None
+
+
+@strategy_registry.register
+class Iof01BasicLedgerV1(_Iof01LedgerBase):
+    VARIANT = "basic"
+    spec = StrategySpec(
+        key="iof01_basic_ledger_v1", name="IOF-01 Basic · single-entry Ledger proxy",
+        description="1m displacement / last opposing candle zone; no BOS or FVG requirement. See original source CLI for exact two-entry 30/30/40 fills.",
+        category="Research · execution approximation", timeframes=("1m",),
+        defaults={"displacement_atr": 2.0, "signal_expiry_bars": 90, "max_holding_bars": 0},
+        parameters=_SETTINGS,
+        risk_management={"Entry":"One resting zone-edge limit, maximum 90 completed 1m bars",
+                         "Stop":"Zone extreme +/-0.1 pre-candle ATR",
+                         "Partials":"30% at TP1, 30% at TP2 (NEXT 1m OPEN), 40% at TP3",
+                         "TP2":"Stop -> breakeven next open", "Unsupported":"Second/rearmed zone entry and intrabar partial ordering"},
+        source_file="backend/app/backtesting/strategies/iof01_displacement_ledger_v1.py",
+    )
+
+
+@strategy_registry.register
+class Iof01BosLedgerV1(_Iof01LedgerBase):
+    VARIANT = "bos"
+    spec = StrategySpec(
+        key="iof01_bos_ledger_v1", name="IOF-01 BOS · single-entry Ledger proxy",
+        description="IOF-01 Basic plus close beyond prior 20-bar swing high/low; approximation of source campaign fills.",
+        category="Research · execution approximation", timeframes=("1m",),
+        defaults={"displacement_atr": 2.0, "signal_expiry_bars": 90, "max_holding_bars": 0},
+        parameters=_SETTINGS,
+        risk_management={"Entry":"Zone-edge resting limit", "Confirmation":"20-bar BOS",
+                         "Partials":"30% TP1, 30% TP2, 40% TP3; next-open management",
+                         "Unsupported":"Second/rearmed zone entry and intrabar partial ordering"},
+        source_file="backend/app/backtesting/strategies/iof01_displacement_ledger_v1.py",
+    )
+
+
+@strategy_registry.register
+class Iof01BosFvgLedgerV1(_Iof01LedgerBase):
+    VARIANT = "bos_fvg"
+    spec = StrategySpec(
+        key="iof01_bos_fvg_ledger_v1", name="IOF-01 BOS + FVG · single-entry Ledger proxy",
+        description="IOF-01 BOS plus genuine 3-candle imbalance on detection bar; approximate execution.",
+        category="Research · execution approximation", timeframes=("1m",),
+        defaults={"displacement_atr": 2.0, "signal_expiry_bars": 90, "max_holding_bars": 0},
+        parameters=_SETTINGS,
+        risk_management={"Entry":"Zone-edge resting limit", "Confirmation":"BOS and 3-candle FVG",
+                         "Partials":"30% TP1, 30% TP2, 40% TP3; next-open management",
+                         "Unsupported":"Second/rearmed zone entry and intrabar partial ordering"},
+        source_file="backend/app/backtesting/strategies/iof01_displacement_ledger_v1.py",
+    )

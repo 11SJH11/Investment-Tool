@@ -1,0 +1,380 @@
+"""IOF V2 research: 12 independent timeframe/filter hypotheses.
+
+NON-TRADING, causal, 1m-execution Ledger strategies. Limit order restrictions
+of current Ledger mean Strategy Lab is a *single-position proximity-armed proxy*;
+for a multi-zone fill simulation use backend/tools/run_iofv2_reference.py.
+
+Displacement is an uncapped-length directional leg, >= ATR threshold with
+normalized base-to-close path efficiency (IOFV2_EFFICIENCY_V21). Origin = most recent opposing candle at leg START.
+No data from unfinished higher-timeframe bars is consulted.
+"""
+from __future__ import annotations
+
+from bisect import bisect_left, insort
+from collections import deque
+from dataclasses import dataclass
+from datetime import timedelta
+from math import isfinite
+
+import pandas as pd
+
+from app.backtesting.context import StrategyContext
+from app.backtesting.models import EntrySignal, ManagePositionSignal
+from app.backtesting.strategies.base import ParameterSpec, Strategy, StrategySpec
+from app.backtesting.strategies.registry import strategy_registry
+
+SOURCE = "backend/app/backtesting/strategies/iof_v2_persistent_zones.py"
+TF_MIN = {"1m": 1, "15m": 15, "1h": 60, "4h": 240}
+
+
+def utc(value):
+    t = pd.Timestamp(value)
+    return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+
+
+@dataclass
+class Zone:
+    zone_id: str
+    timeframe: str
+    direction: str
+    low: float
+    high: float
+    entry: float
+    stop: float
+    atr: float
+    confirmed_at: pd.Timestamp
+    base_at: pd.Timestamp
+    candles: int
+    efficiency: float
+    displacement_atr: float
+    bos: bool
+    fvg: bool
+    status: str = "active"
+
+    @property
+    def distance(self):
+        return abs(self.entry - self.stop)
+
+
+class DisplacementDetector:
+    """Stateful completed-bar detector; leg candle count is NOT bounded.
+
+    This is a deliberately frozen mechanical hypothesis, not a claim to detect
+    actual institutional orders. Only the most recent opposing candle in the
+    pre-leg 12-bar buffer can seed the origin. For each leg, mark at most one zone.
+    """
+
+    def __init__(self, timeframe, *, displacement_atr=2.0, min_efficiency=0.65,
+                 stop_buffer_atr=0.10, variant="basic", min_body_share=0.35):
+        if timeframe not in TF_MIN or variant not in ("basic", "bos", "bos_fvg"):
+            raise ValueError("Invalid timeframe or variant")
+        if not (0 < displacement_atr <= 100 and 0 < min_efficiency <= 1 and
+                0 <= stop_buffer_atr <= 5 and 0 <= min_body_share <= 1):
+            raise ValueError("Invalid detection parameters")
+        self.timeframe, self.variant = timeframe, variant
+        self.displacement_atr = float(displacement_atr)
+        self.min_efficiency = float(min_efficiency)
+        self.stop_buffer_atr = float(stop_buffer_atr)
+        self.min_body_share = float(min_body_share)
+        self.history = deque(maxlen=90)
+        self.prev_close = None
+        self.atr = None
+        self.atr_count = 0
+        self.leg = None
+        self.last_time = None
+        self.seen = set()
+
+    def _new_leg(self, direction, atr, prior_close):
+        # Origin is an opposing candle BEFORE the impulse starts. Need 20
+        # completed bars preceding its start for a fixed-prior BOS boundary.
+        h = list(self.history)
+        if len(h) < 24:
+            return None
+        prior = h[-12:]
+        base = next((x for x in reversed(prior)
+                     if (x['close'] - x['open']) * direction < 0), None)
+        if base is None:
+            return None
+        return {
+            "direction": direction, "base": base, "high_before": max(x['high'] for x in h[-20:]),
+            "low_before": min(x['low'] for x in h[-20:]), "best_close": float(base['close']),
+            # Include the CLOSE-to-CLOSE bridge from the originating base candle
+            # to the close immediately before this leg. Otherwise the numerator
+            # starts at base.close while the denominator starts much later;
+            # efficiency can exceed 1.0 and spuriously pass its threshold.
+            "path": abs(float(prior_close) - float(base['close'])),
+            "candles": 0, "fvg": False, "created": False,
+            "atr_start": atr, "body_total": 0., "range_total": 0.,
+        }
+
+    def process(self, item):
+        bar = {k: float(item[k]) for k in ("open", "high", "low", "close")}
+        stamp = utc(item['timestamp'])
+        if self.last_time is not None and stamp <= self.last_time:
+            raise ValueError("DisplacementDetector bars must be strictly increasing")
+        # On a market gap, do not extend a directional impulse across closed hours.
+        if self.last_time is not None and stamp - self.last_time > timedelta(minutes=TF_MIN[self.timeframe] * 1.5):
+            self.leg = None
+        self.last_time = stamp
+        bar['timestamp'] = stamp
+        previous = self.prev_close
+        tr = max(bar['high'] - bar['low'], abs(bar['high']-previous), abs(bar['low']-previous)) if previous is not None else bar['high']-bar['low']
+        atr_before = self.atr if self.atr_count >= 14 else None
+        self.atr = tr if self.atr is None else (self.atr * 13. + tr) / 14.
+        self.atr_count += 1
+        self.prev_close = bar['close']
+        result = None
+        if atr_before is not None and isfinite(atr_before) and atr_before > 0 and previous is not None:
+            if self.leg is not None:
+                leg = self.leg
+                # Significant reversal ends the impulse; tiny contrary bars are fine.
+                pullback = leg['direction'] * (leg['best_close'] - bar['close'])
+                if pullback >= max(atr_before * 0.85, leg['direction'] * (leg['best_close'] - leg['base']['close']) * 0.4):
+                    self.leg = None
+            if self.leg is None:
+                d = 1 if bar['close'] > previous else -1 if bar['close'] < previous else 0
+                if d:
+                    self.leg = self._new_leg(d, atr_before, previous)
+            leg = self.leg
+            if leg is not None:
+                d = leg['direction']
+                leg['candles'] += 1
+                leg['path'] += abs(bar['close'] - previous)
+                leg['body_total'] += abs(bar['close'] - bar['open'])
+                leg['range_total'] += bar['high'] - bar['low']
+                if d * (bar['close'] - leg['best_close']) > 0:
+                    leg['best_close'] = bar['close']
+                if len(self.history) >= 2:
+                    earlier = self.history[-2]
+                    if (d == 1 and bar['low'] > earlier['high']) or (d == -1 and bar['high'] < earlier['low']):
+                        leg['fvg'] = True
+                move = d * (bar['close'] - leg['base']['close'])
+                # The same base.close -> current.close path underlies numerator
+                # and denominator, hence 0 <= directional efficiency <= 1 for
+                # qualifying impulses (triangle inequality). Direction may
+                # temporarily be adverse; clamp negatives to zero only.
+                efficiency = max(0., min(1., move / leg['path'])) if leg['path'] else 0.
+                body_share = leg['body_total'] / leg['range_total'] if leg['range_total'] else 0.
+                bos = bar['close'] > leg['high_before'] if d == 1 else bar['close'] < leg['low_before']
+                passes = (not leg['created'] and move >= self.displacement_atr * atr_before
+                          and efficiency >= self.min_efficiency and body_share >= self.min_body_share
+                          and (self.variant == 'basic' or bos)
+                          and (self.variant != 'bos_fvg' or leg['fvg']))
+                if passes:
+                    base = leg['base']
+                    low, high = base['low'], base['high']
+                    entry = high if d == 1 else low
+                    midpoint = (high + low) / 2.
+                    stop = midpoint - self.stop_buffer_atr * atr_before if d == 1 else midpoint + self.stop_buffer_atr * atr_before
+                    key = (base['timestamp'].isoformat(), d)
+                    if low < high and (entry > stop if d == 1 else entry < stop) and key not in self.seen:
+                        self.seen.add(key)
+                        result = Zone(
+                            zone_id=f"{self.timeframe}:{self.variant}:{base['timestamp'].isoformat()}:{d}",
+                            timeframe=self.timeframe, direction='long' if d == 1 else 'short',
+                            low=low, high=high, entry=entry, stop=stop, atr=atr_before,
+                            confirmed_at=stamp + timedelta(minutes=TF_MIN[self.timeframe]),
+                            base_at=base['timestamp'], candles=leg['candles'],
+                            efficiency=efficiency, displacement_atr=move/atr_before,
+                            bos=bool(bos), fvg=bool(leg['fvg']))
+                        leg['created'] = True
+        self.history.append(bar)
+        return result
+
+
+_PARAMETERS = (
+    ParameterSpec('displacement_atr', 'Minimum displacement (ATR)', 'float', 2.0, minimum=0.5, maximum=10., step=0.25),
+    ParameterSpec('min_efficiency', 'Directional efficiency', 'float', 0.65, minimum=0.3, maximum=1., step=0.05),
+    ParameterSpec('stop_buffer_atr', 'Stop beyond zone midpoint (ATR)', 'float', 0.10, minimum=0., maximum=1., step=0.05),
+    ParameterSpec('arming_distance_atr', 'Arm limit near zone (1m ATR)', 'float', 3., minimum=0.25, maximum=20., step=0.25),
+)
+_DEFAULTS = {p.key: p.default for p in _PARAMETERS}
+
+
+class _IofV2Base(Strategy):
+    ZONE_TF = '15m'
+    VARIANT = 'basic'
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.reset()
+
+    def reset(self):
+        self.detector = DisplacementDetector(
+            self.ZONE_TF, variant=self.VARIANT,
+            displacement_atr=float(self.params['displacement_atr']),
+            min_efficiency=float(self.params['min_efficiency']),
+            stop_buffer_atr=float(self.params['stop_buffer_atr']))
+        self.zones = {}
+        self.edges = []     # bisect-index of ALL zones, including disabled entries
+        self.last_zone_stamp = None
+        self.last_1m_stamp = None
+        self.last_pos_zone = None
+        self.last_submitted = None
+        self.atr_1m = None
+        self.prev_1m_close = None
+        self.atr_1m_count = 0
+        self.prev_bar = None
+        self.last_1m_price = None
+        self.position_first_seen = None
+
+    def _update_1m_atr(self, bar):
+        h, l, c = (float(bar[x]) for x in ('high','low','close'))
+        tr = max(h-l, abs(h-self.prev_1m_close), abs(l-self.prev_1m_close)) if self.prev_1m_close is not None else h-l
+        self.atr_1m = tr if self.atr_1m is None else (self.atr_1m*13.+tr)/14.
+        self.prev_1m_close = c
+        self.atr_1m_count += 1
+
+    def _candidate_zone(self, close, atr, decision_time):
+        # One pending limit per symbol is a Ledger engine restriction. Choose
+        # nearest active zone on the APPROACH side, without age expiry.
+        i = bisect_left(self.edges, (float(close), ''))
+        best = None
+        for _, zone_id in self.edges[max(0,i-14):i+15]:
+            z = self.zones[zone_id]
+            if z.status != 'active' or z.confirmed_at > decision_time:
+                continue
+            signed = (close-z.entry) if z.direction == 'long' else (z.entry-close)
+            if not (0 <= signed <= float(self.params['arming_distance_atr']) * atr):
+                continue
+            rank = (signed, -z.confirmed_at.value, z.zone_id)
+            if best is None or rank < best[0]:
+                best = (rank,z)
+        return best[1] if best is not None else None
+
+    def on_bar(self, ctx: StrategyContext):
+        if ctx.primary_timeframe != '1m':
+            return None
+        # Complete 1m bars only. Higher timeframes are requested only as
+        # completed bars, so there is no forming-4H-candle look-ahead.
+        bars1 = ctx.bars('1m', count=1)
+        if bars1.empty:
+            return None
+        b = bars1.iloc[-1]
+        stamp = utc(b['timestamp'])
+        if stamp == self.last_1m_stamp:
+            return None
+        self.last_1m_stamp = stamp
+        self._update_1m_atr(b)
+        last_tf = ctx.bars(self.ZONE_TF, count=1)
+        if not last_tf.empty:
+            latest = last_tf.iloc[-1]
+            new_stamp = utc(latest['timestamp'])
+            if new_stamp != self.last_zone_stamp:
+                self.last_zone_stamp = new_stamp
+                new = self.detector.process(latest)
+                if new is not None and new.zone_id not in self.zones:
+                    self.zones[new.zone_id] = new
+                    insort(self.edges, (new.entry, new.zone_id))
+
+        position = ctx.position
+        if position is not None:
+            zone_id = (position.metadata or {}).get('iofv2_zone_id')
+            if zone_id not in self.zones:
+                return None
+            self.last_pos_zone = zone_id
+            self.zones[zone_id].status = 'filled'
+            return self._manage(position, b, stamp)
+
+        # A previously observed position has now closed via the engine's SL,
+        # full target or forced end; do not re-arm that zone automatically.
+        if self.last_pos_zone is not None:
+            if self.last_pos_zone in self.zones:
+                self.zones[self.last_pos_zone].status = 'complete'
+            self.last_pos_zone = None
+
+        # Detect a fast fill+SL or TP2 during a SINGLE bar, where ctx.position
+        # is never exposed to on_bar. This is conservative by design.
+        if self.last_submitted is not None and self.prev_bar is not None:
+            zone_id, submitted_stamp = self.last_submitted
+            if stamp > submitted_stamp and zone_id in self.zones:
+                z = self.zones[zone_id]
+                if z.status == 'active':
+                    low,high = float(b['low']),float(b['high'])
+                    touched = low <= z.entry if z.direction=='long' else high >= z.entry
+                    stop_hit = low <= z.stop if z.direction=='long' else high >= z.stop
+                    if touched and stop_hit:
+                        z.status = 'stopped_or_ambiguous'
+            self.last_submitted = None
+
+        if self.atr_1m_count < 14 or self.atr_1m is None:
+            self.prev_bar = b
+            return None
+        z = self._candidate_zone(float(b['close']), float(self.atr_1m), utc(ctx.decision_time))
+        self.prev_bar = b
+        if z is None:
+            return None
+        self.last_submitted = (z.zone_id, stamp)
+        return EntrySignal(
+            direction=z.direction, stop_loss=z.stop, order_type='limit', entry_price=z.entry,
+            max_wait_bars=1, target_r=3.0,
+            reason=f'iofv2_{self.ZONE_TF}_{self.VARIANT}_zone_edge_proxy',
+            metadata={
+                'iofv2_version':'persistent_zones_v2_proxy', 'iofv2_zone_id':z.zone_id,
+                'iofv2_zone_tf':z.timeframe, 'iofv2_variant':self.VARIANT,
+                'iofv2_zone_low':z.low, 'iofv2_zone_high':z.high,
+                'iofv2_zone_midpoint':(z.low+z.high)/2,
+                'iofv2_zone_entry':z.entry,'iofv2_zone_stop':z.stop,
+                'iofv2_zone_confirmed_at':z.confirmed_at.isoformat(),
+                'iofv2_zone_base_at':z.base_at.isoformat(),
+                'iofv2_impulse_candles':z.candles,
+                'iofv2_displacement_atr':z.displacement_atr,
+                'iofv2_directional_efficiency':z.efficiency,
+                'iofv2_bos':z.bos,'iofv2_fvg':z.fvg,
+                'iofv2_execution_model': 'Ledger 1 pending / 1 open per symbol, proximity-armed order; not a multi-zone fill engine',
+            })
+
+    def _manage(self, position, bar, stamp):
+        meta = position.metadata or {}
+        if meta.get('iofv2_version') != 'persistent_zones_v2_proxy':
+            return None
+        entry, r = float(position.entry_price),float(position.initial_risk_per_share)
+        if r <= 0:
+            return None
+        d = 1 if position.direction=='long' else -1
+        # Completed ENTRY bar: only use close for favourable target evidence,
+        # otherwise a high/low may have occurred before a later limit fill.
+        if self.position_first_seen != (position.entry_time,meta.get('iofv2_zone_id')):
+            self.position_first_seen = (position.entry_time,meta.get('iofv2_zone_id'))
+            favourable = d*(float(bar['close'])-entry)
+        else:
+            favourable = (float(bar['high'])-entry if d==1 else entry-float(bar['low']))
+        if not meta.get('iofv2_tp1_done') and favourable >= r:
+            return ManagePositionSignal(reduce_fraction=0.30,reason='iofv2_tp1_30pct_next_open',metadata={'iofv2_tp1_done':True})
+        if meta.get('iofv2_tp1_done') and not meta.get('iofv2_tp2_done') and favourable >= 2*r:
+            self.zones[meta['iofv2_zone_id']].status='tp2_confirmed'
+            return ManagePositionSignal(reduce_fraction=3/7,new_stop_loss=entry,
+                                        reason='iofv2_tp2_30pct_be_next_open', metadata={'iofv2_tp2_done':True})
+        return None
+
+
+def _make_spec(tf,variant):
+    label={'basic':'Displacement','bos':'Displacement + BOS','bos_fvg':'Displacement + BOS + FVG'}[variant]
+    return StrategySpec(
+        key=f'iofv2_{tf}_{variant}',
+        name=f'IOF V2 · {tf} {label} · proxy',
+        description=('Persistent last-opposing-candle zones from uncapped directional displacement; '
+                     'midpoint-buffer stop, near-edge limit, 1R/2R/3R 30/30/40 management. '
+                     'Ledger UI execution is a SINGLE-position proximity-armed approximation.'),
+        category='Research · IOF V2 (execution proxy)',
+        defaults=dict(_DEFAULTS),timeframes=('1m',) if tf=='1m' else ('1m',tf),
+        parameters=_PARAMETERS,
+        risk_management={
+            'Zone':'No age expiry; last opposing candle before uncapped directional leg',
+            'Stop':'Beyond 50% midpoint + ATR buffer',
+            'Entry':'Near edge when approached; 1m limit armed for short windows',
+            'Targets':'30% at 1R, 30% at 2R and stop to BE, 40% at 3R',
+            'Execution limitation':'One pending and one open position per symbol; not full multi-zone accounting',
+        },source_file=SOURCE)
+
+
+# Twelve stable registry IDs; Gold and QQQ use the SAME strategies on their own
+# symbols. Avoid modifying old IOF-01 classes.
+for _tf in ('1m','15m','1h','4h'):
+    for _variant in ('basic','bos','bos_fvg'):
+        _cls_name = f'IofV2_{_tf}_{_variant}'
+        _cls = type(_cls_name, (_IofV2Base,), {
+            '__module__':__name__, 'ZONE_TF':_tf, 'VARIANT':_variant,
+            'spec':_make_spec(_tf,_variant),
+        })
+        globals()[_cls_name] = strategy_registry.register(_cls)
